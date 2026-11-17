@@ -24,6 +24,7 @@ import {
   type BkitVersion,
 } from "../../install/version-file";
 import { requireTsx } from "../../../../../vitest.tsx-bin";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 let tmpDir: string;
 let originalCwd: string;
@@ -314,10 +315,9 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     expect(fs.existsSync(path.join(tmpDir, ".graphifyignore"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".serena", "project.yml"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, "docs", "capabilities.md"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, "docs", "setup.md"))).toBe(true);
-    expect(fs.readFileSync(path.join(tmpDir, "docs", "setup.md"), "utf-8")).toContain(
-      ".bkit/templates.md",
-    );
+    // Project docs are copied from `.bkit/templates/docs/` by the project, never written.
+    expect(fs.existsSync(path.join(tmpDir, "docs", "setup.md"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".bkit", "templates", "docs", "setup.md"))).toBe(true);
   });
 
   it("upgrade does not rewrite a consumer-owned bkit-graphify.sh", () => {
@@ -377,9 +377,8 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     );
     writeVersionFile();
 
-    // docs/*.md have NO manifest entry — this proves the full CLI wiring
-    // (collectTemplates → no format → content-detected block-merge) protects the
-    // consumer's project prose written AFTER the end marker. End-to-end, not a unit stub.
+    // A real `bkit upgrade` migrates the legacy wrapper and keeps every other byte of the
+    // project's prose. End-to-end, not a unit stub.
     const consumerDoc =
       "<!-- bkit:start -->\n# Testing\n\n> stale bkit guidance to be replaced\n<!-- bkit:end -->\n\n" +
       "## Our project testing notes — MUST SURVIVE\n\n- Custom Vitest + Playwright suite.\n";
@@ -392,9 +391,44 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     // Consumer prose after bkit:end is intact.
     expect(after).toContain("## Our project testing notes — MUST SURVIVE");
     expect(after).toContain("Custom Vitest + Playwright suite.");
-    // bkit block was updated to the shipped template (not whole-file-overwritten).
-    expect(after).not.toContain("stale bkit guidance to be replaced");
+    // The project owns the whole file: only the old wrapper lines go, the text inside stays.
+    expect(after).toContain("stale bkit guidance to be replaced");
+    expect(after).not.toContain("bkit:start");
+    expect(after).not.toContain("bkit:end");
   });
+
+  it(
+    "bkit upgrade prints the adopted marker for a changed starter with a project copy",
+    () => {
+      fs.writeFileSync(
+        path.join(tmpDir, "package.json"),
+        JSON.stringify({ name: "consumer" }),
+        "utf-8",
+      );
+      writeVersionFile();
+      // The project's own architecture doc, plus a stale copy of the starter that the upgrade replaces.
+      fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, "docs", "architecture.md"),
+        "# Architecture\n\nThe api service talks to the worker over a queue.\n",
+        "utf-8",
+      );
+      fs.mkdirSync(path.join(tmpDir, ".bkit", "templates", "docs"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, ".bkit", "templates", "docs", "architecture.md"),
+        "# Stale starter\n",
+        "utf-8",
+      );
+
+      const result = runBkitUpgrade();
+
+      expect(result.status).toBe(0);
+      expect(combinedOutput(result)).toContain(
+        "changed: .bkit/templates/docs/architecture.md — adopted at docs/architecture.md, review your copy",
+      );
+    },
+    localLimit(180_000),
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -1832,99 +1866,108 @@ describe("upgrade-render", () => {
   });
 
   describe("#251 — bkit upgrade re-renders agents/commands + .bkit docs", () => {
-    it("restores tampered agents + docs and refreshes the prompts.md block while preserving consumer overrides", () => {
-      // --- Install: core + claude + opencode host (gives .claude/agents, .opencode/agents,
-      //     .claude/commands, .opencode/commands, and the .bkit/*.md docs). ---
-      const install = runBkit(["install", "--claude", "--opencode=openrouter"]);
-      const installCombined = `${install.stdout}\n${install.stderr}`;
-      // Sanity: install reached dispatch and produced the rendered outputs.
-      expect(installCombined).toMatch(/\[bkit-install\]/);
+    it(
+      "restores tampered agents + docs and refreshes the prompts.md block while preserving consumer overrides",
+      () => {
+        // --- Install: core + claude + opencode host (gives .claude/agents, .opencode/agents,
+        //     .claude/commands, .opencode/commands, and the .bkit/*.md docs). ---
+        const install = runBkit(["install", "--claude", "--opencode=openrouter"]);
+        const installCombined = `${install.stdout}\n${install.stderr}`;
+        // Sanity: install reached dispatch and produced the rendered outputs.
+        expect(installCombined).toMatch(/\[bkit-install\]/);
 
-      const claudeAgentsDir = path.join(tmpDir, ".claude", "agents");
-      const opencodeAgentsDir = path.join(tmpDir, ".opencode", "agents");
-      const promptsPath = path.join(tmpDir, ".bkit", "prompts.md");
-      expect(
-        fs.existsSync(claudeAgentsDir),
-        `install must render ${claudeAgentsDir}\n${installCombined}`,
-      ).toBe(true);
-      expect(fs.existsSync(opencodeAgentsDir)).toBe(true);
-      expect(fs.existsSync(promptsPath)).toBe(true);
+        const claudeAgentsDir = path.join(tmpDir, ".claude", "agents");
+        const opencodeAgentsDir = path.join(tmpDir, ".opencode", "agents");
+        const promptsPath = path.join(tmpDir, ".bkit", "prompts.md");
+        expect(
+          fs.existsSync(claudeAgentsDir),
+          `install must render ${claudeAgentsDir}\n${installCombined}`,
+        ).toBe(true);
+        expect(fs.existsSync(opencodeAgentsDir)).toBe(true);
+        expect(fs.existsSync(promptsPath)).toBe(true);
 
-      const claudeAgentFile = firstBkitMarkdown(claudeAgentsDir);
-      const opencodeAgentFile = firstBkitMarkdown(opencodeAgentsDir);
-      expect(claudeAgentFile, "expected a bkit-* agent in .claude/agents").toBeTruthy();
-      expect(opencodeAgentFile, "expected a bkit-* agent in .opencode/agents").toBeTruthy();
+        const claudeAgentFile = firstBkitMarkdown(claudeAgentsDir);
+        const opencodeAgentFile = firstBkitMarkdown(opencodeAgentsDir);
+        expect(claudeAgentFile, "expected a bkit-* agent in .claude/agents").toBeTruthy();
+        expect(opencodeAgentFile, "expected a bkit-* agent in .opencode/agents").toBeTruthy();
 
-      const claudeAgentPath = path.join(claudeAgentsDir, claudeAgentFile!);
-      const opencodeAgentPath = path.join(opencodeAgentsDir, opencodeAgentFile!);
-      const claudeOriginal = fs.readFileSync(claudeAgentPath, "utf-8");
-      const opencodeOriginal = fs.readFileSync(opencodeAgentPath, "utf-8");
+        const claudeAgentPath = path.join(claudeAgentsDir, claudeAgentFile!);
+        const opencodeAgentPath = path.join(opencodeAgentsDir, opencodeAgentFile!);
+        const claudeOriginal = fs.readFileSync(claudeAgentPath, "utf-8");
+        const opencodeOriginal = fs.readFileSync(opencodeAgentPath, "utf-8");
 
-      const promptsOriginal = fs.readFileSync(promptsPath, "utf-8");
-      expect(promptsOriginal).toContain("bkit:start");
-      expect(promptsOriginal).toContain("bkit:end");
+        const promptsOriginal = fs.readFileSync(promptsPath, "utf-8");
+        expect(promptsOriginal).toContain("bkit:start");
+        expect(promptsOriginal).toContain("bkit:end");
 
-      // --- Tamper: rendered agents, the prompts.md managed block, and add a consumer override row. ---
-      const AGENT_SENTINEL = "STALE-TAMPERED-AGENT-DO-NOT-KEEP";
-      const MANAGED_SENTINEL = "STALE-TAMPERED-MANAGED-BLOCK";
-      const OVERRIDE_ROW = "CONSUMER-OVERRIDE-ROW-MUST-SURVIVE";
+        // --- Tamper: rendered agents, the prompts.md managed block, and add a consumer override row. ---
+        const AGENT_SENTINEL = "STALE-TAMPERED-AGENT-DO-NOT-KEEP";
+        const MANAGED_SENTINEL = "STALE-TAMPERED-MANAGED-BLOCK";
+        const OVERRIDE_ROW = "CONSUMER-OVERRIDE-ROW-MUST-SURVIVE";
 
-      fs.writeFileSync(claudeAgentPath, `${AGENT_SENTINEL}\n${claudeOriginal}`, "utf-8");
-      fs.writeFileSync(opencodeAgentPath, `${AGENT_SENTINEL}\n${opencodeOriginal}`, "utf-8");
+        fs.writeFileSync(claudeAgentPath, `${AGENT_SENTINEL}\n${claudeOriginal}`, "utf-8");
+        fs.writeFileSync(opencodeAgentPath, `${AGENT_SENTINEL}\n${opencodeOriginal}`, "utf-8");
 
-      // Inject a sentinel INSIDE the managed block (right after the start marker) and append a
-      // consumer override row AFTER the file's content (below bkit:end).
-      const tamperedPrompts =
-        promptsOriginal.replace(/(<!--\s*bkit:start\s*-->)/, `$1\n${MANAGED_SENTINEL}`).trimEnd() +
-        `\n\n${OVERRIDE_ROW}\n`;
-      expect(tamperedPrompts).toContain(MANAGED_SENTINEL); // replace actually landed
-      fs.writeFileSync(promptsPath, tamperedPrompts, "utf-8");
+        // Inject a sentinel INSIDE the managed block (right after the start marker) and append a
+        // consumer override row AFTER the file's content (below bkit:end).
+        const tamperedPrompts =
+          promptsOriginal
+            .replace(/(<!--\s*bkit:start\s*-->)/, `$1\n${MANAGED_SENTINEL}`)
+            .trimEnd() + `\n\n${OVERRIDE_ROW}\n`;
+        expect(tamperedPrompts).toContain(MANAGED_SENTINEL); // replace actually landed
+        fs.writeFileSync(promptsPath, tamperedPrompts, "utf-8");
 
-      // --- Upgrade: must re-render everything install does. ---
-      const upgrade = runBkit(["upgrade", "--auto-apply"]);
-      const upgradeCombined = `${upgrade.stdout}\n${upgrade.stderr}`;
-      expect(upgradeCombined).toMatch(/\[bkit-upgrade\]/);
-      // Summary surfaces the re-render pass.
-      expect(upgradeCombined).toMatch(/re-rendered:/);
+        // --- Upgrade: must re-render everything install does. ---
+        const upgrade = runBkit(["upgrade", "--auto-apply"]);
+        const upgradeCombined = `${upgrade.stdout}\n${upgrade.stderr}`;
+        expect(upgradeCombined).toMatch(/\[bkit-upgrade\]/);
+        // Summary surfaces the re-render pass.
+        expect(upgradeCombined).toMatch(/re-rendered:/);
 
-      // Agents fully restored to their rendered form (tamper gone, byte-identical).
-      const claudeAfter = fs.readFileSync(claudeAgentPath, "utf-8");
-      const opencodeAfter = fs.readFileSync(opencodeAgentPath, "utf-8");
-      expect(claudeAfter).not.toContain(AGENT_SENTINEL);
-      expect(claudeAfter).toBe(claudeOriginal);
-      expect(opencodeAfter).not.toContain(AGENT_SENTINEL);
-      expect(opencodeAfter).toBe(opencodeOriginal);
+        // Agents fully restored to their rendered form (tamper gone, byte-identical).
+        const claudeAfter = fs.readFileSync(claudeAgentPath, "utf-8");
+        const opencodeAfter = fs.readFileSync(opencodeAgentPath, "utf-8");
+        expect(claudeAfter).not.toContain(AGENT_SENTINEL);
+        expect(claudeAfter).toBe(claudeOriginal);
+        expect(opencodeAfter).not.toContain(AGENT_SENTINEL);
+        expect(opencodeAfter).toBe(opencodeOriginal);
 
-      // prompts.md: managed block refreshed (sentinel gone) AND consumer override preserved.
-      const promptsAfter = fs.readFileSync(promptsPath, "utf-8");
-      expect(promptsAfter).not.toContain(MANAGED_SENTINEL);
-      expect(promptsAfter).toContain(OVERRIDE_ROW);
-    }, 180_000);
+        // prompts.md: managed block refreshed (sentinel gone) AND consumer override preserved.
+        const promptsAfter = fs.readFileSync(promptsPath, "utf-8");
+        expect(promptsAfter).not.toContain(MANAGED_SENTINEL);
+        expect(promptsAfter).toContain(OVERRIDE_ROW);
+      },
+      localLimit(180_000),
+    );
 
-    it("dead override reported: upgrade names an override row for an agent bkit no longer ships, exit 0", () => {
-      const install = runBkit(["install", "--claude"]);
-      expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
-      const promptsPath = path.join(tmpDir, ".bkit", "prompts.md");
-      const dead = `bkit-retired-${"agent"}`;
-      const prompts = fs.readFileSync(promptsPath, "utf-8");
-      // Line-anchored, as the engine reads it: the managed block quotes the marker inside a
-      // table cell, and indexOf would land there and insert into a preset table instead.
-      const end = prompts.search(/^<!-- bkit:end -->$/m);
-      const sep = prompts.indexOf("| --- | --- | --- |\n", end);
-      expect(sep, "installed prompts.md carries an empty Model Overrides table").toBeGreaterThan(
-        end,
-      );
-      const at = sep + "| --- | --- | --- |\n".length;
-      fs.writeFileSync(
-        promptsPath,
-        `${prompts.slice(0, at)}| ${dead} | cursor | some-model |\n${prompts.slice(at)}`,
-        "utf-8",
-      );
-      const upgrade = runBkit(["upgrade", "--auto-apply"]);
-      const combined = `${upgrade.stdout}\n${upgrade.stderr}`;
-      expect(upgrade.status, combined).toBe(0);
-      expect(combined).toContain(dead);
-    }, 180_000);
+    it(
+      "dead override reported: upgrade names an override row for an agent bkit no longer ships, exit 0",
+      () => {
+        const install = runBkit(["install", "--claude"]);
+        expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
+        const promptsPath = path.join(tmpDir, ".bkit", "prompts.md");
+        const dead = `bkit-retired-${"agent"}`;
+        const prompts = fs.readFileSync(promptsPath, "utf-8");
+        // Line-anchored, as the engine reads it: the managed block quotes the marker inside a
+        // table cell, and indexOf would land there and insert into a preset table instead.
+        const end = prompts.search(/^<!-- bkit:end -->$/m);
+        const sep = prompts.indexOf("| --- | --- | --- |\n", end);
+        expect(sep, "installed prompts.md carries an empty Model Overrides table").toBeGreaterThan(
+          end,
+        );
+        const at = sep + "| --- | --- | --- |\n".length;
+        fs.writeFileSync(
+          promptsPath,
+          `${prompts.slice(0, at)}| ${dead} | cursor | some-model |\n${prompts.slice(at)}`,
+          "utf-8",
+        );
+        const upgrade = runBkit(["upgrade", "--auto-apply"]);
+        const combined = `${upgrade.stdout}\n${upgrade.stderr}`;
+        expect(upgrade.status, combined).toBe(0);
+        expect(combined).toContain(dead);
+      },
+      localLimit(180_000),
+    );
 
     it.each(["github", "linear", "jira"])(
       "upgrade renders opencode.json with provider/tracker sentinels resolved for %s (no raw @@…@@ leak, #245)",
@@ -1978,168 +2021,194 @@ describe("upgrade-render", () => {
       180_000,
     );
 
-    it("opencode-go gateway: install records the manifest provider; upgrade re-renders the opencode-go block (no ollama fallback)", () => {
-      type OpencodeDoc = {
-        provider?: Record<string, { npm?: string; options?: Record<string, unknown> }>;
-      };
+    it(
+      "opencode-go gateway: install records the manifest provider; upgrade re-renders the opencode-go block (no ollama fallback)",
+      () => {
+        type OpencodeDoc = {
+          provider?: Record<string, { npm?: string; options?: Record<string, unknown> }>;
+        };
 
-      // Install the opencode host as the OpenCode Go built-in (apiKey only).
-      const install = runBkit(["install", "--opencode=opencode-go"]);
-      expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
+        // Install the opencode host as the OpenCode Go built-in (apiKey only).
+        const install = runBkit(["install", "--opencode=opencode-go"]);
+        expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
 
-      // (1) opencode.json has a built-in `opencode-go` block — options.apiKey only (no npm/baseURL).
-      const opencodeJsonPath = path.join(tmpDir, ".opencode", "opencode.json");
-      expect(fs.existsSync(opencodeJsonPath)).toBe(true);
-      const installed = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as OpencodeDoc;
-      expect(
-        installed.provider?.["opencode-go"],
-        "opencode-go gateway seeds an `opencode-go` provider block",
-      ).toBeDefined();
-      expect(installed.provider?.["opencode-go"]?.npm).toBeUndefined();
-      expect(installed.provider?.["opencode-go"]?.options?.baseURL).toBeUndefined();
-      expect(installed.provider?.["opencode-go"]?.options?.apiKey).toBe(
-        "{env:BKIT_OPENCODE_API_KEY}",
-      );
+        // (1) opencode.json has a built-in `opencode-go` block — options.apiKey only (no npm/baseURL).
+        const opencodeJsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+        expect(fs.existsSync(opencodeJsonPath)).toBe(true);
+        const installed = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as OpencodeDoc;
+        expect(
+          installed.provider?.["opencode-go"],
+          "opencode-go gateway seeds an `opencode-go` provider block",
+        ).toBeDefined();
+        expect(installed.provider?.["opencode-go"]?.npm).toBeUndefined();
+        expect(installed.provider?.["opencode-go"]?.options?.baseURL).toBeUndefined();
+        expect(installed.provider?.["opencode-go"]?.options?.apiKey).toBe(
+          "{env:BKIT_OPENCODE_API_KEY}",
+        );
 
-      // (2) The provider is recorded in the manifest — the authoritative upgrade-time detection signal.
-      const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
-        bkit?: { providers?: { opencode?: { default?: string } } };
-      };
-      expect(pkg.bkit?.providers?.opencode?.default).toBe("opencode-go");
+        // (2) The provider is recorded in the manifest — the authoritative upgrade-time detection signal.
+        const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+          bkit?: { providers?: { opencode?: { default?: string } } };
+        };
+        expect(pkg.bkit?.providers?.opencode?.default).toBe("opencode-go");
 
-      // (3) Agents seeded with the opencode-go prefix (opencode-go/…).
-      const agentsDir = path.join(tmpDir, ".opencode", "agents");
-      const anAgent = fs.readdirSync(agentsDir).find((f) => f.endsWith(".md"));
-      expect(anAgent).toBeTruthy();
-      const agentBody = fs.readFileSync(path.join(agentsDir, anAgent!), "utf-8");
-      expect(agentBody).toMatch(/model:\s*opencode-go\//);
+        // (3) Agents seeded with the opencode-go prefix (opencode-go/…).
+        const agentsDir = path.join(tmpDir, ".opencode", "agents");
+        const anAgent = fs.readdirSync(agentsDir).find((f) => f.endsWith(".md"));
+        expect(anAgent).toBeTruthy();
+        const agentBody = fs.readFileSync(path.join(agentsDir, anAgent!), "utf-8");
+        expect(agentBody).toMatch(/model:\s*opencode-go\//);
 
-      // (4) Upgrade must re-render opencode.json from the manifest provider — keeping the
-      //     `opencode-go` block, NOT falling back to ollama.
-      const upgrade = runBkit(["upgrade", "--auto-apply"]);
-      expect(`${upgrade.stdout}\n${upgrade.stderr}`).toMatch(/\[bkit-upgrade\]/);
-      const after = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as OpencodeDoc;
-      expect(after.provider?.["opencode-go"]?.options?.apiKey).toBe("{env:BKIT_OPENCODE_API_KEY}");
-      expect(after.provider?.["opencode-go"]?.npm).toBeUndefined();
-      expect(
-        after.provider?.["ollama"],
-        "upgrade must NOT re-render opencode-go as ollama",
-      ).toBeUndefined();
-    }, 180_000);
+        // (4) Upgrade must re-render opencode.json from the manifest provider — keeping the
+        //     `opencode-go` block, NOT falling back to ollama.
+        const upgrade = runBkit(["upgrade", "--auto-apply"]);
+        expect(`${upgrade.stdout}\n${upgrade.stderr}`).toMatch(/\[bkit-upgrade\]/);
+        const after = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as OpencodeDoc;
+        expect(after.provider?.["opencode-go"]?.options?.apiKey).toBe(
+          "{env:BKIT_OPENCODE_API_KEY}",
+        );
+        expect(after.provider?.["opencode-go"]?.npm).toBeUndefined();
+        expect(
+          after.provider?.["ollama"],
+          "upgrade must NOT re-render opencode-go as ollama",
+        ).toBeUndefined();
+      },
+      localLimit(180_000),
+    );
   });
 
   describe("#459 — bkit upgrade keeps bkit's recorded hash for a consumer-edited whole-file", () => {
-    it("a no-op upgrade does not re-record a hand-edited canonical file as bkit's content", () => {
-      const install = runBkit(["install", "--claude"]);
-      expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
+    it(
+      "a no-op upgrade does not re-record a hand-edited canonical file as bkit's content",
+      () => {
+        const install = runBkit(["install", "--claude"]);
+        expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
 
-      // Whole-file managed (Tier 1, no markers) → drift-detected via diffFile.
-      const rel = ".bkit/.env.example";
-      const abs = path.join(tmpDir, rel);
-      const versionPath = path.join(tmpDir, ".bkit", "version");
-      const recordedHash = (): string | undefined =>
-        (
-          JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
-            canonicalHashes: Record<string, string>;
-          }
-        ).canonicalHashes[rel];
+        // Whole-file managed (Tier 1, no markers) → drift-detected via diffFile.
+        const rel = ".bkit/.env.example";
+        const abs = path.join(tmpDir, rel);
+        const versionPath = path.join(tmpDir, ".bkit", "version");
+        const recordedHash = (): string | undefined =>
+          (
+            JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
+              canonicalHashes: Record<string, string>;
+            }
+          ).canonicalHashes[rel];
 
-      const before = recordedHash();
-      expect(before, `install must record a hash for ${rel}`).toBeTruthy();
+        const before = recordedHash();
+        expect(before, `install must record a hash for ${rel}`).toBeTruthy();
 
-      fs.appendFileSync(abs, "// consumer edit\n", "utf-8");
+        fs.appendFileSync(abs, "// consumer edit\n", "utf-8");
 
-      // The CLI rebuilds the result it hands to the hash refresh — this exercises that seam.
-      const upgrade = runBkit(["upgrade"]);
-      expect(`${upgrade.stdout}\n${upgrade.stderr}`).toMatch(/\[bkit-upgrade\] Done\./);
+        // The CLI rebuilds the result it hands to the hash refresh — this exercises that seam.
+        const upgrade = runBkit(["upgrade"]);
+        expect(`${upgrade.stdout}\n${upgrade.stderr}`).toMatch(/\[bkit-upgrade\] Done\./);
 
-      expect(fs.readFileSync(abs, "utf-8")).toContain("// consumer edit");
-      expect(recordedHash(), "upgrade must not re-record the consumer's content").toBe(before);
-    }, 180_000);
+        expect(fs.readFileSync(abs, "utf-8")).toContain("// consumer edit");
+        expect(recordedHash(), "upgrade must not re-record the consumer's content").toBe(before);
+      },
+      localLimit(180_000),
+    );
 
-    it("re-records the hash of .bkit/allowlist.json when upgrade regenerates it, so uninstall still deletes it", () => {
-      // Codex: a host whose guardrails hook reads the allowlist without the cursor module.
-      expect(runBkit(["install", "--codex"]).status).toBe(0);
+    it(
+      "re-records the hash of .bkit/allowlist.json when upgrade regenerates it, so uninstall still deletes it",
+      () => {
+        // Codex: a host whose guardrails hook reads the allowlist without the cursor module.
+        expect(runBkit(["install", "--codex"]).status).toBe(0);
 
-      const rel = path.join(".bkit", "allowlist.json");
-      const abs = path.join(tmpDir, rel);
-      const versionPath = path.join(tmpDir, ".bkit", "version");
-      const recordedHash = (): string | undefined =>
-        (
-          JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
-            canonicalHashes: Record<string, string>;
-          }
-        ).canonicalHashes[rel];
-      expect(recordedHash()).toBe(sha256(fs.readFileSync(abs, "utf-8")));
+        const rel = path.join(".bkit", "allowlist.json");
+        const abs = path.join(tmpDir, rel);
+        const versionPath = path.join(tmpDir, ".bkit", "version");
+        const recordedHash = (): string | undefined =>
+          (
+            JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
+              canonicalHashes: Record<string, string>;
+            }
+          ).canonicalHashes[rel];
+        expect(recordedHash()).toBe(sha256(fs.readFileSync(abs, "utf-8")));
 
-      fs.appendFileSync(
-        path.join(tmpDir, ".agents", "context.md"),
-        "\n<!-- allowed-domains:start -->\nexample.com\n<!-- allowed-domains:end -->\n",
-      );
-      expect(runBkit(["upgrade"]).status).toBe(0);
-      expect(fs.readFileSync(abs, "utf-8")).toContain("example.com");
-      expect(recordedHash()).toBe(sha256(fs.readFileSync(abs, "utf-8")));
+        fs.appendFileSync(
+          path.join(tmpDir, ".agents", "context.md"),
+          "\n<!-- allowed-domains:start -->\nexample.com\n<!-- allowed-domains:end -->\n",
+        );
+        expect(runBkit(["upgrade"]).status).toBe(0);
+        expect(fs.readFileSync(abs, "utf-8")).toContain("example.com");
+        expect(recordedHash()).toBe(sha256(fs.readFileSync(abs, "utf-8")));
 
-      expect(runBkit(["uninstall"]).status).toBe(0);
-      expect(fs.existsSync(abs)).toBe(false);
-    }, 180_000);
+        expect(runBkit(["uninstall"]).status).toBe(0);
+        expect(fs.existsSync(abs)).toBe(false);
+      },
+      localLimit(180_000),
+    );
 
-    it("upgrade moves a recorded .cursor/allowlist.json to .bkit/allowlist.json", () => {
-      expect(runBkit(["install", "--cursor"]).status).toBe(0);
-      // What an install up to 5.2.4 left: the cursor copy, recorded in .bkit/version.
-      const retired = path.join(".cursor", "allowlist.json");
-      const versionPath = path.join(tmpDir, ".bkit", "version");
-      fs.copyFileSync(path.join(tmpDir, ".bkit", "allowlist.json"), path.join(tmpDir, retired));
-      const version = JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
-        canonicalHashes: Record<string, string>;
-      };
-      version.canonicalHashes[retired] = sha256(
-        fs.readFileSync(path.join(tmpDir, retired), "utf-8"),
-      );
-      fs.writeFileSync(versionPath, JSON.stringify(version, null, 2) + "\n", "utf-8");
+    it(
+      "upgrade moves a recorded .cursor/allowlist.json to .bkit/allowlist.json",
+      () => {
+        expect(runBkit(["install", "--cursor"]).status).toBe(0);
+        // What an install up to 5.2.4 left: the cursor copy, recorded in .bkit/version.
+        const retired = path.join(".cursor", "allowlist.json");
+        const versionPath = path.join(tmpDir, ".bkit", "version");
+        fs.copyFileSync(path.join(tmpDir, ".bkit", "allowlist.json"), path.join(tmpDir, retired));
+        const version = JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
+          canonicalHashes: Record<string, string>;
+        };
+        version.canonicalHashes[retired] = sha256(
+          fs.readFileSync(path.join(tmpDir, retired), "utf-8"),
+        );
+        fs.writeFileSync(versionPath, JSON.stringify(version, null, 2) + "\n", "utf-8");
 
-      expect(runBkit(["upgrade"]).status).toBe(0);
-      expect(fs.existsSync(path.join(tmpDir, retired))).toBe(false);
-      expect(fs.existsSync(path.join(tmpDir, ".bkit", "allowlist.json"))).toBe(true);
-      const after = JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
-        canonicalHashes: Record<string, string>;
-      };
-      expect(after.canonicalHashes[retired]).toBeUndefined();
-      expect(runBkit(["check"]).status).toBe(0);
-    }, 180_000);
+        expect(runBkit(["upgrade"]).status).toBe(0);
+        expect(fs.existsSync(path.join(tmpDir, retired))).toBe(false);
+        expect(fs.existsSync(path.join(tmpDir, ".bkit", "allowlist.json"))).toBe(true);
+        const after = JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
+          canonicalHashes: Record<string, string>;
+        };
+        expect(after.canonicalHashes[retired]).toBeUndefined();
+        expect(runBkit(["check"]).status).toBe(0);
+      },
+      localLimit(180_000),
+    );
   });
 
   describe("advisories — check and upgrade report what install reports", () => {
-    it("surfaces test-file-script-missing on check, and upgrade rewrites .bkit/advisories.md", () => {
-      const advisoriesPath = path.join(tmpDir, ".bkit", "advisories.md");
+    it(
+      "surfaces test-file-script-missing on check, and upgrade rewrites .bkit/advisories.md",
+      () => {
+        const advisoriesPath = path.join(tmpDir, ".bkit", "advisories.md");
 
-      const install = runBkit(["install", "--claude"]);
-      expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
-      expect(fs.readFileSync(advisoriesPath, "utf-8")).toContain("test-file-script-missing");
+        const install = runBkit(["install", "--claude"]);
+        expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
+        expect(fs.readFileSync(advisoriesPath, "utf-8")).toContain("test-file-script-missing");
 
-      const check = runBkit(["check"]);
-      expect(`${check.stdout}\n${check.stderr}`).toContain("test-file-script-missing");
-      expect(fs.readFileSync(advisoriesPath, "utf-8")).toContain("test-file-script-missing");
+        const check = runBkit(["check"]);
+        expect(`${check.stdout}\n${check.stderr}`).toContain("test-file-script-missing");
+        expect(fs.readFileSync(advisoriesPath, "utf-8")).toContain("test-file-script-missing");
 
-      fs.writeFileSync(advisoriesPath, "STALE-ADVISORIES\n", "utf-8");
-      const upgrade = runBkit(["upgrade"]);
-      const upgradeCombined = `${upgrade.stdout}\n${upgrade.stderr}`;
-      expect(upgrade.status, upgradeCombined).toBe(0);
-      expect(upgradeCombined).toContain("test-file-script-missing");
-      const after = fs.readFileSync(advisoriesPath, "utf-8");
-      expect(after).not.toContain("STALE-ADVISORIES");
-      expect(after).toContain("_Mode: upgrade_");
-      expect(after).toContain("test-file-script-missing");
-    }, 180_000);
+        fs.writeFileSync(advisoriesPath, "STALE-ADVISORIES\n", "utf-8");
+        const upgrade = runBkit(["upgrade"]);
+        const upgradeCombined = `${upgrade.stdout}\n${upgrade.stderr}`;
+        expect(upgrade.status, upgradeCombined).toBe(0);
+        expect(upgradeCombined).toContain("test-file-script-missing");
+        const after = fs.readFileSync(advisoriesPath, "utf-8");
+        expect(after).not.toContain("STALE-ADVISORIES");
+        expect(after).toContain("_Mode: upgrade_");
+        expect(after).toContain("test-file-script-missing");
+      },
+      localLimit(180_000),
+    );
 
-    it("a dry-run upgrade leaves .bkit/advisories.md alone", () => {
-      const advisoriesPath = path.join(tmpDir, ".bkit", "advisories.md");
-      runBkit(["install", "--claude"]);
-      fs.writeFileSync(advisoriesPath, "STALE-ADVISORIES\n", "utf-8");
-      const upgrade = runBkit(["upgrade", "--dry-run"]);
-      expect(upgrade.status, `${upgrade.stdout}\n${upgrade.stderr}`).toBe(0);
-      expect(fs.readFileSync(advisoriesPath, "utf-8")).toBe("STALE-ADVISORIES\n");
-    }, 180_000);
+    it(
+      "a dry-run upgrade leaves .bkit/advisories.md alone",
+      () => {
+        const advisoriesPath = path.join(tmpDir, ".bkit", "advisories.md");
+        runBkit(["install", "--claude"]);
+        fs.writeFileSync(advisoriesPath, "STALE-ADVISORIES\n", "utf-8");
+        const upgrade = runBkit(["upgrade", "--dry-run"]);
+        expect(upgrade.status, `${upgrade.stdout}\n${upgrade.stderr}`).toBe(0);
+        expect(fs.readFileSync(advisoriesPath, "utf-8")).toBe("STALE-ADVISORIES\n");
+      },
+      localLimit(180_000),
+    );
   });
 });
 
@@ -2349,5 +2418,399 @@ describe("#715 — upgrade retires a 5.2.4 .bkit/lite.md", () => {
     expect(after).not.toContain("bkit:start");
     expect(after.split("\n")[0]).toBe("<!-- bkit:retired-lite-stub -->");
     expect(runCli(["check"]).status).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #864 — a legacy managed project document becomes the project's own
+// ---------------------------------------------------------------------------
+
+describe("#864 — upgrade migrates legacy project document ownership", () => {
+  const MARKER = "<!-- bkit:managed v5.0.0 — do not edit; run `bkit upgrade` to refresh -->";
+  const cliPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
+
+  function runCli(args: string[]) {
+    return spawnSync(requireTsx(), [cliPath, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 120_000,
+    });
+  }
+
+  function seedInstalled(): void {
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    const install = runCli(["install", "--claude", "--cursor"]);
+    expect(install.status, combinedOutput(install)).toBe(0);
+    fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+  }
+
+  const read = (rel: string): string => fs.readFileSync(path.join(tmpDir, rel), "utf-8");
+  const write = (rel: string, text: string): void =>
+    fs.writeFileSync(path.join(tmpDir, rel), text, "utf-8");
+
+  function snapshot(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const abs of listFilesRecursive(tmpDir)) {
+      const rel = path.relative(tmpDir, abs).split(path.sep).join("/");
+      if (rel.startsWith(".git/") || rel.startsWith("node_modules/")) continue;
+      out[rel] = fs.readFileSync(abs, "utf-8");
+    }
+    return out;
+  }
+
+  // These two change on every upgrade by design: the cache-bust counter and the `_Mode:` line.
+  const CHANGES_EVERY_RUN = new Set([".claude/bkit-cloud.md", ".bkit/advisories.md"]);
+  function stableSnapshot(): Record<string, string> {
+    return Object.fromEntries(
+      Object.entries(snapshot()).filter(([rel]) => !CHANGES_EVERY_RUN.has(rel)),
+    );
+  }
+
+  it("leaves project docs, the index and the version file unchanged when upgrade runs twice", () => {
+    seedInstalled();
+    write(
+      "docs/testing.md",
+      `<!-- bkit:start -->\n${MARKER}\n# Testing\nOur table\n<!-- bkit:end -->\n`,
+    );
+    const first = runCli(["upgrade", "--auto-apply"]);
+    expect(first.status, combinedOutput(first)).toBe(0);
+    const settled = stableSnapshot();
+    expect(settled["docs/testing.md"]).toBe("# Testing\nOur table\n");
+    const again = runCli(["upgrade", "--auto-apply"]);
+    expect(again.status, combinedOutput(again)).toBe(0);
+    const after = stableSnapshot();
+    expect(after["docs/testing.md"]).toBe(settled["docs/testing.md"]);
+    expect(after[".agents/docs.md"]).toBe(settled[".agents/docs.md"]);
+    expect(after[".bkit/version"]).toBe(settled[".bkit/version"]);
+    expect(after).toEqual(settled);
+  });
+
+  it("migrates legacy ownership without changing project text or core ownership", () => {
+    seedInstalled();
+    const pre = "Intro the team wrote above the block\r\n";
+    const body = "# Testing\r\n\r\nOur edited tier table\r\n";
+    const post = "Footer the team wrote below the block\r\n";
+    write(
+      "docs/testing.md",
+      `${pre}<!-- bkit:start -->\r\n${MARKER}\r\n${body}<!-- bkit:end -->\r\n${post}`,
+    );
+    // An existing project row for the same path keeps its own scope text.
+    const ownRow = "| `docs/testing.md` | ● | ● | ● | ● | ○ | Our own scope wording. |";
+    fs.appendFileSync(path.join(tmpDir, ".agents", "docs.md"), `${ownRow}\n`, "utf-8");
+    // A second legacy document with no index row at all.
+    write("docs/noise.md", `<!-- bkit:start -->\n${MARKER}\n# Noise\n<!-- bkit:end -->\n`);
+    const versionBefore = read(".bkit/version");
+    const indexBefore = read(".agents/docs.md");
+    const managedHead = indexBefore.slice(0, indexBefore.lastIndexOf("<!-- bkit:end -->"));
+
+    const up = runCli(["upgrade", "--auto-apply"]);
+    expect(up.status, combinedOutput(up)).toBe(0);
+
+    expect(read("docs/testing.md")).toBe(pre + body + post);
+    expect(read("docs/noise.md")).toBe("# Noise\n");
+    const index = read(".agents/docs.md");
+    expect(index.startsWith(managedHead)).toBe(true);
+    expect(index.split(ownRow)).toHaveLength(2);
+    expect(index.split("| `docs/testing.md` |")).toHaveLength(2);
+    expect(index.split("| `docs/noise.md` |")).toHaveLength(2);
+    // No retired doc contributes an ownership hash, before or after.
+    expect(versionBefore).not.toContain("docs/testing.md");
+    expect(read(".bkit/version")).not.toContain("docs/testing.md");
+    expect(read(".bkit/version")).not.toContain("docs/noise.md");
+    expect(runCli(["check"]).status).toBe(0);
+
+    // A second run changes nothing.
+    const settled = stableSnapshot();
+    const again = runCli(["upgrade", "--auto-apply"]);
+    expect(again.status, combinedOutput(again)).toBe(0);
+    expect(stableSnapshot()).toEqual(settled);
+  });
+
+  it("preserves ambiguous legacy markers and reports cleanup without blocking check", () => {
+    seedInstalled();
+    // A start marker with no end marker: ownership cannot be told apart from project text.
+    const malformed = `<!-- bkit:start -->\n${MARKER}\n# Security\nOur text, no closing marker.\n`;
+    write("docs/security.md", malformed);
+
+    const up = runCli(["upgrade", "--auto-apply"]);
+    expect(up.status, combinedOutput(up)).toBe(0);
+
+    expect(read("docs/security.md")).toBe(malformed);
+    expect(combinedOutput(up)).toContain("docs/security.md");
+    // A missing file stays missing.
+    expect(fs.existsSync(path.join(tmpDir, "docs", "design.md"))).toBe(false);
+    expect(read(".bkit/version")).not.toContain("docs/security.md");
+
+    const check = runCli(["check"]);
+    expect(check.status, combinedOutput(check)).toBe(0);
+    expect(read("docs/security.md")).toBe(malformed);
+    expect(fs.existsSync(path.join(tmpDir, "docs", "design.md"))).toBe(false);
+  });
+
+  it("previews project document migration without mutating the checkout", () => {
+    seedInstalled();
+    write(
+      "docs/architecture.md",
+      `<!-- bkit:start -->\n${MARKER}\n# Architecture\nOurs.\n<!-- bkit:end -->\n`,
+    );
+    const before = snapshot();
+
+    const dry = runCli(["upgrade", "--dry-run"]);
+    expect(dry.status, combinedOutput(dry)).toBe(0);
+
+    const out = combinedOutput(dry);
+    // The preview names the document in a line that says it is being migrated to project ownership.
+    expect(out).toMatch(
+      /^.*docs\/architecture\.md.*migrat.*$|^.*migrat.*docs\/architecture\.md.*$/im,
+    );
+    expect(out).toMatch(/^(?=.*docs\/architecture\.md)(?=.*project).*$/im);
+    // The preview also announces the project index registration for that path.
+    expect(out).toMatch(/^(?=.*docs\/architecture\.md)(?=.*\.agents\/docs\.md).*$/im);
+    expect(snapshot()).toEqual(before);
+    expect(read("docs/architecture.md")).toContain("<!-- bkit:start -->");
+  });
+});
+
+describe("#892 — upgrade replaces the old sample config names", () => {
+  const cli = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
+  function runCli(args: string[]) {
+    return spawnSync(requireTsx(), [cli, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        NODE_NO_WARNINGS: "1",
+        GIT_DIR: path.join(tmpDir, ".git"),
+        GIT_WORK_TREE: tmpDir,
+      },
+      timeout: 90_000,
+    });
+  }
+
+  it("upgrade replaces the old sample config names", () => {
+    expect(spawnSync("git", ["init", "-q"], { cwd: tmpDir }).status).toBe(0);
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    expect(runCli(["install", "--claude", "--tracker=github"]).status).toBe(0);
+
+    const templates = path.join(tmpDir, ".bkit", "templates");
+    fs.writeFileSync(path.join(templates, ".lintstagedrc.json"), "{}\n", "utf-8");
+    fs.writeFileSync(path.join(templates, ".prettierignore"), "node_modules/\n", "utf-8");
+    fs.rmSync(path.join(templates, "lintstagedrc.example.json"), { force: true });
+    fs.rmSync(path.join(templates, "prettierignore.example"), { force: true });
+
+    expect(runCli(["upgrade", "--auto-apply"]).status).toBe(0);
+
+    expect(fs.existsSync(path.join(templates, ".lintstagedrc.json"))).toBe(false);
+    expect(fs.existsSync(path.join(templates, ".prettierignore"))).toBe(false);
+    expect(fs.existsSync(path.join(templates, "lintstagedrc.example.json"))).toBe(true);
+    expect(fs.existsSync(path.join(templates, "prettierignore.example"))).toBe(true);
+    expect(runCli(["check"]).status).toBe(0);
+  });
+});
+
+describe("#892 — install, check and upgrade warn about a missing root lint-staged config instead of writing one", () => {
+  const cli = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
+  const COPY_LINE = "cp .bkit/templates/lintstagedrc.example.json .lintstagedrc.json";
+  function runCli(args: string[]) {
+    return spawnSync(requireTsx(), [cli, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        NODE_NO_WARNINGS: "1",
+        GIT_DIR: path.join(tmpDir, ".git"),
+        GIT_WORK_TREE: tmpDir,
+      },
+      timeout: 90_000,
+    });
+  }
+
+  /** A consumer holding the old sample, gating format on lint-staged, with lint-staged installed and no root config. */
+  function seedNestedSampleConsumer(
+    opts: {
+      gate?: string;
+      devDependencies?: Record<string, string>;
+      rootFile?: [string, string];
+    } = {},
+  ): void {
+    expect(spawnSync("git", ["init", "-q"], { cwd: tmpDir }).status).toBe(0);
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    expect(runCli(["install", "--claude", "--tracker=github"]).status).toBe(0);
+
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify(
+        {
+          name: "consumer",
+          version: "0.0.0",
+          scripts: { "bkit:gate:format": opts.gate ?? "pnpm lint-staged" },
+          devDependencies: opts.devDependencies ?? { "lint-staged": "^17.0.0" },
+        },
+        null,
+        2,
+      ) + "\n",
+      "utf-8",
+    );
+    const templates = path.join(tmpDir, ".bkit", "templates");
+    fs.writeFileSync(path.join(templates, ".lintstagedrc.json"), "{}\n", "utf-8");
+    fs.rmSync(path.join(templates, "lintstagedrc.example.json"), { force: true });
+    fs.rmSync(path.join(tmpDir, ".lintstagedrc.json"), { force: true });
+    if (opts.rootFile)
+      fs.writeFileSync(path.join(tmpDir, opts.rootFile[0]), opts.rootFile[1], "utf-8");
+  }
+
+  it("upgrade writes no root lint-staged config for a consumer that relied on the nested sample", () => {
+    seedNestedSampleConsumer();
+
+    const up = runCli(["upgrade", "--auto-apply"]);
+    expect(up.status, combinedOutput(up)).toBe(0);
+
+    expect(fs.existsSync(path.join(tmpDir, ".lintstagedrc.json"))).toBe(false);
+  });
+
+  it("upgrade names the missing root lint-staged config with the copy command", () => {
+    seedNestedSampleConsumer();
+
+    const up = runCli(["upgrade", "--auto-apply"]);
+    expect(up.status, combinedOutput(up)).toBe(0);
+
+    expect(combinedOutput(up)).toContain(
+      `[bkit-upgrade] no root lint-staged config — commits will fail. Fix: ${COPY_LINE}`,
+    );
+    expect(combinedOutput(up).split(COPY_LINE).length - 1).toBe(1);
+  });
+
+  it("install names the missing root lint-staged config under its own log prefix", () => {
+    seedNestedSampleConsumer();
+
+    const install = runCli(["install", "--claude", "--tracker=github"]);
+    expect(install.status, combinedOutput(install)).toBe(0);
+
+    expect(combinedOutput(install)).toContain(
+      `[bkit-install] no root lint-staged config — commits will fail. Fix: ${COPY_LINE}`,
+    );
+    expect(combinedOutput(install)).not.toContain("bkit upgrade:");
+    expect(combinedOutput(install).split(COPY_LINE).length - 1).toBe(1);
+  });
+
+  it("check names the missing root lint-staged config under its own log prefix", () => {
+    seedNestedSampleConsumer();
+
+    const check = runCli(["check"]);
+
+    expect(combinedOutput(check)).toContain(
+      `[bkit-check] no root lint-staged config — commits will fail. Fix: ${COPY_LINE}`,
+    );
+    expect(combinedOutput(check)).not.toContain("bkit upgrade:");
+  });
+
+  it("upgrade --dry-run names the missing root lint-staged config once and writes none", () => {
+    seedNestedSampleConsumer();
+
+    const up = runCli(["upgrade", "--dry-run"]);
+    expect(up.status, combinedOutput(up)).toBe(0);
+
+    expect(combinedOutput(up).split(COPY_LINE).length - 1).toBe(1);
+    expect(fs.existsSync(path.join(tmpDir, ".lintstagedrc.json"))).toBe(false);
+  });
+
+  it("upgrade prints no missing lint-staged config line when the consumer's config is lint-staged.config.ts", () => {
+    seedNestedSampleConsumer({
+      rootFile: ["lint-staged.config.ts", "export default { '*': 'prettier -w' };\n"],
+    });
+
+    const up = runCli(["upgrade", "--auto-apply"]);
+    expect(up.status, combinedOutput(up)).toBe(0);
+
+    expect(fs.existsSync(path.join(tmpDir, ".lintstagedrc.json"))).toBe(false);
+    expect(combinedOutput(up)).not.toContain(COPY_LINE);
+  });
+
+  it("upgrade prints no missing lint-staged config line when lint-staged is not a dependency", () => {
+    seedNestedSampleConsumer({ devDependencies: {} });
+
+    const up = runCli(["upgrade", "--auto-apply"]);
+    expect(up.status, combinedOutput(up)).toBe(0);
+
+    expect(fs.existsSync(path.join(tmpDir, ".lintstagedrc.json"))).toBe(false);
+    expect(combinedOutput(up)).not.toContain(COPY_LINE);
+  });
+
+  it("upgrade prints no missing lint-staged config line when the format gate passes lint-staged a config path", () => {
+    seedNestedSampleConsumer({ gate: "pnpm lint-staged --config tools/lint-staged.json" });
+
+    const up = runCli(["upgrade", "--auto-apply"]);
+    expect(up.status, combinedOutput(up)).toBe(0);
+
+    expect(fs.existsSync(path.join(tmpDir, ".lintstagedrc.json"))).toBe(false);
+    expect(combinedOutput(up)).not.toContain(COPY_LINE);
+  });
+});
+
+describe("#803 — upgrade over legacy OpenCode substring fetch grants", () => {
+  const cliPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
+  function runCli(args: string[]) {
+    return spawnSync(requireTsx(), [cliPath, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 90_000,
+    });
+  }
+
+  it("upgrade keeps legacy OpenCode substring fetch grants and reports each for owner review", () => {
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    const install = runCli(["install", "--opencode=openrouter"]);
+    expect(install.status, combinedOutput(install)).toBe(0);
+
+    // Seed the legacy shape an older bkit wrote.
+    const ocPath = path.join(tmpDir, ".opencode", "opencode.json");
+    const seeded = JSON.parse(fs.readFileSync(ocPath, "utf-8")) as {
+      permission: { bash: Record<string, string> };
+    };
+    seeded.permission.bash["curl *github.com*"] = "allow";
+    seeded.permission.bash["wget *github.com*"] = "allow";
+    fs.writeFileSync(ocPath, JSON.stringify(seeded, null, 2) + "\n", "utf-8");
+
+    const up = runCli(["upgrade", "--auto-apply"]);
+    expect(up.status, combinedOutput(up)).toBe(0);
+
+    const out = combinedOutput(up);
+    expect(out).toContain("opencode-substring-fetch-grants");
+    expect(out).toContain("curl *github.com*");
+    expect(out).toContain("wget *github.com*");
+
+    const after = JSON.parse(fs.readFileSync(ocPath, "utf-8")) as {
+      permission: { bash: Record<string, string>; webfetch: Record<string, string> };
+    };
+    // Kept: bkit cannot attribute the entries, so it never removes them.
+    expect(after.permission.bash["curl *github.com*"]).toBe("allow");
+    expect(after.permission.bash["wget *github.com*"]).toBe("allow");
+    // The fetch tool keeps its accepted-risk allow, unreported.
+    expect(after.permission.webfetch["*github.com*"]).toBe("allow");
+    // No new substring key was generated.
+    const substringKeys = Object.keys(after.permission.bash).filter((k) =>
+      /^(curl|wget) \*[^*\s]+\*$/.test(k),
+    );
+    expect(substringKeys.sort()).toEqual(["curl *github.com*", "wget *github.com*"]);
   });
 });

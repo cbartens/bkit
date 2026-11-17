@@ -128,6 +128,33 @@ describe("hasLintStagedConfig", () => {
     write(".lintstagedrc.json", "{}");
     expect(hasLintStagedConfig(cwd)).toBe(true);
   });
+
+  it("hasLintStagedConfig is true for every config name lint-staged 17 reads", () => {
+    const files = [
+      "lint-staged.config.ts",
+      ".lintstagedrc.ts",
+      ".lintstagedrc.mts",
+      ".lintstagedrc.cts",
+      "lint-staged.config.mts",
+      "lint-staged.config.cts",
+    ];
+    for (const file of files) {
+      fs.rmSync(cwd, { recursive: true, force: true });
+      fs.mkdirSync(cwd, { recursive: true });
+      write(file, "export default {};\n");
+      expect(hasLintStagedConfig(cwd), file).toBe(true);
+    }
+    for (const file of ["package.yaml", "package.yml"]) {
+      fs.rmSync(cwd, { recursive: true, force: true });
+      fs.mkdirSync(cwd, { recursive: true });
+      write(file, "name: x\nlint-staged:\n  '*': prettier -w\n");
+      expect(hasLintStagedConfig(cwd), file).toBe(true);
+    }
+    fs.rmSync(cwd, { recursive: true, force: true });
+    fs.mkdirSync(cwd, { recursive: true });
+    write("package.yaml", "name: x\n");
+    expect(hasLintStagedConfig(cwd)).toBe(false);
+  });
 });
 
 describe("hasJsTestRunner", () => {

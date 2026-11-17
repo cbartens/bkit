@@ -45,6 +45,7 @@ import {
   type Mode,
   type Scope,
 } from "./disk";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 const dirs: string[] = [];
 const tmp = (prefix: string) => {
@@ -339,19 +340,23 @@ describe("bkit disk prune — lock", () => {
     expect(order(cwd)).toEqual(["a"]);
   });
 
-  it("worktree setup's low-disk sweep stops waiting after maxWaitMs while a live sweep holds the lock", async () => {
-    holdLock(process.pid);
-    const cwd = repo(marks(["a", "max"]));
-    const why = await ensureDiskSpace({
-      cwd,
-      minFreeGb: 1e9,
-      pollMs: 10,
-      maxWaitMs: 100,
-      log: () => {},
-    });
-    expect(why).toContain("another sweep");
-    expect(order(cwd)).toEqual([]);
-  }, 5_000);
+  it(
+    "worktree setup's low-disk sweep stops waiting after maxWaitMs while a live sweep holds the lock",
+    async () => {
+      holdLock(process.pid);
+      const cwd = repo(marks(["a", "max"]));
+      const why = await ensureDiskSpace({
+        cwd,
+        minFreeGb: 1e9,
+        pollMs: 10,
+        maxWaitMs: 100,
+        log: () => {},
+      });
+      expect(why).toContain("another sweep");
+      expect(order(cwd)).toEqual([]);
+    },
+    localLimit(5_000),
+  );
 
   it("refuses --wait with --auto", async () => {
     const r = await prune(repo(), "--mode=min", "--auto", "--wait");

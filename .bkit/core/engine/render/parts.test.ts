@@ -79,7 +79,7 @@ describe("shipped hook templates", () => {
     expect(fs.existsSync(partsDir)).toBe(true);
   });
 
-  it("the hook templates that splice parts are the sixteen host hooks", () => {
+  it("the hook templates that splice parts are the seventeen host hooks", () => {
     expect(templates.map((t) => t.split(path.sep).join("/")).sort()).toEqual([
       ".agents/plugins/bkit/hooks/bkit-gateguard.cjs",
       ".agents/plugins/bkit/hooks/bkit-guardrails.cjs",
@@ -98,6 +98,7 @@ describe("shipped hook templates", () => {
       ".cursor/hooks/bkit-preflight.sh",
       ".cursor/hooks/bkit-readguard.cjs",
       ".opencode/plugin/bkit-gateguard.js",
+      ".opencode/plugin/bkit-guardrails.js",
       ".opencode/plugin/bkit-readguard.js",
       ".opencode/plugin/bkit-rules.js",
     ]);

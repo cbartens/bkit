@@ -1,0 +1,31 @@
+Verdict: CONCERNS
+Failures: 3
+Redesign: false
+
+<!-- verdict:end -->
+
+# Plan Scope Check
+
+Lens: Scope audit — scope, criteria, verification.
+
+## CRITICAL
+
+1. **(plan edit) `Acceptance Scenario` has no `Narrative` and no `Success Criteria`.** Both read `⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds` (plan § Narrative, § Success Criteria). The marker is correct: #903 is bug-shaped and has no design or audit, so the plan must not invent them. But the testable contract stays incomplete until the owner supplies both, and nothing in the plan asks for them. Fix: add an Open Question that puts a proposed Narrative and up to 5 Success Criteria (drawn from the issue's `What should happen` text for Parts 1, 2 and 4) to the owner, with options A) adopt the proposed wording · B) owner writes their own, and a `Default if unanswered` that keeps the MISSING marker. Then fill both sections from the answer. Gate 1 stays blocked until they are filled.
+2. **(plan edit) The edge case "A `Fix now` item has no `Fix task:` line, or names a task the plan does not have" has no `Derived Test Matrix` row and no `TEST FIRST` test.** This is the fail-safe rule at the heart of Part 2 ("missing evidence leaves the finding unresolved"). Task 3's `DONE WHEN` covers "a missing `Fix task:` line", but not a `Fix task:` that names a task the plan does not have. No matrix row and no planned test covers either half. So a `pausedGroups` build that looks up a missing task and treats it as verified (or skips it) would pass every planned test. Fix: add a matrix row (Unit, `.bkit/core/engine/commands/workflow/summary.test.ts`, Task 3) for "a `Fix now` item with no `Fix task:` line, or one naming a task the plan lacks, keeps the paused group's FAIL rows". Add a matching `TEST FIRST` to Task 3 (it has room: 5 of 10 tests, 2 of 3 files). Add the "names a task the plan does not have" case to Task 3's `DONE WHEN`.
+3. **(plan edit) Two of Task 4's scope items are built but never checked.** Task 4's `UPDATE` changes the Contract **Owner decisions** bullet (a `Fix now` direction reaches the agents through the task block, not through `Context`) and adds a `- [ ] Fix now tasks shaped to the owner's direction, each named on a Fix task line` line to `### 🔒 Gate — Decision Pause` (Architecture § Workflow — Decision Pause). Neither the `DONE WHEN` nor any of the three `TEST FIRST` tests checks either edit. The step 5 "replace the task's `Derived Test Matrix` rows" clause is also not checked. Fix: extend Task 4's `DONE WHEN` (or its `workflow-shape.test.ts` cases) so each of the three edits is checked in the text.
+
+## OPTIONAL
+
+1. **No matrix row for the edge case "The `Fix now` task lands inside the paused group — the new rule agrees".** Without one, the new pause rule and the existing same-group `answer` lookup are never tested together on one row set. That is the case where both rules could fire, or could disagree about which resolver gets named. Add a `summary.test.ts` row and test under Task 3.
+2. **No test that a holistic or tests pause stays unchanged.** The edge case says a holistic or tests pause answered `Fix now` is "Unchanged". The `pausedGroups` rule limits itself to `From: verify`, but nothing tests that a `From: holistic` / `From: tests` decision file with a `Group:` header clears no group rows. One negative case in Task 3 would lock this in.
+3. **"The first failed run stays listed under `## Tests`" is not checked.** It is part of the edge case for build Step 14 ending FAIL and the next run passing, and part of Q2's recommended answer A, but Task 1's `DONE WHEN` does not check it. Add it to Task 1's `DONE WHEN`.
+4. **Point 2 of #900's `/bkit-debug` comment is not addressed.** That comment (in `related-issues.md`) asks to decide whether a CONCERNS verify that lists only owner-accepted gaps resolves the group, and to record the decision either way. It notes that `summary.test.ts:426` asserts today's behaviour with no recorded reason. Task 3's `DONE WHEN` keeps that test passing unchanged, but the plan records no decision, Open Question or `Out of Scope` row for it. Add one of those three so the choice is on record.
+5. **Point 4 of #900's comment is half covered.** It says a decision file written before this change (no `Fix task:` line) keeps its FAIL, and the summary's reasons should say why. The plan keeps the FAIL (Breaking Changes row 1) but adds no reason line. Either add the line to Task 3, or say in Alternative Approaches why it is left out.
+6. **The issue asks to check `/bkit-debug` and Steps 9 / 10, and the plan records no result.** Part 1's Affected area says "Also check the matching Step 9 / Step 10 prompts and `/bkit-debug`, which may share the pause". Reuse Inventory row 1 says the Step 7-10 `Read:` lists were read, but no line states whether debug shares the Decision Pause, or whether Steps 8-10 see the rewritten block. State the finding in one line (Context & Goals or an Assumption).
+7. **Nothing in the runbook enforces the #891 wait.** Groups 2 and 3 must wait until #891 is merged and synced, but only a Pre-Flight checkbox and a runbook sentence say so. Consider a `DONE WHEN`-checkable precondition on Task 2, such as a #891 marker symbol being present in `decisions.ts`, so a build started early stops instead of conflicting.
+8. **The plan gives the render snapshot two different owners.** Task 4 re-renders `.bkit/core/engine/render/__snapshots__/bkit-build.none.txt` with `vitest run … -u`. Architecture § generated copies says it is regenerated by `pnpm bkit:generate` and "never hand-edited". Pick one owner, so Task 6 does not re-render it a second time with a different result.
+9. **No runbook task does the dogfood run.** `.agents/rules.md` § Verify before complete requires a real `pnpm build` → `node dist/cli.js …` dogfood run on a scratch consumer. The plan has that only as advisory Manual Verification Steps 1-2. Consider making Step 2 (the `864-move-project-docs/status.jsonl` replay, whose file exists in this worktree) a checked part of Task 6's `DONE WHEN`.
+
+## OUT OF SCOPE
+
+- The headless `Stop` route (Q1 option B), and folding `openDecision` onto `decisionHeader`. Both are already listed under Suggested Scope Expansion with #913 and post-#891 owner decisions. No change suggested.

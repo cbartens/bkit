@@ -1,6 +1,6 @@
 {
   "name": "@cbartens/bkit",
-  "version": "6.1.1",
+  "version": "6.2.0",
   "private": false,
   "description": "From vibe coding to production code. A senior engineering team's process, ready-made: AI agents design, plan, build, review, fix and ship your features on Claude Code, Cursor, Codex, Google Antigravity and opencode.",
   "keywords": [
@@ -43,7 +43,7 @@
   "engines": {
     "node": ">=24"
   },
-  "packageManager": "pnpm@10.34.7",
+  "packageManager": "pnpm@10.34.9",
   "repository": {
     "type": "git",
     "url": "https://github.com/cbartens/bkit.git"
@@ -55,15 +55,15 @@
   "license": "MIT",
   "scripts": {
     "bkit:gate:format": "node scripts/ci/bkit-test-awake.mjs pnpm lint-staged",
-    "bkit:gate:min": "node scripts/ci/bkit-test-awake.mjs --shell \"pnpm format:check && pnpm format:tables:check && pnpm bkit:lint:prose && pnpm bkit:slop:delta && vitest run .bkit/core/engine/audits/repo/ledger-integrity.test.ts\"",
+    "bkit:gate:min": "node scripts/ci/bkit-test-awake.mjs --shell \"pnpm format:check && pnpm format:tables:check && pnpm bkit:lint:prose && pnpm bkit:slop:delta && vitest run .bkit/core/engine/audits/repo/ledger-integrity.test.ts .bkit/core/engine/audits/templates/templates.test.ts .bkit/core/engine/audits/templates/template-no-userpath.test.ts\"",
     "bkit:gate:static": "node scripts/ci/bkit-test-awake.mjs --shell \"pnpm typecheck && pnpm lint && pnpm format:check && pnpm format:tables:check && pnpm bkit:lint:prose && pnpm bkit:slop:delta\"",
-    "bkit:gate:static-unit": "node scripts/ci/bkit-test-awake.mjs bash scripts/ci/bkit-machine-lock.sh run --lock tests -- sh -c 'pnpm bkit:gate:static && pnpm test:coverage:unit && pnpm bkit:test:bats && pnpm bkit:test:awake'",
-    "bkit:gate:static-unit-integration": "node scripts/ci/bkit-test-awake.mjs bash scripts/ci/bkit-machine-lock.sh run --lock tests -- sh -c 'pnpm bkit:gate:static-unit && pnpm test:integration'",
-    "bkit:gate:install-static-unit-build": "node scripts/ci/bkit-test-awake.mjs bash scripts/ci/bkit-machine-lock.sh run --lock tests -- sh -c 'pnpm install --frozen-lockfile && pnpm bkit:gate:static-unit && pnpm build'",
+    "bkit:gate:static-unit": "bash scripts/ci/bkit-machine-lock.sh run --lock tests -- sh -c 'pnpm bkit:gate:static && pnpm test:coverage:unit && pnpm bkit:test:bats && pnpm bkit:test:awake'",
+    "bkit:gate:static-unit-integration": "bash scripts/ci/bkit-machine-lock.sh run --lock tests -- sh -c 'pnpm bkit:gate:static-unit && pnpm test:integration'",
+    "bkit:gate:install-static-unit-build": "bash scripts/ci/bkit-machine-lock.sh run --lock tests -- sh -c 'pnpm install --frozen-lockfile && pnpm bkit:gate:static-unit && pnpm build'",
     "bkit:deps:outdated": "pnpm outdated",
     "bkit:deps:audit": "pnpm audit",
     "bkit:test:file": "node scripts/ci/bkit-test-awake.mjs node scripts/ci/bkit-test-file.mjs",
-    "bkit:gate:changed": "node scripts/ci/bkit-test-awake.mjs bash scripts/ci/bkit-machine-lock.sh run --lock tests -- node scripts/gate/bkit-gate-changed.mjs",
+    "bkit:gate:changed": "bash scripts/ci/bkit-machine-lock.sh run --lock tests -- node scripts/gate/bkit-gate-changed.mjs",
     "bkit:generate": "pnpm build && pnpm cli:sync && pnpm instructions:sync && pnpm bkit upgrade && vitest run .bkit/core/engine/render -u && bash -c 'if command -v graphify >/dev/null 2>&1; then pnpm bkit:graph:refresh; else echo \"[bkit] graphify missing — skipping the capability register (install graphify to rebuild docs/capabilities.md)\"; fi'",
     "bkit:lint:file": "oxlint -c .oxlintrc.json --type-aware --tsconfig tsconfig.test.json --deny-warnings --no-error-on-unmatched-pattern",
     "bkit": "node dist/cli.js",
@@ -74,7 +74,7 @@
     "format:check": "prettier --check .",
     "format:tables": "node scripts/prettier/bkit-insert-ignore.mjs .agents docs README.md .bkit/instructions.md .bkit/shared .bkit/core/.agents .bkit/core/docs .bkit/core/.bkit",
     "format:tables:check": "node scripts/prettier/bkit-insert-ignore.mjs --check .agents docs README.md .bkit/instructions.md .bkit/shared .bkit/core/.agents .bkit/core/docs .bkit/core/.bkit",
-    "bkit:lint:prose": "bkit ci prose --glob='.agents/*.md' --glob='.bkit/core/.bkit/*.md' --glob='.bkit/core/workflows/**/*.md' --glob='.bkit/core/prompts/**/*.md' --glob='.bkit/core/.agents/*.md' --glob='.bkit/shared/docs/**/*.md' --glob='.bkit/core/docs/**/*.md' --glob='.bkit/templates/**/*.md' --glob='docs/*.md' --glob='*.md'",
+    "bkit:lint:prose": "bkit ci prose --glob='.agents/*.md' --glob='.bkit/core/.bkit/*.md' --glob='.bkit/core/workflows/**/*.md' --glob='.bkit/core/prompts/**/*.md' --glob='.bkit/core/.agents/*.md' --glob='.bkit/core/docs/**/*.md' --glob='.bkit/templates/**/*.md' --glob='docs/*.md' --glob='*.md'",
     "lint:slop": "slop-scan scan .",
     "bkit:slop:delta": "bkit ci slop",
     "bkit:lint:workflows": "bash -c 'if command -v actionlint >/dev/null 2>&1; then actionlint; else echo \"[bkit] actionlint missing — skipping workflow lint (install actionlint to enable)\"; fi'",
@@ -101,29 +101,32 @@
     "instructions:sync": "tsx .bkit/core/engine/tools/instructions.ts --write",
     "cli:sync": "tsx .bkit/core/engine/tools/cli-doc.ts --write",
     "prepare": "husky",
-    "bkit:test:awake": "node scripts/ci/bkit-test-awake.mjs node --test scripts/ci/bkit-test-awake.test.mjs"
+    "bkit:test:awake": "node scripts/ci/bkit-test-awake.mjs node scripts/ci/bkit-test-file.mjs scripts/ci/bkit-test-awake.test.mjs"
   },
   "devDependencies": {
     "@types/node": "24.19.2",
-    "@vitest/coverage-v8": "5.0.5",
+    "@vitest/coverage-v8": "5.1.0",
     "bats": "1.13.0",
     "bkit": "link:.",
     "husky": "9.1.7",
     "lint-staged": "17.6.0",
-    "oxlint": "1.89.0",
-    "oxlint-tsgolint": "7.0.2004",
+    "oxlint": "1.92.0",
+    "oxlint-tsgolint": "7.0.2006",
     "prettier": "3.9.10",
     "slop-scan": "0.3.0",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vite": "6.4.5",
-    "vitest": "5.0.5",
+    "vitest": "5.1.0",
     "yaml": "2.9.1"
   },
   "pnpm": {
     "overrides": {
       "vite": "$vite",
       "esbuild": "^0.28.0"
+    },
+    "patchedDependencies": {
+      "bats@1.13.0": "patches/bats@1.13.0.patch"
     }
   },
   "bkit": {
@@ -198,7 +201,11 @@
       "build": {
         "verify": {
           "ask": true,
-          "maxAttempts": 5
+          "maxAttempts": 2
+        },
+        "holistic": {
+          "ask": true,
+          "maxAttempts": 2
         },
         "challenge": {
           "ask": true,
@@ -210,7 +217,7 @@
         },
         "publish": {
           "remote": true,
-          "local": true
+          "local": false
         }
       },
       "debug": {

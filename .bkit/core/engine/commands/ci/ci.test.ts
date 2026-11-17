@@ -19,6 +19,7 @@ import {
   resolveBaseRef,
   slopScanArgv,
 } from "./ci";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 const REPO = path.resolve(__dirname, "../../../../..");
 const REPO_BIN = path.join(REPO, "node_modules", ".bin");
@@ -504,76 +505,96 @@ describe("bkit ci slop — real slop-scan", () => {
     return { cwd, base };
   };
 
-  it("a genuinely new finding fails the gate", async () => {
-    const { cwd, base } = realRepo({ "x.ts": CLEAN });
-    write(cwd, "y.ts", EMPTY_CATCH);
-    const r = await run(cwd, [`--base=${base}`]);
-    expect(r.code).toBe(1);
-    expect(r.json.netFindingCount).toBeGreaterThan(0);
-    expect(r.json.findings).toContainEqual(
-      expect.objectContaining({ status: "added", path: "y.ts", line: expect.any(Number) }),
-    );
-    expect(r.err).toMatch(/added {5}y\.ts:\d+ {2}\S+/);
-    expectCleaned(cwd);
-  }, 30_000);
+  it(
+    "a genuinely new finding fails the gate",
+    async () => {
+      const { cwd, base } = realRepo({ "x.ts": CLEAN });
+      write(cwd, "y.ts", EMPTY_CATCH);
+      const r = await run(cwd, [`--base=${base}`]);
+      expect(r.code).toBe(1);
+      expect(r.json.netFindingCount).toBeGreaterThan(0);
+      expect(r.json.findings).toContainEqual(
+        expect.objectContaining({ status: "added", path: "y.ts", line: expect.any(Number) }),
+      );
+      expect(r.err).toMatch(/added {5}y\.ts:\d+ {2}\S+/);
+      expectCleaned(cwd);
+    },
+    localLimit(30_000),
+  );
 
-  it("names the file and rule when a per-file finding's count grows (score rise, flat count)", async () => {
-    const { cwd, base } = realRepo({ "y.ts": EMPTY_CATCH });
-    write(cwd, "y.ts", "// shifted\n" + EMPTY_CATCH + EMPTY_CATCH.replace("risky", "risky2"));
-    const r = await run(cwd, [`--base=${base}`]);
-    expect(r.code).toBe(1);
-    expect(r.json.netFindingCount).toBe(0);
-    expect(
-      r.json.findings.map((f: { path: string; line: number }) => `${f.path}:${f.line}`),
-    ).toEqual(["y.ts:3", "y.ts:8"]);
-    expect(r.err).toContain("y.ts:8  defensive.empty-catch  Found 2 empty catch blocks");
-  }, 30_000);
+  it(
+    "names the file and rule when a per-file finding's count grows (score rise, flat count)",
+    async () => {
+      const { cwd, base } = realRepo({ "y.ts": EMPTY_CATCH });
+      write(cwd, "y.ts", "// shifted\n" + EMPTY_CATCH + EMPTY_CATCH.replace("risky", "risky2"));
+      const r = await run(cwd, [`--base=${base}`]);
+      expect(r.code).toBe(1);
+      expect(r.json.netFindingCount).toBe(0);
+      expect(
+        r.json.findings.map((f: { path: string; line: number }) => `${f.path}:${f.line}`),
+      ).toEqual(["y.ts:3", "y.ts:8"]);
+      expect(r.err).toContain("y.ts:8  defensive.empty-catch  Found 2 empty catch blocks");
+    },
+    localLimit(30_000),
+  );
 
-  it("an unchanged tree nets to zero and passes — and every gated summary field is present", async () => {
-    const { cwd, base } = realRepo({ "x.ts": CLEAN });
-    const r = await run(cwd, [`--base=${base}`]);
-    expect(r.code).toBe(0);
-    expect(r.json).toMatchObject({ passed: true, netFindingCount: 0 });
-  }, 30_000);
+  it(
+    "an unchanged tree nets to zero and passes — and every gated summary field is present",
+    async () => {
+      const { cwd, base } = realRepo({ "x.ts": CLEAN });
+      const r = await run(cwd, [`--base=${base}`]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ passed: true, netFindingCount: 0 });
+    },
+    localLimit(30_000),
+  );
 
-  it("a pre-existing finding that merely moves nets to zero and passes (#226)", async () => {
-    const { cwd, base } = realRepo({ "y.ts": EMPTY_CATCH });
-    write(cwd, "y.ts", "// new line one\n// new line two\n" + EMPTY_CATCH);
-    const r = await run(cwd, [`--base=${base}`]);
-    expect(r.code).toBe(0);
-    expect(r.json.netFindingCount).toBe(0);
-  }, 30_000);
+  it(
+    "a pre-existing finding that merely moves nets to zero and passes (#226)",
+    async () => {
+      const { cwd, base } = realRepo({ "y.ts": EMPTY_CATCH });
+      write(cwd, "y.ts", "// new line one\n// new line two\n" + EMPTY_CATCH);
+      const r = await run(cwd, [`--base=${base}`]);
+      expect(r.code).toBe(0);
+      expect(r.json.netFindingCount).toBe(0);
+    },
+    localLimit(30_000),
+  );
 });
 
 describe("bkit ci slop — interrupted", () => {
-  it("removes the base worktree when SIGTERM arrives mid-scan, then dies of the signal", () => {
-    const { cwd, base } = repo();
-    // The fake signals its parent (the command's process) while the scan blocks.
-    const bin = mkdir("bkit-ci-sig-");
-    fs.writeFileSync(
-      path.join(bin, "slop-scan"),
-      `#!/bin/sh\nkill -TERM $PPID\nsleep 0.2\necho '${JSON.stringify({ summary: summary() })}'\n`,
-      { mode: 0o755 },
-    );
-    const driver = path.join(bin, "driver.mts");
-    fs.writeFileSync(
-      driver,
-      [
-        `import { runCommand } from ${JSON.stringify(path.join(__dirname, "..", "lib.ts"))};`,
-        `import { ciCommand } from ${JSON.stringify(path.join(__dirname, "ci.ts"))};`,
-        `const code = await runCommand(["ci", "slop", "--base=${base}"], [ciCommand], { classicVerbs: new Set(), cwd: ${JSON.stringify(cwd)} });`,
-        `process.stdout.write("returned " + code);`,
-      ].join("\n"),
-    );
-    const res = spawnSync(requireTsx(), [driver], {
-      cwd: REPO,
-      encoding: "utf-8",
-      env: { ...process.env, PATH: pathWith(bin) },
-    });
-    expect(res.stdout).not.toContain("returned");
-    expect(diedOfSigterm(res)).toBe(true);
-    expectCleaned(cwd);
-  }, 30_000);
+  it(
+    "removes the base worktree when SIGTERM arrives mid-scan, then dies of the signal",
+    () => {
+      const { cwd, base } = repo();
+      // The fake signals its parent (the command's process) while the scan blocks.
+      const bin = mkdir("bkit-ci-sig-");
+      fs.writeFileSync(
+        path.join(bin, "slop-scan"),
+        `#!/bin/sh\nkill -TERM $PPID\nsleep 0.2\necho '${JSON.stringify({ summary: summary() })}'\n`,
+        { mode: 0o755 },
+      );
+      const driver = path.join(bin, "driver.mts");
+      fs.writeFileSync(
+        driver,
+        [
+          `import { runCommand } from ${JSON.stringify(path.join(__dirname, "..", "lib.ts"))};`,
+          `import { ciCommand } from ${JSON.stringify(path.join(__dirname, "ci.ts"))};`,
+          `const code = await runCommand(["ci", "slop", "--base=${base}"], [ciCommand], { classicVerbs: new Set(), cwd: ${JSON.stringify(cwd)} });`,
+          `process.stdout.write("returned " + code);`,
+        ].join("\n"),
+      );
+      const res = spawnSync(requireTsx(), [driver], {
+        cwd: REPO,
+        encoding: "utf-8",
+        env: { ...process.env, PATH: pathWith(bin) },
+      });
+      expect(res.stdout).not.toContain("returned");
+      expect(diedOfSigterm(res)).toBe(true);
+      expectCleaned(cwd);
+    },
+    localLimit(30_000),
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -1070,5 +1091,172 @@ describe("bkit ci min-push", () => {
     const noBase = await run(cwd, [], "min-push");
     expect(noBase.code).toBe(7);
     expect(noBase.err).toContain("neither origin/dev nor origin/main");
+  });
+
+  it("exits 0 when every changed file is an audit report under docs/audits", async () => {
+    const { cwd, head } = pushed({
+      "docs/audits/202611/security.md": "# Report\n",
+      "docs/audits/202611/deep/nested/slug.md": "# Report\n",
+    });
+    const r = await run(cwd, [`--ref=${head}`], "min-push");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ minPush: true, reason: null, changed: 2, outside: [] });
+    expect(r.json.paths).toContain(":(glob)docs/audits/**");
+  });
+
+  /** An installed audit template: managed block with a version stamp, then the project section. */
+  const auditTemplate = (block: string, project: string, end = "<!-- bkit:end -->") =>
+    `<!-- bkit:start -->\n<!-- managed-version: 1 -->\n${block}\n${end}\n\n## Project Instructions\n${project}\n`;
+  const T1 = "docs/templates/bkit-audit-one.md";
+  const T2 = "docs/templates/bkit-audit-two.md";
+
+  /** A repo whose `origin/dev` commit holds `before`, then a head commit applying `after` (null deletes). */
+  function pushedFrom(
+    before: Record<string, string>,
+    after: Record<string, string | null>,
+    pkg?: unknown,
+  ) {
+    const cwd = mkdir("bkit-ci-tpl-");
+    git(cwd, "init", "-q", "-b", "feat/1-x");
+    write(cwd, "src/a.ts", "export {};\n");
+    if (pkg !== undefined) write(cwd, "package.json", JSON.stringify(pkg));
+    for (const [rel, body] of Object.entries(before)) write(cwd, rel, body);
+    const base = commit(cwd, "base");
+    git(cwd, "update-ref", "refs/remotes/origin/dev", base);
+    for (const [rel, body] of Object.entries(after)) {
+      if (body === null) fs.rmSync(path.join(cwd, rel));
+      else write(cwd, rel, body);
+    }
+    const head = commit(cwd, "docs(1): audit bkit [skip ci]");
+    return { cwd, base, head };
+  }
+
+  const belowOnly = {
+    before: { [T1]: auditTemplate("block", "old") },
+    after: { [T1]: auditTemplate("block", "new project text") },
+  };
+
+  /** Pushes `after` over `before` with the below-only `T1` beside it. */
+  async function pushBeside(before: Record<string, string>, after: Record<string, string | null>) {
+    const { cwd, head } = pushedFrom(
+      { ...belowOnly.before, ...before },
+      { ...belowOnly.after, ...after },
+    );
+    return run(cwd, [`--ref=${head}`], "min-push");
+  }
+
+  it("exits 0 when an audit template changes only below its bkit:end, and says why", async () => {
+    const { cwd, head } = pushedFrom(belowOnly.before, belowOnly.after);
+    const r = await run(cwd, [`--ref=${head}`], "min-push");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ minPush: true, reason: null, changed: 1, outside: [] });
+    expect(r.err).toContain(`${T1}: only its project section below <!-- bkit:end --> changed`);
+  });
+
+  it("refuses an audit template that changes a line above its bkit:end, beside one changed only below its bkit:end", async () => {
+    const r = await pushBeside(
+      { [T2]: auditTemplate("block", "p") },
+      { [T2]: auditTemplate("changed block", "p") },
+    );
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({ minPush: false, reason: "outside" });
+    expect(r.json.outside).toEqual([T2]);
+  });
+
+  it("refuses an audit template that changes lines on both sides of its bkit:end, beside one changed only below its bkit:end", async () => {
+    const r = await pushBeside(
+      { [T2]: auditTemplate("block", "p") },
+      { [T2]: auditTemplate("changed block", "p2") },
+    );
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({ minPush: false, reason: "outside" });
+    expect(r.json.outside).toEqual([T2]);
+  });
+
+  it("refuses an audit template whose bkit:end line itself changes, beside one changed only below its bkit:end", async () => {
+    const r = await pushBeside(
+      { [T2]: auditTemplate("block", "p") },
+      { [T2]: auditTemplate("block", "p", "<!-- bkit:end -->  ") },
+    );
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({ minPush: false, reason: "outside" });
+    expect(r.json.outside).toEqual([T2]);
+  });
+
+  it("refuses an audit template that is new at the pushed commit, beside one changed only below its bkit:end", async () => {
+    const r = await pushBeside({}, { [T2]: auditTemplate("block", "p") });
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({ minPush: false, reason: "outside" });
+    expect(r.json.outside).toEqual([T2]);
+  });
+
+  it("refuses an audit template that is deleted at the pushed commit, beside one changed only below its bkit:end", async () => {
+    const r = await pushBeside({ [T2]: auditTemplate("block", "p") }, { [T2]: null });
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({ minPush: false, reason: "outside" });
+    expect(r.json.outside).toEqual([T2]);
+  });
+
+  it("refuses an audit template renamed at the pushed commit, beside one changed only below its bkit:end", async () => {
+    const renamed = "docs/templates/bkit-audit-renamed.md";
+    const r = await pushBeside(
+      { [T2]: auditTemplate("block", "p") },
+      { [T2]: null, [renamed]: auditTemplate("block", "p") },
+    );
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({ minPush: false, reason: "outside" });
+    expect(r.json.outside).toEqual([renamed, T2]);
+  });
+
+  it("refuses an audit template that gains a second bkit:end line, beside one changed only below its bkit:end", async () => {
+    const r = await pushBeside(
+      { [T2]: auditTemplate("block", "p") },
+      { [T2]: auditTemplate("block", "p\n<!-- bkit:end -->\nmore") },
+    );
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({ minPush: false, reason: "outside" });
+    expect(r.json.outside).toEqual([T2]);
+  });
+
+  it("refuses docs/templates/bkit-plan.md changed only below its bkit:end, beside an audit template changed only below", async () => {
+    const plan = "docs/templates/bkit-plan.md";
+    const r = await pushBeside(
+      { [plan]: auditTemplate("block", "p") },
+      { [plan]: auditTemplate("block", "p changed") },
+    );
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({ minPush: false, reason: "outside" });
+    expect(r.json.outside).toEqual([plan]);
+  });
+
+  it("refuses docs/templates/sub/bkit-audit-x.md changed only below its bkit:end, beside an audit template changed only below", async () => {
+    const nested = "docs/templates/sub/bkit-audit-x.md";
+    const r = await pushBeside(
+      { [nested]: auditTemplate("block", "p") },
+      { [nested]: auditTemplate("block", "p changed") },
+    );
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({ minPush: false, reason: "outside" });
+    expect(r.json.outside).toEqual([nested]);
+  });
+
+  it("--update exits 0 when the update changes only an audit template's project section, and logs the template once", async () => {
+    const { cwd, base, head } = pushedFrom(belowOnly.before, belowOnly.after);
+    const r = await run(cwd, [`--update=${base}:${head}`], "min-push");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ minPush: true, reason: null, outside: [] });
+    const line = `${T1}: only its project section below <!-- bkit:end --> changed`;
+    expect(r.err.split(line).length - 1).toBe(1);
+  });
+
+  it("--update exits 1 and lists only the code file when a project-section edit ships beside a code file", async () => {
+    const { cwd, base, head } = pushedFrom(belowOnly.before, {
+      ...belowOnly.after,
+      "src/a.ts": "export const a = 1;\n",
+    });
+    const r = await run(cwd, [`--update=${base}:${head}`], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({ minPush: false, reason: "outside" });
+    expect(r.json.outside).toEqual(["src/a.ts"]);
   });
 });

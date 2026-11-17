@@ -86,7 +86,16 @@ describe("readBkitConfig", () => {
   it("reads an unsupported tracker.default as the default", () => {
     const cfg = readBkitConfig(root(JSON.stringify({ bkit: { tracker: { default: "asana" } } })));
     expect(cfg.issueTracker).toBe(CONFIG_DEFAULTS.issueTracker);
+    expect(cfg.issueTrackerUnknown).toBe("asana");
   });
+
+  it.each([undefined, "", "github", "none"])(
+    "records no unknown tracker for tracker.default %s",
+    (tracker) => {
+      const cfg = readBkitConfig(root(JSON.stringify({ bkit: { tracker: { default: tracker } } })));
+      expect(cfg.issueTrackerUnknown).toBeNull();
+    },
+  );
 
   it("reads the per-moment tracker states, defaulting each missing or blank one", () => {
     const cfg = readBkitConfig(
@@ -308,6 +317,12 @@ describe("readBkitConfig", () => {
     expect(Object.keys(asks)).toEqual([...ASK_POINTS]);
     expect(asks["design.grill"]).toEqual({ ask: true, max: 6 });
     for (const p of ASK_POINTS.slice(1)) expect(asks[p]).toEqual({ ask: true, max: 2 });
+  });
+
+  it("build.holistic defaults to ask true, max 2", () => {
+    expect(ASK_POINTS).toContain("build.holistic");
+    expect(CONFIG_DEFAULTS.asks["build.holistic"]).toEqual({ ask: true, max: 2 });
+    expect(readBkitConfig(root()).asks["build.holistic"]).toEqual({ ask: true, max: 2 });
   });
 
   it("reads each ask point's ask and limit, falling back per key", () => {

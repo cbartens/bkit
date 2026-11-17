@@ -1,7 +1,3 @@
-<!-- bkit:start -->
-
-<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
-
 # Architecture
 
 > [!CAUTION]
@@ -13,8 +9,6 @@
 > - Hold topology and boundaries only. Operational rules and library lists go in the domain docs.
 > - Update this file when a package is added or removed, or a boundary shifts.
 
-<!-- bkit:end -->
-
 ## What bkit Is
 
 bkit = **CLI tool + agent-stack payload** as npm package (`@cbartens/bkit` on npmjs):
@@ -24,7 +18,17 @@ bkit = **CLI tool + agent-stack payload** as npm package (`@cbartens/bkit` on np
 
 No server, database, or network service. Build-time / DX tool only.
 
+The purpose-based view lives in [Components](components.md): what each major part does and how the parts work together. This document holds implementation boundaries and topology. The reusable document template lives at `.bkit/templates/docs/components.md`; the populated `docs/components.md` is project-owned.
+
 **Stack-agnostic:** engine, workflows and prompts assume no app stack; stack-specific behaviour enters only through consumer-declared `package.json` scripts bkit calls by name (`.bkit/workflows.md` § Local gate scripts).
+
+## Tracker reporting boundary
+
+Workflow commands pass explicit session or exact-run ownership into the shared tracker helper. Provider adapters own reading, creating and updating comments; workflows consume a common delivery result and an optional fallback file. A Git-common `bkit-outbox` directory holds optional progress source and run associations across linked worktrees. Deleting it starts a fresh progress comment without changing authoritative workflow status. Remote comment text is recognition evidence, never the source for reconstructing a body.
+
+## Project documents boundary
+
+The ten project documents (`docs/architecture.md` ... `docs/setup.md`) are consumer-owned. Their starters ship in `.bkit/templates/docs/`, which `bkit install` and `bkit upgrade` refresh as plain template copies. The installer never creates a project document. `.bkit/core/engine/install/project-docs.ts` holds the one topic catalog, the legacy-starter digests and two surgical edits: remove the ownership wrapper lines of a document an older release installed as a managed block (every other byte stays), and insert a `Project Documents` row in `.agents/docs.md` below the closing `bkit:end`. An ambiguous wrapper, an unsafe path or an unreadable index is left as it is and reported. `bkit check` and `bkit doctor` only detect: `detectProjectDocs` in `.bkit/core/engine/checks/after/tools.ts` raises advisories through the shared checklist and the `bkit.advisories.ignore` opt-out. Uninstall removes the template folder and keeps every adopted document. `bkit upgrade` marks a changed doc starter whose project copy exists, found by `adoptedProjectDocPath` through the same affirmative equivalence `detectProjectDocs` uses.
 
 ## Package Boundaries
 
@@ -113,6 +117,8 @@ cbartens/bkit (this repo)
 └── package.json            # bin: bkit → dist/cli.js
 ```
 
+The repository-owned `floorplan/` directory holds the versioned architecture walkthrough, its editable descriptions and the generated viewer. Refresh and tracking instructions live in `floorplan/README.md`. It is outside the published npm package.
+
 ## Install Lifecycle (Three Phases)
 
 ```
@@ -184,7 +190,7 @@ Workflow / prompt sources not shipped into consumer `.agents/`; live in installe
 - `.cursor/commands/` + `.cursor/agents/` — T1 / T2 / T3-transformed for Cursor
 - `.opencode/commands/` + `.opencode/agents/` + `.opencode/opencode.json` + `.opencode/plugin/bkit-gateguard.js` — additive OpenCode host; opt-in `bkit install --opencode=<provider>`; four providers: `openrouter`, `ollama`, `opencode-zen`, `opencode-go`. See `docs/technology.md` § Execution Hosts.
 
-`.claude/hooks/bkit-gateguard.cjs`, `.cursor/hooks/bkit-gateguard.cjs`, `.codex/hooks/bkit-gateguard.cjs`, `.agents/plugins/bkit/hooks/bkit-gateguard.cjs` and `.opencode/plugin/bkit-gateguard.js` (the GateGuard advisory hooks — pre-edit on Claude / Codex / Antigravity / Cursor, appended to the tool result on OpenCode), the same five paths with `bkit-readguard` (the ReadGuard repeat-read advisory hooks, `.bkit/providers.md` § ReadGuard), `.codex/hooks/bkit-rules.cjs`, `.agents/plugins/bkit/hooks/bkit-rules.cjs` and `.opencode/plugin/bkit-rules.js` (the rules-read advisory hooks — the advisory at the first tool call on Codex, Antigravity and OpenCode; `.bkit/providers.md` § Rules-read advisory), plus `.claude/hooks/bkit-guardrails.cjs`, `.cursor/hooks/bkit-guardrails.cjs`, `.codex/hooks/bkit-guardrails.cjs` and `.agents/plugins/bkit/hooks/bkit-guardrails.cjs` (shell gates: destructive ops, secret exposure, URL-host checks and shell-as-edit-channel) — like the two `bkit-preflight.sh` hooks, both carrying the rules-read advisory in the one session-start document, generated at install from a per-host template plus the shared parts in `.bkit/core/hooks/`, spliced in by `render/parts.ts` (the folder also holds the advisory parts `preflight-rules.sh` and `session-rules-advisory.js`, and `preflight-linear.sh`, the Linear guard both `bkit-preflight.sh` hooks share; `.bkit/providers.md` § Hooks lists every part) — are markered-text (slash-comment: `// bkit:start` / `// bkit:end`) — bkit owns only the pure advisory engine between the markers; the stdin / stdout driver (Claude) or exported plugin (OpenCode) around it is consumer-owned from first install onward, so a consumer can add their own advisories without losing them on upgrade. A pre-markers install (no markers, hash matches a prior canonical hash) is replaced wholesale on the next install / upgrade; a genuinely consumer-authored file (no markers, unknown hash) gets the block appended plus printed wiring instructions.
+`.claude/hooks/bkit-gateguard.cjs`, `.cursor/hooks/bkit-gateguard.cjs`, `.codex/hooks/bkit-gateguard.cjs`, `.agents/plugins/bkit/hooks/bkit-gateguard.cjs` and `.opencode/plugin/bkit-gateguard.js` (the GateGuard advisory hooks — pre-edit on Claude / Codex / Antigravity / Cursor, appended to the tool result on OpenCode), the same five paths with `bkit-readguard` (the ReadGuard repeat-read advisory hooks, `.bkit/providers.md` § ReadGuard), `.codex/hooks/bkit-rules.cjs`, `.agents/plugins/bkit/hooks/bkit-rules.cjs` and `.opencode/plugin/bkit-rules.js` (the rules-read advisory hooks — the advisory at the first tool call on Codex, Antigravity and OpenCode; `.bkit/providers.md` § Rules-read advisory), plus `.claude/hooks/bkit-guardrails.cjs`, `.cursor/hooks/bkit-guardrails.cjs`, `.codex/hooks/bkit-guardrails.cjs`, `.agents/plugins/bkit/hooks/bkit-guardrails.cjs` and `.opencode/plugin/bkit-guardrails.js` (shell gates: all five refuse the deny tier — force push, `rm -rf` on `/` / `~` / `$HOME`, `chmod -R 777 /`; Codex, Cursor and Antigravity add the ask and secret-exposure tiers; all but OpenCode also check `curl` / `wget` URL hosts and shell edits by a known writer, and the exact edit targets they find also feed GateGuard's per-file advice) — like the two `bkit-preflight.sh` hooks, both carrying the rules-read advisory in the one session-start document, generated at install from a per-host template plus the shared parts in `.bkit/core/hooks/`, spliced in by `render/parts.ts` (the folder also holds the advisory parts `preflight-rules.sh` and `session-rules-advisory.js`, and `preflight-tracker.sh`, the tracker guard (GitHub, Linear) both `bkit-preflight.sh` hooks share; `.bkit/providers.md` § Hooks lists every part) — are markered-text (slash-comment: `// bkit:start` / `// bkit:end`) — bkit owns only the pure engine between the markers, which returns advice and, for guardrails, the deny-tier refusal; the stdin / stdout driver (Claude) or exported plugin (OpenCode) around it acts on that result and is consumer-owned from first install onward, so a consumer can add their own advisories without losing them on upgrade. A pre-markers install (no markers, hash matches a prior canonical hash) is replaced wholesale on the next install / upgrade; a genuinely consumer-authored file (no markers, unknown hash) gets the block appended plus printed wiring instructions.
 
 Every non-JSON file bkit writes or refreshes carries the managed-version marker, one text in the file's comment syntax: `<!-- bkit:managed vX.Y.Z … -->` (markdown), `# <!-- bkit:managed vX.Y.Z … -->` (shell, `.gitignore`, `.gitattributes`, `.env.example`, codex TOML), `// bkit:managed vX.Y.Z …` (JS hooks, `.mjs`). The full MIT text and copyright notice travel at `.bkit/LICENSE.md` (`runBkitDocs`). Rendered agents / commands / skills are stamped by `stampManagedVersion`; every other file carries `{{BKIT_MANAGED_MARKER}}` in its source, resolved by `applyTokens`. The stamped version, the `.bkit/version` pin and the staleness check all read `readInstallingVersion()`; a damaged package stops the command instead of stamping a guessed version. The marker sits on the first line inside the `bkit:start` block, or below the first heading of a whole file. `listStampedFiles` (`.bkit/core/engine/install/modules/index.ts`) derives the set from the core templates, the manifest and the rendered mirrors; marker drift on any of them → `bkit check` emits `bkit-managed-stale` (never consumer plans). **Branch-scoped** (`isOnProtectedBranch`): blocker on `main` / `dev` (or PR into them via `GITHUB_BASE_REF`); advisory on feature branches (listed in the checklist, does not block push).
 
@@ -196,7 +202,7 @@ Deterministic, advisory-only grader on `git diff parentSha..HEAD` → `kind:"com
 
 - `.bkit/core/engine/commands/comply.ts` — pure grader (`ruleNoMirrorEdit`, `ruleSkipCiNotHead`, `runGrader`, `buildComplianceRows`); no side effects, no `process.exit`.
 - `.bkit/core/engine/shared/protected-paths.ts` — IDE mirror prefix table (`MIRROR_PATH_PREFIXES`, `isMirrorPath`) used by the grader.
-- `.bkit/core/hooks/gateguard-engine.js` — the only gate-config list (`GATE_CONFIG_PATTERNS`, `isGateConfig`); inlined into every host's `bkit-gateguard` hook. Asserted by `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts`.
+- `.bkit/core/hooks/gateguard-engine.js` — the only gate-config list (`GATE_CONFIG_PATTERNS`, `isGateConfig`); inlined into every host's `bkit-gateguard` hook. It also prepares the checklist and authoring reminder for shell-edit targets, selects whole blocks within each host's budget and acknowledges only blocks it showed, keyed by a normalized absolute path per session and agent. Asserted by `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts`.
 - `.bkit/core/engine/cli.ts` — `comply` verb + `--phase` dispatch.
 
 **Crash isolation:** `comply` dispatch try/catch; crash → `[bkit-comply] internal error: …`, exit 0. Workflow wiring: `|| echo "[bkit-comply] grader unavailable, skipping"` silences non-zero.
@@ -210,6 +216,8 @@ Deterministic, advisory-only grader on `git diff parentSha..HEAD` → `kind:"com
 **Data topology:** shared `TelemetryEnvelope` top section (schema: 3, ts, kind, key, repo, bkit.version, by.{workflow, step, subagent, model}, references[]) + kind payloads (`KnowledgePayload` / `DecisionPayload`) in `.bkit/core/engine/ledgers/telemetry.ts`; readers `normalize()` rows written without `schema`, and `bkit install` / `bkit upgrade` rewrite them once (`.bkit/core/engine/ledgers/migrate.ts`).
 
 `references[]` = single cross-entry pointer for EVERY kind (envelope, not payload) — feature ids, tracker ids, PRs, SHAs, paths, row `key` in the same or another ledger, `KN-N` / `DE-N` ids. No separate identity field. `key` = identity; `references[]` = pointers. Contract: `.bkit/jsonl.md` § Key & References. Cite slug `key`, never bare number.
+
+**Deterministic bookkeeping:** the engine owns metadata, counts and replay accounting. Invocations are issued by `bkit status invocation` into the run's `status.jsonl` as an `invocation` event that holds no absolute path (`statusPath` and `bookRoot` are relative to the checkout top, `worktree` is a one-way fingerprint; the absolute paths stay in the private outbox receipt); `bkit ledgers append` fills `by` and the model fields from the invocation, records an operation intent and receipt in the private git-common `bkit-outbox/ledger-operations/` (a replay returns the receipt and writes nothing; no committed file carries them) and holds the ledger lock; `bkit ledgers query` reads canonical winners without writing. `ci-handoff` and correction rows live in the run's status log and are ignored by the step fold; a runless (standalone) invocation keeps its correction events in `<outbox>/invocation-context/<id>.corrections.jsonl` next to the receipt, and its two-retry budget is per invocation. Agents supply findings and judgments only.
 
 ## Roadmap Ledger & Board
 

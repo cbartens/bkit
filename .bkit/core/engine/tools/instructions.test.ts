@@ -21,7 +21,7 @@ import * as path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { loadFactor } from "../../../../vitest.timeout-budget";
+import { localLimit } from "../../../../vitest.timeout-budget";
 import {
   NEAR_COPY,
   SHARED_MIN,
@@ -29,6 +29,7 @@ import {
   checkBlocks,
   checkClauses,
   checkRuleCopies,
+  expandNames,
   compileText,
   loadCorpus,
   parseClauses,
@@ -47,12 +48,15 @@ import {
   type Surface,
   type CorpusFile,
 } from "./instructions";
+import { parseRuleEntries } from "./instructions-sources";
+import { applyOpencodeCommand, applyT1, applyT2 } from "../render/hosts";
+import { substituteWorkflow } from "../render/trackers";
 
 /**
  * The whole-corpus cases' time limit: a 60s base for a CPU-bound scan of every agent-read
- * file, scaled by the load factor the tier budget uses (1 on CI).
+ * file, scaled by `localLimit` (1 under CI, else LOCAL_HANG_FACTOR).
  */
-const CORPUS_CASE = { timeout: Math.ceil(60_000 * loadFactor()) };
+const CORPUS_CASE = { timeout: localLimit(60_000) };
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const STORE = fs.readFileSync(path.join(REPO_ROOT, ".bkit/instructions.md"), "utf-8");
@@ -186,7 +190,6 @@ describe("the corpus matches the instructions store", () => {
 
   it("loads every shipped doc master with a bkit block as a doc, never an installed copy", () => {
     const ids = CORPUS.filter((f) => f.surface === "doc").map((f) => f.id);
-    expect(ids).toContain(".bkit/shared/docs/testing.md");
     expect(ids).toContain(".bkit/core/.agents/docs.md");
     expect(ids).toContain(".bkit/shared/CLAUDE.md");
     expect(ids).toContain(".bkit/shared/.cursor/rules/bkit-rules.mdc");
@@ -254,15 +257,26 @@ describe("the rule groups the Rules clauses name exist", () => {
     );
   });
 
-  it("rules-leaf reads only below bkit:end and skips Orchestrator Rules", () => {
+  it("rules-leaf reads only below bkit:end, breaks ties by Project Goals and skips Orchestrator Rules", () => {
     // The bkit rules a leaf acts on are copied into its prompt (`- carry:`); the
     // SKIP half keeps the project's git / CI / merge rules away from a leaf.
     // A leaf that can search finds the marker's line first and reads from there,
     // so the bkit block it already carries is never loaded.
-    expect(clause("rules-leaf").texts[0]).toBe(
-      "**Rules file:** Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`; skip its `Orchestrator Rules`.",
+    const text = clause("rules-leaf").texts[0];
+    expect(text).toContain(
+      "**Rules file:** Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`",
     );
+    expect(text).toContain("break ties by its `Project Goals`");
+    expect(text).toContain("skip its `Orchestrator Rules`");
     expect(clause("rules-leaf").modes.prompt).toBe("if-search");
+  });
+
+  it("rules-leaf keeps Project Goals out of severity and verdict calls", () => {
+    // Every reviewing agent opens with this line, so a goal must not be a
+    // reason to rate a finding lower or to pass something borderline.
+    expect(clause("rules-leaf").texts[0]).toContain(
+      "break ties by its `Project Goals`, which never lower a severity or soften a verdict; skip its `Orchestrator Rules`.",
+    );
   });
 
   it("the utility-* agents read all of rules.md", () => {
@@ -1036,6 +1050,8 @@ describe("fully retired clauses", () => {
       "base-verdict",
       "output-cap",
       "plan-review-other-gap-critical",
+      "workflow-record-not-pushed",
+      "workflow-handover-exit",
     ];
     expect(CLAUSES.filter((c) => c.fullyRetired).map((c) => c.name)).toEqual(names);
     expect(clause("output-cap").retired[0]).toBe(
@@ -1137,7 +1153,7 @@ describe("issue-less workflow clauses", () => {
     expect(none).toContain("NEVER create a tracker issue");
     expect(none).not.toContain("STOP");
     const slug = clause("workflow-issue-id-parse-slug").texts[0];
-    expect(slug).toContain("**STOP**");
+    expect(slug).toContain("**Action needed — Branch name:**");
     expect(slug).toContain("exit 3");
     expect(slug).toContain("rename `BRANCH`");
     expect(slug).toContain("never the **Failure Path**");
@@ -1251,5 +1267,230 @@ describe("the Template Instructions tables match the prompts", () => {
       prompts: [...new Set(bulletsOf(label).map((b) => b.name))].sort(),
     }));
     expect(listed).toEqual(actual);
+  });
+});
+
+describe("the recovery precedence contract", () => {
+  const TRACKERS = ["github", "linear", "jira", "none"] as const;
+  const HOSTS: Record<string, (content: string) => string> = {
+    claude: (c) => c,
+    cursor: (c) => applyT2(applyT1(c)),
+    opencode: (c) => applyOpencodeCommand(c),
+  };
+  const workflows = CORPUS.filter(
+    (f) => f.surface === "workflow" && f.content.includes("**Failures:**"),
+  );
+  const renderings = (file: CorpusFile) =>
+    TRACKERS.flatMap((tracker) =>
+      Object.entries(HOSTS).map(([host, render]) => ({
+        label: `${file.name} ${host}/${tracker}`,
+        text: render(substituteWorkflow(file.content, tracker).output),
+      })),
+    );
+  /** The paragraph that opens with the bounded-correction label, to its blank line. */
+  const correction = (text: string) =>
+    /\*\*Bounded correction:\*\*[\s\S]*?(?:\n\s*\n|$)/.exec(text)?.[0].trim() ?? "";
+  const failuresLine = (text: string) => /\*\*Failures:\*\*[^\n]*/.exec(text)?.[0] ?? "";
+
+  it(
+    "renders one recovery precedence contract for all hosts and tracker adapters",
+    CORPUS_CASE,
+    () => {
+      expect(workflows.length).toBeGreaterThanOrEqual(5);
+      for (const file of workflows) {
+        const rendered = renderings(file);
+        const contracts = new Set(rendered.map((r) => correction(r.text).replace(/\s+/g, " ")));
+        // One wording, whatever the host transform or tracker variant.
+        expect({ file: file.name, wordings: contracts.size }).toEqual({
+          file: file.name,
+          wordings: 1,
+        });
+        const [contract] = [...contracts];
+        expect(contract, file.name).toMatch(/guaranteed no-write/i);
+        expect(contract, file.name).toMatch(/engine (?:deterministic )?fill/i);
+        expect(contract, file.name).toMatch(/two corrected retries/i);
+        expect(contract, file.name).toMatch(/same (?:sub-step|substep)/i);
+        expect(contract, file.name).toMatch(/uncertain/i);
+        expect(contract, file.name).toMatch(/reconcile/i);
+        // A stricter command-specific route beats the general allowance.
+        expect(contract, file.name).toMatch(/stricter[^.]*(?:route|limit)[^.]*(?:wins|first)/i);
+        // Authorization, gates and checks keep their own routes.
+        expect(contract, file.name).toMatch(/authori[sz]ation/i);
+        expect(contract, file.name).toMatch(/gate/i);
+
+        for (const r of rendered) {
+          // The Failures carrier names the correction route beside the other explicit routes,
+          // before the Failure Path fallback it still ends in.
+          const failures = failuresLine(r.text);
+          expect(failures, r.label).toContain("Sandbox recovery");
+          expect(failures, r.label).toContain("Bounded correction");
+          expect(failures.indexOf("Bounded correction"), r.label).toBeLessThan(
+            failures.indexOf("Failure Path"),
+          );
+          // No blanket carrier sends every failure to the Failure Path, ahead of its recovery routes.
+          expect(r.text, r.label).not.toMatch(
+            /\*\*If\*\* any step, tool,? command fails, or gate cannot pass → \*\*Failure Path\*\*/,
+          );
+          // A generic non-zero exit still is not a retry: only a declared route recovers.
+          expect(r.text, r.label).toMatch(
+            /Exit non-zero with no `Route:` or recovery under \*\*Failures\*\*/,
+          );
+          expect(correction(r.text), r.label).not.toMatch(
+            /any (?:non-zero|failing) (?:exit|command)[^.]*retry/i,
+          );
+        }
+      }
+
+      // The workflows that wait for CI re-enter on persisted observations, with no copied counters.
+      const waiting = workflows.filter((f) => f.content.includes("CI wait turn-loop"));
+      expect(waiting.map((f) => f.name).sort()).toEqual(["bkit-build", "bkit-debug"]);
+      for (const file of waiting) {
+        for (const r of renderings(file)) {
+          expect(r.text, r.label).toContain("bkit runs handoff");
+          expect(r.text, r.label).not.toContain("--attempts=<total>");
+          expect(r.text, r.label).not.toContain("{CI_REENTRY}");
+        }
+      }
+    },
+  );
+});
+
+describe("ledgers query readers", () => {
+  const PROMPTS = path.join(REPO_ROOT, ".bkit/core/prompts");
+  const READERS = [
+    "bkit-audit-generate",
+    "bkit-ship-deferred-sweep",
+    "bkit-debug-failure-diagnose",
+    "bkit-utility-update-deferrals",
+    "bkit-utility-update-decisions",
+    "bkit-utility-update-failures",
+    "bkit-utility-update-roadmap",
+    "bkit-utility-update-knowledge",
+  ];
+
+  it("routes every ledgers query reader on coverage status", () => {
+    const read = (name: string) => fs.readFileSync(path.join(PROMPTS, `${name}.md`), "utf-8");
+    const paging = fs
+      .readdirSync(PROMPTS)
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => f.slice(0, -3))
+      .filter((n) =>
+        /bkit ledgers query[\s\S]*nextCursor|nextCursor[\s\S]*bkit ledgers query/.test(read(n)),
+      );
+    // The eight readers the plan names all page, and no other prompt does without routing.
+    for (const name of READERS) expect(paging, name).toContain(name);
+
+    for (const name of paging) {
+      const text = read(name);
+      // Paging ends on a null cursor, not on a flag that `missing` and `partial` never raise.
+      expect(text, name).toMatch(/nextCursor[^\n]*\bnull\b/);
+      expect(text, name).not.toMatch(/until[^\n.]*coverage\.clean/);
+      // Each non-clean state has a named route.
+      expect(text, name).toContain("coverage.status");
+      expect(text, name).toMatch(/`missing`[^\n]*no rows/i);
+      expect(text, name).toMatch(/`partial`[^\n]*(report|diagnos)/i);
+      expect(text, name).toMatch(/`unreadable`[^\n]*stop/i);
+    }
+  });
+});
+
+describe("the local-pre-commit rule", () => {
+  const rule = parseRuleEntries(STORE, "Rules").find((r) => r.name === "local-pre-commit");
+  const promptsDir = path.join(REPO_ROOT, ".bkit/core/prompts");
+
+  it("every build and debug prompt that runs tests carries local-pre-commit", () => {
+    expect(rule).toBeDefined();
+    const prompts = CORPUS.filter((f) => f.surface === "prompt");
+    const names = prompts.map((f) => f.name);
+    // A prompt runs tests when it names the per-file test script, the changed-tests command or a filtered test run.
+    const runsTests = prompts
+      .filter((f) => /^bkit-(build|debug)-/.test(f.name))
+      .filter((f) =>
+        /bkit:test:file|bkit tests changed|Run only those tests|file or name filter/.test(
+          f.content,
+        ),
+      )
+      .map((f) => f.name);
+    expect(runsTests.length).toBeGreaterThan(0);
+    const carried = expandNames(`${rule!.carry}`, names);
+    for (const name of runsTests) expect(carried, name).toContain(name);
+    for (const name of [
+      "bkit-build-plan-tasks",
+      "bkit-build-plan-tests",
+      "bkit-build-plan-verify",
+      "bkit-build-plan-gaps-remediate",
+      "bkit-debug-failure-remediate",
+    ]) {
+      expect(carried, name).toContain(name);
+      const body = fs.readFileSync(path.join(promptsDir, `${name}.md`), "utf-8");
+      expect(body, name).toContain(rule!.text);
+    }
+  });
+
+  it("every debug prompt that runs tests by file or name filter carries local-pre-commit", () => {
+    expect(rule).toBeDefined();
+    const prompts = CORPUS.filter((f) => f.surface === "prompt");
+    const names = prompts.map((f) => f.name);
+    const runsByFilter = prompts
+      .filter((f) => /^bkit-debug-/.test(f.name))
+      .filter((f) => /Run only those tests|test runner|file or name filter/i.test(f.content))
+      .map((f) => f.name);
+    expect(runsByFilter).toContain("bkit-debug-failure-reproduce");
+    const carried = expandNames(`${rule!.carry}`, names);
+    for (const name of runsByFilter) {
+      expect(carried, name).toContain(name);
+      const body = fs.readFileSync(path.join(promptsDir, `${name}.md`), "utf-8");
+      expect(body, name).toContain(rule!.text);
+    }
+  });
+
+  it("local-tests-first does not ask for the full local suite that local-pre-commit forbids while working", () => {
+    const entry = parseRuleEntries(STORE, "Rules").find((r) => r.name === "local-tests-first");
+    expect(entry).toBeDefined();
+    expect(entry!.text).not.toMatch(/Exhaust the local test suite/i);
+    expect(entry!.text).toMatch(/targeted repro/i);
+    expect(entry!.text).toMatch(/pre-push hook/i);
+    expect(entry!.retired.join("\n")).toMatch(/Exhaust the local test suite/);
+    const rules = fs.readFileSync(path.join(REPO_ROOT, ".bkit/core/.agents/rules.md"), "utf-8");
+    expect(rules).not.toMatch(/Exhaust the local test suite/i);
+    for (const name of [
+      "bkit-build-plan-tasks",
+      "bkit-build-plan-verify",
+      "bkit-build-plan-gaps-remediate",
+      "bkit-debug-failure-reproduce",
+    ]) {
+      const body = fs.readFileSync(path.join(promptsDir, `${name}.md`), "utf-8");
+      expect(body, name).not.toMatch(/Exhaust the local test suite/i);
+      expect(body, name).toContain(entry!.text);
+    }
+  });
+
+  it("bkit-debug-failure-reproduce runs its tests by naming each test file and asks for no unnamed wider run", () => {
+    const body = fs.readFileSync(path.join(promptsDir, "bkit-debug-failure-reproduce.md"), "utf-8");
+    const step6 = body.split("\n").find((l) => /^6\. Run only those tests/.test(l));
+    expect(step6, "step 6 not found").toBeDefined();
+    expect(step6!).toMatch(/bkit:test:file/);
+    expect(step6!).toMatch(/naming each test file|each test file/i);
+    expect(step6!).not.toMatch(/a file or name filter/i);
+    expect(body).not.toMatch(/other tests are unaffected/i);
+  });
+
+  it("local-pre-commit covers test runs made while working, not only before a commit", () => {
+    expect(rule).toBeDefined();
+    expect(rule!.text).toMatch(/before a commit and while working/i);
+    // Each run names its test files: never a folder, a pattern, the full suite or a gate script.
+    expect(rule!.text).toMatch(/naming each test file/i);
+    expect(rule!.text).toMatch(
+      /never a folder, a pattern, the full suite or a `bkit:gate:\*` script/i,
+    );
+    // The `/bkit-*` step's named command stays the only wider run.
+    expect(rule!.text).toMatch(/only wider run/i);
+    // The store entry and the shipped rules file hold the same bullet.
+    const rules = fs.readFileSync(path.join(REPO_ROOT, ".bkit/core/.agents/rules.md"), "utf-8");
+    expect(rules).toContain(`- ${rule!.text}`);
+    // The old text, limited to a commit, is retired rather than current.
+    expect(rule!.retired.join("\n")).toContain(
+      "Before a commit, run only the tests the change affects",
+    );
   });
 });

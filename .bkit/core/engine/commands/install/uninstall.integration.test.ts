@@ -20,10 +20,13 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { spawnSync } from "node:child_process";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { requireTsx } from "../../../../../vitest.tsx-bin";
 import { runUninstall, type UninstallContext } from "./uninstall";
 import { serializeBkitVersion } from "../../install/version-file";
 import { BKIT_GATE_SCRIPTS } from "../../install/manifest";
+import { getSharedRoot } from "../../shared/package-roots";
 
 const FIXTURE_DIR = path.resolve(
   __dirname,
@@ -695,5 +698,289 @@ describe("targeted uninstall drops the module's bkit.* keys", () => {
     const result = await runUninstall(["cloud"], makeCtx({ dryRun: true }));
     expect(result.stripped).toContain("package.json#bkit.cloud.agent");
     expect(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")).toBe(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #864 — project documents belong to the project, not to the uninstall
+// ---------------------------------------------------------------------------
+
+describe("#864 — full uninstall keeps project documents", () => {
+  it("preserves project document copies on full uninstall", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-uninstall-864-"));
+    const cli = path.resolve(__dirname, "../../cli.ts");
+    const run = (...args: string[]) =>
+      spawnSync(requireTsx(), [cli, ...args], {
+        cwd: dir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 120_000,
+      });
+    fs.mkdirSync(path.join(dir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    const install = run("install", "--claude", "--cursor");
+    expect(install.status, `${install.stdout}\n${install.stderr}`).toBe(0);
+
+    // One adopted starter, one legacy-migrated document.
+    fs.mkdirSync(path.join(dir, "docs"), { recursive: true });
+    fs.copyFileSync(
+      path.join(dir, ".bkit", "templates", "docs", "design.md"),
+      path.join(dir, "docs", "design.md"),
+    );
+    const own = "# Testing\n\nOur own tiers.\n";
+    fs.writeFileSync(path.join(dir, "docs", "testing.md"), own, "utf-8");
+    const reinstall = run("install", "--claude", "--cursor");
+    expect(reinstall.status, `${reinstall.stdout}\n${reinstall.stderr}`).toBe(0);
+    const design = fs.readFileSync(path.join(dir, "docs", "design.md"), "utf-8");
+    const index = fs.readFileSync(path.join(dir, ".agents", "docs.md"), "utf-8");
+    const projectPart = index.slice(index.lastIndexOf("<!-- bkit:end -->"));
+    expect(projectPart).toContain("| `docs/design.md` |");
+    expect(projectPart).toContain("| `docs/testing.md` |");
+
+    const un = run("uninstall");
+    expect(un.status, `${un.stdout}\n${un.stderr}`).toBe(0);
+
+    expect(fs.readFileSync(path.join(dir, "docs", "design.md"), "utf-8")).toBe(design);
+    expect(fs.readFileSync(path.join(dir, "docs", "testing.md"), "utf-8")).toBe(own);
+    // The still-owned template copies go, and the consumer's index rows stay.
+    expect(fs.existsSync(path.join(dir, ".bkit", "templates", "docs", "design.md"))).toBe(false);
+    const left = fs.readFileSync(path.join(dir, ".agents", "docs.md"), "utf-8");
+    expect(left).toContain("| `docs/design.md` |");
+    expect(left).toContain("| `docs/testing.md` |");
+    expect(left).not.toContain("<!-- bkit:start -->");
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Uninstall cleanup by recorded evidence (deferrals-11)
+// ---------------------------------------------------------------------------
+
+describe("uninstall strips Claude grants by the claudeAllowDerived record", () => {
+  function writeVersion(claudeAllowDerived: string[]): void {
+    fs.writeFileSync(
+      path.join(tmpDir, ".bkit", "version"),
+      serializeBkitVersion({ pinnedVersion: "5.0.0", canonicalHashes: {}, claudeAllowDerived }),
+      "utf-8",
+    );
+  }
+
+  /** `.claude/settings.json` as install writes it: the template plus extra allow rows. */
+  function writeSettings(extraAllow: string[]): void {
+    const template = JSON.parse(
+      fs.readFileSync(path.join(getSharedRoot(), ".claude", "settings.json"), "utf-8"),
+    ) as { permissions: { allow: string[] } };
+    template.permissions.allow = [...template.permissions.allow, ...extraAllow];
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".claude", "settings.json"),
+      JSON.stringify(template, null, 2) + "\n",
+      "utf-8",
+    );
+  }
+
+  function readOrEmpty(file: string): string {
+    return fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
+  }
+
+  function readAllow(): string[] {
+    const file = path.join(tmpDir, ".claude", "settings.json");
+    if (!fs.existsSync(file)) return [];
+    const doc = JSON.parse(fs.readFileSync(file, "utf-8")) as {
+      permissions?: { allow?: string[] };
+    };
+    return doc.permissions?.allow ?? [];
+  }
+
+  async function uninstallClaudeCapturingLog(): Promise<string> {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      await runUninstall(["claude"], makeCtx());
+      return spy.mock.calls.map((c) => c.join(" ")).join("\n");
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it("removes a recorded WebFetch grant whose domain left allowed-domains", async () => {
+    const gone = "WebFetch(domain:gone.example)";
+    writeVersion([gone]);
+    writeSettings([gone]);
+
+    await uninstallClaudeCapturingLog();
+
+    expect(readAllow()).not.toContain(gone);
+    // Everything in the file was bkit's: template plus the recorded grant.
+    expect(fs.existsSync(path.join(tmpDir, ".claude", "settings.json"))).toBe(false);
+  });
+
+  it("keeps an unrecorded WebFetch grant and lists it for owner review", async () => {
+    // github.com is in today's derived set, so the old recompute would have removed it.
+    const unrecorded = "WebFetch(domain:github.com)";
+    writeVersion(["WebFetch(domain:gone.example)"]);
+    writeSettings([unrecorded, "WebFetch(domain:gone.example)"]);
+
+    const log = await uninstallClaudeCapturingLog();
+
+    expect(readAllow()).toContain(unrecorded);
+    expect(readAllow()).not.toContain("WebFetch(domain:gone.example)");
+    const review = log.split("\n").filter((l) => l.includes(unrecorded));
+    expect(review.length).toBe(1);
+    expect(review[0]).toContain("[bkit-uninstall-surgical-test]");
+  });
+
+  it("removes no WebFetch grant when .bkit/version has no claudeAllowDerived record", async () => {
+    const rows = ["WebFetch(domain:github.com)", "WebFetch(domain:gone.example)"];
+    writeVersion([]);
+    writeSettings(rows);
+
+    const log = await uninstallClaudeCapturingLog();
+
+    expect(readAllow()).toEqual(expect.arrayContaining(rows));
+    for (const row of rows) {
+      expect(log, `review line for ${row}`).toContain(row);
+    }
+  });
+
+  it("leaves legacy OpenCode substring fetch grants in place and lists them for owner review", async () => {
+    const plain = "curl *github.com*";
+    const secret = "curl *https://user:tok@host/?k=v*";
+    const opencodeJson = path.join(tmpDir, ".opencode", "opencode.json");
+    fs.mkdirSync(path.dirname(opencodeJson), { recursive: true });
+    fs.writeFileSync(
+      opencodeJson,
+      JSON.stringify(
+        { theme: "dark", permission: { bash: { [plain]: "allow", [secret]: "allow" } } },
+        null,
+        2,
+      ) + "\n",
+      "utf-8",
+    );
+
+    const spy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    let log: string;
+    try {
+      await runUninstall(["opencode"], makeCtx());
+      log = spy.mock.calls.map((c) => c.join(" ")).join("\n");
+    } finally {
+      spy.mockRestore();
+    }
+
+    const left = JSON.parse(fs.readFileSync(opencodeJson, "utf-8")) as {
+      permission?: { bash?: Record<string, string> };
+    };
+    expect(left.permission?.bash).toMatchObject({ [plain]: "allow", [secret]: "allow" });
+    expect(log).toContain(plain);
+    expect(log).toMatch(/curl \*https:\/\/[^\s]*host/);
+    expect(log).not.toContain("user:tok");
+    expect(log).not.toContain("k=v");
+  });
+
+  it("a full bkit uninstall removes a recorded WebFetch grant whose domain left allowed-domains", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-uninstall-recorded-"));
+    const cli = path.resolve(__dirname, "../../cli.ts");
+    const run = (...args: string[]) =>
+      spawnSync(requireTsx(), [cli, ...args], {
+        cwd: dir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 120_000,
+      });
+    try {
+      fs.mkdirSync(path.join(dir, ".git"), { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, "package.json"),
+        JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+        "utf-8",
+      );
+      const install = run("install", "--claude");
+      expect(install.status, `${install.stdout}\n${install.stderr}`).toBe(0);
+
+      // A grant install once wrote for a domain that has since left allowed-domains.
+      const gone = "WebFetch(domain:gone.example)";
+      const versionPath = path.join(dir, ".bkit", "version");
+      const version = JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
+        claudeAllowDerived: string[];
+      };
+      version.claudeAllowDerived = [...version.claudeAllowDerived, gone];
+      fs.writeFileSync(versionPath, JSON.stringify(version, null, 2) + "\n", "utf-8");
+      const settingsPath = path.join(dir, ".claude", "settings.json");
+      const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as {
+        permissions: { allow: string[] };
+      };
+      settings.permissions.allow = [...settings.permissions.allow, gone];
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
+
+      const un = run("uninstall");
+      expect(un.status, `${un.stdout}\n${un.stderr}`).toBe(0);
+
+      // The file is deleted when nothing but bkit's rows were in it; either way the
+      // recorded grant must not remain.
+      expect(readOrEmpty(settingsPath)).not.toContain("gone.example");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("a hand-added grant equal to a derived one survives install, reinstall and uninstall", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-uninstall-hand-added-"));
+    const cli = path.resolve(__dirname, "../../cli.ts");
+    const run = (...args: string[]) =>
+      spawnSync(requireTsx(), [cli, ...args], {
+        cwd: dir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 120_000,
+      });
+    const settingsPath = path.join(dir, ".claude", "settings.json");
+    // The settings file survives uninstall here: it still holds the hand-added grant.
+    const readAllowIn = (): string[] =>
+      (JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as { permissions: { allow: string[] } })
+        .permissions.allow;
+    const recorded = (): string[] =>
+      (
+        JSON.parse(fs.readFileSync(path.join(dir, ".bkit", "version"), "utf-8")) as {
+          claudeAllowDerived: string[];
+        }
+      ).claudeAllowDerived;
+    // github.com is in the derived set, so install would add this grant if it were missing.
+    const handAdded = "WebFetch(domain:github.com)";
+    try {
+      fs.mkdirSync(path.join(dir, ".git"), { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, "package.json"),
+        JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+        "utf-8",
+      );
+      fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+      fs.writeFileSync(
+        settingsPath,
+        JSON.stringify({ permissions: { allow: [handAdded] } }, null, 2) + "\n",
+        "utf-8",
+      );
+
+      const install = run("install", "--claude");
+      expect(install.status, `${install.stdout}\n${install.stderr}`).toBe(0);
+      const bkitAdded = recorded();
+      expect(bkitAdded).not.toContain(handAdded);
+      expect(bkitAdded.length).toBeGreaterThan(0);
+      expect(readAllowIn()).toEqual(expect.arrayContaining([handAdded, ...bkitAdded]));
+
+      // A second install over the existing record keeps every grant bkit added earlier.
+      const again = run("install", "--claude");
+      expect(again.status, `${again.stdout}\n${again.stderr}`).toBe(0);
+      expect(recorded()).toEqual(bkitAdded);
+
+      const un = run("uninstall");
+      expect(un.status, `${un.stdout}\n${un.stderr}`).toBe(0);
+      expect(readAllowIn()).toContain(handAdded);
+      for (const grant of bkitAdded) expect(readAllowIn()).not.toContain(grant);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

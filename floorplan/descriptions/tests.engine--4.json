@@ -1,0 +1,84 @@
+{
+  "files": {
+    ".bkit/core/engine/render/parts.test.ts": {
+      "name": "Shared hook assembly tests",
+      "description": "Checks that shared hook parts are inserted once and missing parts are reported."
+    },
+    ".bkit/core/engine/render/trackers.test.ts": {
+      "name": "Tracker instruction selection tests",
+      "description": "Checks that generated instructions retain only the selected tracker's sections."
+    },
+    ".bkit/core/engine/shared/bkit-latest.test.ts": {
+      "name": "Release update lookup tests",
+      "description": "Checks version comparisons and when the package registry is consulted for updates."
+    },
+    ".bkit/core/engine/shared/branches.test.ts": {
+      "name": "Shared branch rule tests",
+      "description": "Checks that only the designated integration and production branches count as shared."
+    },
+    ".bkit/core/engine/shared/dep-updater.test.ts": {
+      "name": "Dependency updater detection tests",
+      "description": "Checks which supported dependency-update configuration a project has adopted."
+    },
+    ".bkit/core/engine/shared/egress.test.ts": {
+      "name": "Network registry shape tests",
+      "description": "Checks that allowed hostnames and shared-domain classifications are valid and unique."
+    },
+    ".bkit/core/engine/shared/json.test.ts": {
+      "name": "Structured file reading tests",
+      "description": "Checks successful and failed structured-data reads through the shared reader."
+    },
+    ".bkit/core/engine/shared/log-prefix.test.ts": {
+      "name": "Command log label tests",
+      "description": "Checks the default command message label and updates made for other operations."
+    },
+    ".bkit/core/engine/shared/package-json.test.ts": {
+      "name": "Package metadata reading tests",
+      "description": "Checks package settings, dependency names and dependency version declarations."
+    },
+    ".bkit/core/engine/shared/package-manager.test.ts": {
+      "name": "Package operation tests",
+      "description": "Checks package scripts, install commands and lockfile updates across supported environments."
+    },
+    ".bkit/core/engine/shared/package-roots.test.ts": {
+      "name": "Package root location tests",
+      "description": "Checks package location when running installed code or development sources."
+    },
+    ".bkit/core/engine/shared/protected-paths.test.ts": {
+      "name": "Generated path recognition tests",
+      "description": "Checks that assistant-generated paths are recognized for compliance checks."
+    },
+    ".bkit/core/engine/shared/settings.test.ts": {
+      "name": "Project settings tests",
+      "description": "Checks project configuration values, defaults and handling of unsupported selections."
+    },
+    ".bkit/core/engine/shared/text.test.ts": {
+      "name": "Output text formatting tests",
+      "description": "Checks readable command output and faithful handling of table cell contents."
+    },
+    ".bkit/core/engine/shared/timeouts.test.ts": {
+      "name": "Wait limit tests",
+      "description": "Checks that shared timeout values remain positive and fit their intended operations."
+    },
+    ".bkit/core/engine/tools/cli-doc.test.ts": {
+      "name": "Command documentation tests",
+      "description": "Checks that generated command documentation matches the registered command definitions."
+    },
+    ".bkit/core/engine/tools/grammar-density.test.ts": {
+      "name": "Instruction grammar measurement tests",
+      "description": "Checks word counting and selection of the instruction text used for grammar measurements."
+    },
+    ".bkit/core/engine/tools/instructions-coverage.test.ts": {
+      "name": "Instruction inventory coverage tests",
+      "description": "Checks that every standing instruction is listed and each listed instruction still exists."
+    },
+    ".bkit/core/engine/tools/instructions-sources.test.ts": {
+      "name": "Instruction source parity tests",
+      "description": "Checks that copied instruction sections match their authoritative sources."
+    },
+    ".bkit/core/engine/tools/instructions.test.ts": {
+      "name": "Shared instruction consistency tests",
+      "description": "Checks that shared sentences match their recorded wording across all shipped instruction surfaces."
+    }
+  }
+}

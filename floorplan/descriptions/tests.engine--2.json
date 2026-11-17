@@ -1,0 +1,164 @@
+{
+  "files": {
+    ".bkit/core/engine/commands/launch.test.ts": {
+      "name": "Assistant launcher tests",
+      "description": "Checks that assistant launch commands load the project's environment correctly."
+    },
+    ".bkit/core/engine/commands/lib.test.ts": {
+      "name": "Command foundation tests",
+      "description": "Checks shared command flag handling, validation and execution behavior."
+    },
+    ".bkit/core/engine/commands/setup/setup.test.ts": {
+      "name": "Branch protection setup tests",
+      "description": "Checks that GitHub protection setup applies the configured required checks and safeguards."
+    },
+    ".bkit/core/engine/commands/stats.test.ts": {
+      "name": "Repository statistics tests",
+      "description": "Checks that statistics use only this repository's records and produce the expected report."
+    },
+    ".bkit/core/engine/commands/workflow/branches-lock.integration.test.ts": {
+      "name": "Branch operation locking tests",
+      "description": "Checks that branch operations coordinate through locks when using real repositories."
+    },
+    ".bkit/core/engine/commands/workflow/branches.test.ts": {
+      "name": "Branch workflow tests",
+      "description": "Checks branch selection, rebasing and workflow branch operations."
+    },
+    ".bkit/core/engine/commands/workflow/challenge.test.ts": {
+      "name": "Review findings merge tests",
+      "description": "Checks how review reports combine findings and retain the strongest unresolved severity."
+    },
+    ".bkit/core/engine/commands/workflow/completeness.test.ts": {
+      "name": "Workflow completeness tests",
+      "description": "Checks missing workflow evidence without turning the advisory into a command failure."
+    },
+    ".bkit/core/engine/commands/workflow/context-fetch.test.ts": {
+      "name": "Build evidence fetch tests",
+      "description": "Checks that fetched build evidence matches the selected run and contains complete logs."
+    },
+    ".bkit/core/engine/commands/workflow/context.test.ts": {
+      "name": "Workflow context tests",
+      "description": "Checks how workflow evidence is collected, bounded and prepared for later steps."
+    },
+    ".bkit/core/engine/commands/workflow/counters.test.ts": {
+      "name": "Attempt counter tests",
+      "description": "Checks that attempt numbers and limits stay scoped to the active run and task group."
+    },
+    ".bkit/core/engine/commands/workflow/decisions.test.ts": {
+      "name": "Owner decision tests",
+      "description": "Checks how questions, choices and owner replies are assembled for workflow decisions."
+    },
+    ".bkit/core/engine/commands/workflow/disk.test.ts": {
+      "name": "Disk cleanup command tests",
+      "description": "Checks cleanup modes, step selection, time limits and locks."
+    },
+    ".bkit/core/engine/commands/workflow/fids.test.ts": {
+      "name": "Feature identity tests",
+      "description": "Checks how feature identifiers are interpreted with the project's selected tracker."
+    },
+    ".bkit/core/engine/commands/workflow/issues.test.ts": {
+      "name": "Issue context tests",
+      "description": "Checks how issue text and comments are filtered into workflow inputs."
+    },
+    ".bkit/core/engine/commands/workflow/ledgers.test.ts": {
+      "name": "Record command tests",
+      "description": "Checks scoped recording and committing of workflow ledgers and related files."
+    },
+    ".bkit/core/engine/commands/workflow/locks.test.ts": {
+      "name": "Workflow lock tests",
+      "description": "Checks that workflow locks select one feature and the correct month of records."
+    },
+    ".bkit/core/engine/commands/workflow/plan-blocks.test.ts": {
+      "name": "Plan structure tests",
+      "description": "Checks task groups, dependency declarations and matched plan markers."
+    },
+    ".bkit/core/engine/commands/workflow/plan-versions.test.ts": {
+      "name": "Plan revision lookup tests",
+      "description": "Checks that the latest numbered plan draft is selected from the correct workflow."
+    },
+    ".bkit/core/engine/commands/workflow/plans.test.ts": {
+      "name": "Workstream plan tests",
+      "description": "Checks how planned workstreams and their requirements are extracted."
+    },
+    ".bkit/core/engine/commands/workflow/progress.integration.test.ts": {
+      "name": "Saved progress command tests",
+      "description": "Checks that progress commands respect saved attempts, grants and run evidence."
+    },
+    ".bkit/core/engine/commands/workflow/prs.test.ts": {
+      "name": "Pull request command tests",
+      "description": "Checks creation and reuse of pull requests with the required workflow records."
+    },
+    ".bkit/core/engine/commands/workflow/repo.test.ts": {
+      "name": "Repository command tests",
+      "description": "Checks repository identity and selection of the project-pinned bkit executable."
+    },
+    ".bkit/core/engine/commands/workflow/roadmap.test.ts": {
+      "name": "Roadmap generation tests",
+      "description": "Checks that current feature states become a stable, repeatable roadmap."
+    },
+    ".bkit/core/engine/commands/workflow/run-facts.test.ts": {
+      "name": "Run facts tests",
+      "description": "Checks that changed files and recorded times become accurate workflow summary facts."
+    },
+    ".bkit/core/engine/commands/workflow/runs.test.ts": {
+      "name": "Build run evidence tests",
+      "description": "Checks selection and verification of build runs against the intended workflow and revision."
+    },
+    ".bkit/core/engine/commands/workflow/runtime.test.ts": {
+      "name": "Execution environment tests",
+      "description": "Checks which workflow capabilities are available in local and hosted environments."
+    },
+    ".bkit/core/engine/commands/workflow/shared-checkout.integration.test.ts": {
+      "name": "Shared checkout preservation tests",
+      "description": "Checks that publishing a workflow's changes leaves other people's concurrent work out."
+    },
+    ".bkit/core/engine/commands/workflow/skills.test.ts": {
+      "name": "Skill retention tests",
+      "description": "Checks that pruning keeps permanent and bkit skills while removing unlisted additions."
+    },
+    ".bkit/core/engine/commands/workflow/status.test.ts": {
+      "name": "Debug evidence status tests",
+      "description": "Checks that selected debug evidence persists and attempts belong to its current generation."
+    },
+    ".bkit/core/engine/commands/workflow/step-table.test.ts": {
+      "name": "Progress table tests",
+      "description": "Checks that workflow progress tables handle task groups and repeated steps."
+    },
+    ".bkit/core/engine/commands/workflow/steps.test.ts": {
+      "name": "Workflow step completion tests",
+      "description": "Checks completion evidence, progress output and required test-round records."
+    },
+    ".bkit/core/engine/commands/workflow/summary-findings.test.ts": {
+      "name": "Verified findings tests",
+      "description": "Checks that completed work resolves a finding only after a matching passing assessment."
+    },
+    ".bkit/core/engine/commands/workflow/summary.test.ts": {
+      "name": "Workflow summary tests",
+      "description": "Checks that run records become summaries with the correct feature references."
+    },
+    ".bkit/core/engine/commands/workflow/tasks.test.ts": {
+      "name": "Plan task completion tests",
+      "description": "Checks that only the requested tasks in the correct group are marked complete."
+    },
+    ".bkit/core/engine/commands/workflow/test-blocks.test.ts": {
+      "name": "Test plan parsing tests",
+      "description": "Checks how test-plan groups and task completion markers are read."
+    },
+    ".bkit/core/engine/commands/workflow/tests-changed.test.ts": {
+      "name": "Changed-file check tests",
+      "description": "Checks how the changed file set selects the checks required for a workflow."
+    },
+    ".bkit/core/engine/commands/workflow/tests-lock.integration.test.ts": {
+      "name": "Test runner locking tests",
+      "description": "Checks that real test processes obey the shared execution lock."
+    },
+    ".bkit/core/engine/commands/workflow/tests.test.ts": {
+      "name": "Workflow test command tests",
+      "description": "Checks local test execution and acceptance of matching selected build evidence."
+    },
+    ".bkit/core/engine/commands/workflow/tracker.test.ts": {
+      "name": "Tracker routing tests",
+      "description": "Checks that issue operations target the selected tracker and correct work item."
+    }
+  }
+}

@@ -25,6 +25,7 @@ import {
   migrateBrandedScriptNames,
   pruneMinPushPaths,
   seedBkitDefaults,
+  seedCorePackageJsonScripts,
   SEEDED_BKIT_DEFAULTS,
 } from "./core";
 import { dispatchModules, listStampedFiles, type ModuleContext } from "./index";
@@ -34,6 +35,13 @@ import { BKIT_GATE_CHANGED_SCRIPT, BKIT_GATE_SCRIPTS } from "../manifest";
 import { readBkitConfig } from "../../shared/settings";
 import { hashFile, readBkitVersion, readManagedVersion, writeBkitVersion } from "../version-file";
 import { applyTokens } from "../placeholders";
+import {
+  buildAntigravityModelLookup,
+  buildOpencodeModelLookup,
+  parseEffortMap,
+  parseModelLookup,
+} from "../../render/models";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -175,6 +183,210 @@ describe("slop plugin migration", () => {
     try {
       expect(migrate().writes).toEqual([]);
       expect(fs.readFileSync(target)).toEqual(oldPlugin);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("by hand"));
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
+describe("machine-lock copy migration", () => {
+  const lock = "scripts/ci/bkit-machine-lock.sh";
+  const template = ".bkit/templates/scripts/ci/bkit-machine-lock.sh";
+  const shipped = fs.readFileSync(
+    path.join(getPkgRoot(), "tests/fixtures/machine-lock/machine-lock-6.1.1.sh"),
+  );
+  const currentLock = fs.readFileSync(
+    path.join(getTemplatesRoot(), "scripts/ci/bkit-machine-lock.sh"),
+  );
+
+  function seed(content: string | Buffer = shipped): void {
+    fs.mkdirSync(path.dirname(lock), { recursive: true });
+    fs.writeFileSync(lock, content);
+  }
+
+  function migrate(dryRun = false): WriteSet {
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    return { writes: ctx.ws.writes.filter((w) => w.path === lock) };
+  }
+
+  it("replaces a shipped 6.1.1 machine-lock copy and records the same unhashed write in dry run", () => {
+    seed();
+    const dry = migrate(true);
+    expect(fs.readFileSync(lock)).toEqual(shipped);
+    expect(dry.writes).toEqual([{ path: lock, action: "update", unhashed: true }]);
+    expect(migrate()).toEqual(dry);
+    expect(fs.readFileSync(lock)).toEqual(currentLock);
+    expect(migrate().writes).toEqual([]);
+  });
+
+  it("preserves an edited machine-lock copy without the queue and reports the template to merge by hand", () => {
+    const custom = Buffer.concat([shipped, Buffer.from("\n# consumer customization\n")]);
+    seed(custom);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(migrate().writes).toEqual([]);
+      expect(fs.readFileSync(lock)).toEqual(custom);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(template));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("by hand"));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("out of arrival order"));
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("an edited machine-lock copy without LOCAL_STACK_LOCK_STATUS_FILE is left in place with a warning", () => {
+    const custom = Buffer.concat([shipped, Buffer.from("\n# consumer customization\n")]);
+    seed(custom);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(migrate().writes).toEqual([]);
+      expect(fs.readFileSync(lock)).toEqual(custom);
+      const lines = warn.mock.calls.map((c) => String(c[0]));
+      const status = lines.filter((l) => l.includes("LOCAL_STACK_LOCK_STATUS_FILE"));
+      expect(status).toHaveLength(1);
+      expect(status[0]).toContain(template);
+      expect(status[0]).toContain("by hand");
+      expect(status[0]).toContain("gate failure (exit 1) instead of exit 81");
+      // The copy lacks the queue too, so the arrival-order warning is printed as well.
+      expect(lines.filter((l) => l.includes("out of arrival order"))).toHaveLength(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("an edited machine-lock copy that names LOCAL_STACK_LOCK_STATUS_FILE gets no status-file warning", () => {
+    const custom = Buffer.concat([currentLock, Buffer.from("\n# consumer customization\n")]);
+    seed(custom);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(migrate().writes).toEqual([]);
+      expect(fs.readFileSync(lock)).toEqual(custom);
+      const lines = warn.mock.calls.map((c) => String(c[0]));
+      expect(lines.filter((l) => l.includes(lock))).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("an edited machine-lock copy without LOCAL_STACK_LOCK_HOLD_S is left in place with one hold-limit warning", () => {
+    const custom = Buffer.from(
+      currentLock.toString("utf8").replaceAll("LOCAL_STACK_LOCK_HOLD_S", "CONSUMER_LIMIT") +
+        "\n# consumer customization\n",
+    );
+    seed(custom);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(migrate().writes).toEqual([]);
+      expect(fs.readFileSync(lock)).toEqual(custom);
+      const lines = warn.mock.calls.map((c) => String(c[0])).filter((l) => l.includes(lock));
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain("no LOCAL_STACK_LOCK_HOLD_S hold limit");
+      expect(lines[0]).toContain(template);
+      expect(lines[0]).toContain("by hand");
+      expect(lines[0]).toContain("a hung run holds the tests lock until someone stops it by hand");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  const awake = "scripts/ci/bkit-test-awake.mjs";
+  const awakeTemplate = ".bkit/templates/scripts/ci/bkit-test-awake.mjs";
+  const currentAwake = fs.readFileSync(
+    path.join(getTemplatesRoot(), "scripts/ci/bkit-test-awake.mjs"),
+  );
+
+  function migrateAwake(dryRun = false): WriteSet {
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    return { writes: ctx.ws.writes.filter((w) => w.path === awake) };
+  }
+
+  it("a replaced machine-lock copy gets bkit-test-awake.mjs beside it, the same write in dry run, once", () => {
+    seed();
+    const dry = migrateAwake(true);
+    expect(fs.existsSync(awake)).toBe(false);
+    expect(dry.writes).toEqual([{ path: awake, action: "write", unhashed: true }]);
+    expect(migrateAwake()).toEqual(dry);
+    expect(fs.readFileSync(awake)).toEqual(currentAwake);
+    expect(migrateAwake().writes).toEqual([]);
+  });
+
+  it("a current machine-lock copy beside a bkit-test-awake.mjs without --hold-s keeps both, with one warning", () => {
+    seed(currentLock);
+    fs.writeFileSync(awake, "// consumer's own wrapper\n");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(migrateAwake().writes).toEqual([]);
+      expect(fs.readFileSync(awake, "utf8")).toBe("// consumer's own wrapper\n");
+      const lines = warn.mock.calls.map((c) => String(c[0])).filter((l) => l.includes(awake));
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain(awakeTemplate);
+      expect(lines[0]).toContain("by hand");
+      expect(lines[0]).toContain("--hold-s");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  const shippedAwake = fs.readFileSync(
+    path.join(getPkgRoot(), "tests/fixtures/machine-lock/bkit-test-awake-6.1.1.mjs"),
+  );
+
+  it("replaces a shipped 6.1.1 bkit-test-awake.mjs beside the machine-lock copy, the same write in dry run, once", () => {
+    seed();
+    fs.writeFileSync(awake, shippedAwake);
+    const dry = migrateAwake(true);
+    expect(fs.readFileSync(awake)).toEqual(shippedAwake);
+    expect(dry.writes).toEqual([{ path: awake, action: "update", unhashed: true }]);
+    expect(migrateAwake()).toEqual(dry);
+    expect(fs.readFileSync(awake)).toEqual(currentAwake);
+    expect(migrateAwake().writes).toEqual([]);
+  });
+
+  it("an edited bkit-test-awake.mjs without --hold-s is left alone, warning that tests-lock runs are refused with exit 73", () => {
+    seed(currentLock);
+    const custom = Buffer.concat([shippedAwake, Buffer.from("\n// consumer customization\n")]);
+    fs.writeFileSync(awake, custom);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(migrateAwake().writes).toEqual([]);
+      expect(fs.readFileSync(awake)).toEqual(custom);
+      const lines = warn.mock.calls.map((c) => String(c[0])).filter((l) => l.includes(awake));
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain(awakeTemplate);
+      expect(lines[0]).toContain("by hand");
+      expect(lines[0]).toContain("refused with exit 73");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("a current bkit-test-awake.mjs beside the machine-lock copy is left alone with no warning", () => {
+    seed(currentLock);
+    fs.writeFileSync(awake, currentAwake);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(migrateAwake().writes).toEqual([]);
+      expect(warn.mock.calls.map((c) => String(c[0])).filter((l) => l.includes(awake))).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("leaves a symlinked machine-lock copy unchanged and reports the template to merge by hand", () => {
+    fs.mkdirSync("owned", { recursive: true });
+    const target = path.resolve("owned/bkit-machine-lock.sh");
+    fs.writeFileSync(target, shipped);
+    fs.mkdirSync("scripts/ci", { recursive: true });
+    fs.symlinkSync(target, lock);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(migrate().writes).toEqual([]);
+      expect(fs.readFileSync(target)).toEqual(shipped);
+      expect(fs.lstatSync(lock).isSymbolicLink()).toBe(true);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(template));
       expect(warn).toHaveBeenCalledWith(expect.stringContaining("by hand"));
     } finally {
       warn.mockRestore();
@@ -531,6 +743,7 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
     const finding = detectGateAdvisories(tmpDir).find((f) => f.id === "test-file-script-missing");
     expect(finding?.action).toContain("$BKIT_TEST_REPORT");
     expect(finding?.action).toContain('"bkit:test:file": "vitest run');
+    expect(finding?.action).toContain("--runTestsByPath");
     writeScripts({ ...BKIT_GATE_SCRIPTS, "bkit:test:file": "pytest --junitxml=$BKIT_TEST_REPORT" });
     expect(detectGateAdvisories(tmpDir).map((f) => f.id)).not.toContain("test-file-script-missing");
   });
@@ -1080,7 +1293,23 @@ describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
       verify: { ask: true, maxAttempts: 2 },
       challenge: { ask: true, maxAttempts: 2 },
       tests: { ask: true, maxAttempts: 2 },
+      holistic: { ask: true, maxAttempts: 2 },
       publish: { remote: true, local: true },
+    });
+  });
+
+  it("install seeds a build.holistic block and keeps an existing one", () => {
+    seed({});
+    run();
+    expect(JSON.parse(read()).bkit.workflows.build.holistic).toEqual({
+      ask: true,
+      maxAttempts: 2,
+    });
+    seed({ bkit: { workflows: { build: { holistic: { ask: false, maxAttempts: 1 } } } } });
+    run();
+    expect(JSON.parse(read()).bkit.workflows.build.holistic).toEqual({
+      ask: false,
+      maxAttempts: 1,
     });
   });
 
@@ -1330,6 +1559,7 @@ describe("migrateBkitLayout (via seedCorePackageJsonScripts)", () => {
     expect(bkitKey()).not.toHaveProperty("loopPause");
     expect(workflows.build).toEqual({
       verify: { ask: true, maxAttempts: 3 },
+      holistic: { ask: false },
       challenge: { ask: false },
       tests: { ask: false },
     });
@@ -1418,6 +1648,132 @@ describe("pruneMinPushPaths (via seedCorePackageJsonScripts)", () => {
     seed({ testing: { ciWorkflow: "ci.yml" } });
     expect(run()).toBe(false);
     expect(testing()).toEqual({ ciWorkflow: "ci.yml" });
+  });
+});
+
+describe("lowerVerifyMaxAttempts (via seedCorePackageJsonScripts)", () => {
+  const seed = (maxAttempts: number, indent = 4): void =>
+    fs.writeFileSync(
+      "package.json",
+      JSON.stringify(
+        { name: "x", bkit: { workflows: { build: { verify: { ask: false, maxAttempts } } } } },
+        null,
+        indent,
+      ) + "\n",
+      "utf-8",
+    );
+  const read = (): string => fs.readFileSync("package.json", "utf-8");
+  const verify = (): Record<string, unknown> => JSON.parse(read()).bkit.workflows.build.verify;
+  const run = (dryRun = false): string[] => {
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => {
+      lines.push(a.join(" "));
+    });
+    try {
+      seedCorePackageJsonScripts(makeCtx({ dryRun }));
+    } finally {
+      spy.mockRestore();
+    }
+    return lines.filter((l) => l.includes("maxAttempts"));
+  };
+
+  it("upgrade lowers build.verify.maxAttempts above 2 to 2 and leaves 2 or less alone", () => {
+    seed(5);
+    const logged = run();
+    expect(verify()).toEqual({ ask: false, maxAttempts: 2 });
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toContain("core:");
+    expect(logged[0]).toContain("build.verify.maxAttempts");
+    expect(logged[0]).toContain("5");
+    expect(read().split("\n")[1]).toMatch(/^ {4}"/);
+    const settled = read();
+    expect(run()).toEqual([]);
+    expect(read()).toBe(settled);
+    for (const kept of [2, 1]) {
+      seed(kept);
+      expect(run()).toEqual([]);
+      expect(verify()).toEqual({ ask: false, maxAttempts: kept });
+    }
+    seed(7);
+    const dry = read();
+    const dryLogged = run(true);
+    expect(read()).toBe(dry);
+    expect(dryLogged).toHaveLength(1);
+    expect(dryLogged[0]).toContain("[dry-run]");
+  });
+});
+
+describe("lowerVerifyMaxAttempts runs once per install", () => {
+  it("a verify limit set above 2 after this release's upgrade is kept and bkit check reports no drift", () => {
+    fs.writeFileSync(
+      "package.json",
+      JSON.stringify(
+        {
+          name: "x",
+          bkit: { workflows: { build: { verify: { ask: false, maxAttempts: 3 } } } },
+        },
+        null,
+        4,
+      ) + "\n",
+      "utf-8",
+    );
+    const versionFile = path.join(tmpDir, ".bkit", "version");
+    fs.mkdirSync(path.dirname(versionFile), { recursive: true });
+    writeBkitVersion(versionFile, {
+      pinnedVersion: readInstallingVersion(),
+      canonicalHashes: {},
+      claudeAllowDerived: [],
+    });
+    const verify = (): unknown =>
+      JSON.parse(fs.readFileSync("package.json", "utf-8")).bkit.workflows.build.verify;
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => {
+      lines.push(a.join(" "));
+    });
+    try {
+      seedCorePackageJsonScripts(makeCtx());
+      expect(verify()).toEqual({ ask: false, maxAttempts: 3 });
+      const dry = makeCtx({ dryRun: true });
+      seedCorePackageJsonScripts(dry);
+      expect(dry.ws.writes.filter((w) => w.path === "package.json")).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(verify()).toEqual({ ask: false, maxAttempts: 3 });
+    expect(lines.filter((l) => l.includes("maxAttempts"))).toEqual([]);
+  });
+});
+
+describe("lowerVerifyMaxAttempts fixed threshold", () => {
+  it("an install recorded after 6.1.1 keeps a verify limit above 2 across a later version upgrade", () => {
+    fs.writeFileSync(
+      "package.json",
+      JSON.stringify(
+        { name: "x", bkit: { workflows: { build: { verify: { ask: false, maxAttempts: 3 } } } } },
+        null,
+        4,
+      ) + "\n",
+      "utf-8",
+    );
+    const versionFile = path.join(tmpDir, ".bkit", "version");
+    fs.mkdirSync(path.dirname(versionFile), { recursive: true });
+    writeBkitVersion(versionFile, {
+      pinnedVersion: "6.1.2",
+      canonicalHashes: {},
+      claudeAllowDerived: [],
+    });
+    const spy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      seedCorePackageJsonScripts(makeCtx());
+    } finally {
+      spy.mockRestore();
+    }
+    expect(
+      JSON.parse(fs.readFileSync("package.json", "utf-8")).bkit.workflows.build.verify,
+    ).toEqual({
+      ask: false,
+      maxAttempts: 3,
+    });
   });
 });
 
@@ -2439,5 +2795,502 @@ describe("migrateValeHouseStyle (via runBkitDocs)", () => {
     } finally {
       fs.rmSync(outside, { recursive: true, force: true });
     }
+  });
+});
+
+describe(
+  "deterministic bookkeeping contracts in a fresh consumer",
+  { timeout: localLimit(180_000) },
+  () => {
+    const promptsMd = path.join(getBkitDocsRoot(), "prompts.md");
+    const HOSTS = ["claude", "cursor", "opencode", "codex", "antigravity"] as const;
+    const TRACKERS = ["github", "linear", "jira", "none"] as const;
+    const WORKFLOW_FILES: Record<(typeof HOSTS)[number], string> = {
+      claude: ".claude/commands/bkit-build.md",
+      cursor: ".cursor/commands/bkit-build.md",
+      opencode: ".opencode/commands/bkit-build.md",
+      codex: ".agents/skills/bkit-build/SKILL.md",
+      antigravity: ".agents/plugins/bkit/skills/bkit-build/SKILL.md",
+    };
+    const extraDirs: string[] = [];
+    afterEach(() => {
+      process.chdir(originalCwd);
+      for (const d of extraDirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+    });
+
+    const consumer = (): string => {
+      const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-consumer-")));
+      extraDirs.push(dir);
+      fs.writeFileSync(
+        path.join(dir, "package.json"),
+        JSON.stringify({ name: "test-project", packageManager: "pnpm@10.4.1" }),
+        "utf-8",
+      );
+      process.chdir(dir);
+      return dir;
+    };
+    const install = (
+      host: (typeof HOSTS)[number],
+      tracker: (typeof TRACKERS)[number],
+    ): WriteSet => {
+      const ws = makeWriteSet();
+      dispatchModules(
+        new Set(["core", host]),
+        makeCtx({
+          ws,
+          issueTracker: tracker,
+          modelLookup: parseModelLookup(promptsMd),
+          codexModelLookup: buildOpencodeModelLookup(promptsMd, "openai"),
+          opencodeModelLookup: buildOpencodeModelLookup(promptsMd, "openrouter"),
+          antigravityModelLookup: buildAntigravityModelLookup(promptsMd),
+          effortMap: parseEffortMap(promptsMd),
+          opencodeProvider: "openrouter",
+        }),
+      );
+      return ws;
+    };
+    const read = (dir: string, rel: string) => fs.readFileSync(path.join(dir, rel), "utf-8");
+    const correction = (text: string) =>
+      /\*\*Bounded correction:\*\*[\s\S]*?(?:\n\s*\n|$)/.exec(text)?.[0].replace(/\s+/g, " ") ?? "";
+
+    const CLI = path.join(getPkgRoot(), "dist", "cli.js");
+    const bkit = (cwd: string, ...argv: string[]) => {
+      const res = spawnSync(process.execPath, [CLI, ...argv, "--json"], {
+        cwd,
+        encoding: "utf-8",
+      });
+      return {
+        code: res.status,
+        json:
+          res.stdout.trim() === "" ? undefined : (JSON.parse(res.stdout) as Record<string, any>),
+        err: res.stderr,
+      };
+    };
+    const gitIn = (cwd: string, ...args: string[]) => {
+      const res = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
+        cwd,
+        encoding: "utf-8",
+      });
+      return res.stdout.trim();
+    };
+    const jsonRows = (file: string) =>
+      fs
+        .readFileSync(file, "utf-8")
+        .split("\n")
+        .filter((l) => l !== "")
+        .map((l) => JSON.parse(l) as Record<string, any>);
+
+    it("installs and upgrades fresh consumers with deterministic bookkeeping contracts", () => {
+      const snapshots = new Map<string, Record<string, string>>();
+
+      // Fresh install: every host x tracker renders the same recovery contract and engine-owned CI re-entry.
+      for (const host of HOSTS) {
+        for (const tracker of TRACKERS) {
+          const dir = consumer();
+          install(host, tracker);
+          const workflow = read(dir, WORKFLOW_FILES[host]);
+          expect(correction(workflow), `${host}/${tracker}`).toMatch(/guaranteed no-write/i);
+          expect(correction(workflow), `${host}/${tracker}`).toMatch(/two corrected retries/i);
+          expect(workflow, `${host}/${tracker}`).toContain("bkit runs handoff");
+          expect(workflow, `${host}/${tracker}`).not.toContain("--attempts=<total>");
+          expect(workflow, `${host}/${tracker}`).not.toContain("{CI_REENTRY}");
+          snapshots.set(`${host}/${tracker}`, {
+            contract: correction(workflow),
+            cli: read(dir, ".bkit/cli.md"),
+            jsonl: read(dir, ".bkit/jsonl.md"),
+            workflows: read(dir, ".bkit/workflows.md"),
+            prompts: read(dir, ".bkit/prompts.md"),
+          });
+        }
+      }
+      // One wording and one set of docs across the matrix.
+      const contracts = new Set([...snapshots.values()].map((s) => s.contract));
+      expect(contracts.size).toBe(1);
+      const first = [...snapshots.values()][0]!;
+      for (const s of snapshots.values()) {
+        expect(s.cli).toBe(first.cli);
+        expect(s.jsonl).toBe(first.jsonl);
+      }
+      // The shipped docs state each ownership boundary, and the catalog lists the new verbs.
+      for (const verb of ["ledgers query", "runs handoff", "counters correction"]) {
+        expect(first.cli, verb).toContain(verb);
+      }
+      expect(first.cli).toContain("--correction-of");
+      expect(first.cli).toContain("--operation");
+      expect(first.jsonl).toContain("ci-handoff");
+      expect(first.jsonl).toContain("correction-rejected");
+      expect(first.jsonl).toMatch(/receipt/i);
+      expect(first.workflows).toContain("Bounded correction");
+      expect(first.prompts).toMatch(/modelSource/);
+
+      // Upgrade: stale managed files are put back to the fresh bytes, and a further install writes nothing.
+      const dir = consumer();
+      install("claude", "github");
+      const fresh = {
+        workflow: read(dir, WORKFLOW_FILES.claude),
+        cli: read(dir, ".bkit/cli.md"),
+        jsonl: read(dir, ".bkit/jsonl.md"),
+      };
+      fs.writeFileSync(path.join(dir, WORKFLOW_FILES.claude), `${fresh.workflow}\nstale\n`);
+      fs.writeFileSync(
+        path.join(dir, ".bkit/cli.md"),
+        fresh.cli.replace("runs handoff", "runs wait"),
+      );
+      fs.writeFileSync(path.join(dir, ".bkit/jsonl.md"), "stale\n");
+      install("claude", "github");
+      expect(read(dir, WORKFLOW_FILES.claude)).toBe(fresh.workflow);
+      expect(read(dir, ".bkit/cli.md")).toBe(fresh.cli);
+      expect(read(dir, ".bkit/jsonl.md")).toBe(fresh.jsonl);
+      expect(install("claude", "github").writes).toEqual([]);
+
+      // The built CLI the consumer runs agrees with the installed catalog and completes the journey.
+      gitIn(dir, "init", "-q", "-b", "feat/1-x");
+      fs.writeFileSync(path.join(dir, "README.md"), "x\n");
+      gitIn(dir, "add", "-A");
+      gitIn(dir, "commit", "-q", "-m", "init");
+      const rel = "docs/plans/202611/logs/1-x/status.jsonl";
+      fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, rel),
+        `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-11-01T00:00:00Z" })}\n`,
+      );
+      for (const verb of [
+        ["ledgers", "query"],
+        ["runs", "handoff"],
+        ["counters", "correction"],
+      ]) {
+        expect(bkit(dir, ...verb, "--help").code, verb.join(" ")).toBe(0);
+      }
+      // Missing observed model: the engine fills what it can verify and leaves the rest absent.
+      const issued = bkit(
+        dir,
+        "status",
+        "invocation",
+        "--workflow=build",
+        "--step=build-plan-tests",
+        `--file=${rel}`,
+        "--host=claude",
+        "--configured-model=sonnet",
+        "--agent=bkit-build-plan-tests",
+      );
+      expect(issued.code).toBe(0);
+      const id = issued.json!["invocation"] as string;
+      const rowsFile = path.join(dir, "rows.json");
+      const append = (rows: unknown[], ...extra: string[]) => {
+        fs.writeFileSync(rowsFile, JSON.stringify(rows));
+        return bkit(
+          dir,
+          "ledgers",
+          "append",
+          `--root=${dir}`,
+          "--ledger=knowledge",
+          `--rows=${rowsFile}`,
+          `--invocation=${id}`,
+          ...extra,
+        );
+      };
+      const row = { kind: "knowledge", key: "gotcha", summary: "a gotcha worth keeping" };
+      // A guaranteed no-write rejection, then the corrected candidate, then a lost-response replay.
+      const rejected = append([{ ...row, status: "BOGUS" }], "--operation=op-1");
+      expect(rejected.code).toBe(8);
+      expect(rejected.json!["error"]).toMatchObject({ effects: "none", correctable: true });
+      expect(fs.existsSync(path.join(dir, "docs", "knowledge.jsonl"))).toBe(false);
+      const corrected = append([row], "--operation=op-2", "--correction-of=op-1");
+      expect(corrected.code).toBe(0);
+      expect(corrected.json!["correction"]).toMatchObject({ used: 1, limit: 2, verified: true });
+      const replayed = append([row], "--operation=op-2", "--correction-of=op-1");
+      expect(replayed.json!["receipt"]).toMatchObject({ operation: "op-2", replayed: true });
+      const stored = jsonRows(path.join(dir, "docs", "knowledge.jsonl"));
+      expect(stored).toHaveLength(1);
+      expect(stored[0]!["by"]).toMatchObject({
+        workflow: "build",
+        step: "build-plan-tests",
+        subagent: "bkit-build-plan-tests",
+        configuredModel: "sonnet",
+        host: "claude",
+      });
+      expect(stored[0]!["by"]).not.toHaveProperty("model");
+      // The canonical read agrees with the append: one winner, a complete scan.
+      const queried = bkit(dir, "ledgers", "query", `--root=${dir}`, "--ledger=knowledge");
+      expect(queried.json!["rows"]).toHaveLength(1);
+      expect(queried.json!["coverage"]).toMatchObject({ status: "clean", clean: true });
+      // Resume with a new process and a new invocation: the correction budget and CI totals carry on.
+      const scope = (corrected.json!["correction"] as { scope: string }).scope;
+      const counter = bkit(
+        dir,
+        "counters",
+        "correction",
+        `--file=${rel}`,
+        "--workflow=build",
+        `--scope=${scope}`,
+        "--operation=op-3",
+      );
+      expect(counter.json).toMatchObject({ allowed: true, used: 2, limit: 2 });
+      const poll = (result: string) =>
+        bkit(
+          dir,
+          "runs",
+          "handoff",
+          `--invocation=${id}`,
+          "--repo=acme/test-project",
+          "--pr=7",
+          `--head=${"a".repeat(40)}`,
+          "--branch=feat/1-x",
+          "--budget-s=60",
+          "--interval-s=10",
+          `--result=${result}`,
+          "--polls=3",
+        );
+      expect(poll("none").json).toMatchObject({ attempts: 3, nextAction: "poll-again" });
+      expect(poll("none").json).toMatchObject({ attempts: 6, nextAction: "retrigger" });
+    });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Fresh install and upgrade keep shared hook behaviour and consumer-owned drivers
+// ---------------------------------------------------------------------------
+
+describe("shared hook behaviour footprint (fresh install and upgrade)", () => {
+  const HOOKS: Record<string, string[]> = {
+    claude: [".claude/hooks/bkit-gateguard.cjs", ".claude/hooks/bkit-guardrails.cjs"],
+    cursor: [".cursor/hooks/bkit-gateguard.cjs", ".cursor/hooks/bkit-guardrails.cjs"],
+    codex: [".codex/hooks/bkit-gateguard.cjs", ".codex/hooks/bkit-guardrails.cjs"],
+    antigravity: [
+      ".agents/plugins/bkit/hooks/bkit-gateguard.cjs",
+      ".agents/plugins/bkit/hooks/bkit-guardrails.cjs",
+    ],
+  };
+  const START = "// bkit:" + "start";
+  const END = "// bkit:" + "end";
+
+  const split = (text: string): { head: string; managed: string; tail: string } => {
+    const a = text.indexOf(START);
+    const b = text.indexOf(END);
+    return {
+      head: text.slice(0, a),
+      managed: text.slice(a, b + END.length),
+      tail: text.slice(b + END.length),
+    };
+  };
+
+  const installCtx = (): ModuleContext => {
+    const promptsMd = path.join(getBkitDocsRoot(), "prompts.md");
+    return makeCtx({
+      modelLookup: parseModelLookup(promptsMd),
+      codexModelLookup: buildOpencodeModelLookup(promptsMd, "openai"),
+      antigravityModelLookup: buildAntigravityModelLookup(promptsMd),
+      effortMap: parseEffortMap(promptsMd),
+    });
+  };
+
+  it("installs and upgrades shared hook behavior without replacing owned drivers", () => {
+    const hosts = Object.keys(HOOKS);
+    const modules = new Set<import("../../cli").ModuleFlag>(["core", ...hosts] as never);
+
+    // Fresh install: shared shell and edit behaviour arrives, and the pointer resolves locally.
+    dispatchModules(modules, installCtx());
+    const fresh: Record<string, string> = {};
+    for (const rel of hosts.flatMap((h) => HOOKS[h])) {
+      fresh[rel] = fs.readFileSync(path.join(tmpDir, rel), "utf-8");
+      expect(fresh[rel], rel).toContain(START);
+      expect(fresh[rel], rel).toContain(END);
+    }
+    for (const host of hosts) {
+      const guard = split(fresh[HOOKS[host][1]]).managed;
+      expect(guard, `${host} guardrails shell advice`).toContain("edits files through the shell");
+      expect(guard, `${host} guardrails unknown-target`).toContain("cannot be determined");
+      expect(guard, `${host} guardrails authoring pointer`).toContain(".bkit/authoring.md");
+    }
+    const authoring = fs.readFileSync(path.join(tmpDir, ".bkit", "authoring.md"), "utf-8");
+    expect(authoring).toContain("Which Sections Apply");
+    expect(authoring).toContain("Doc Templates");
+
+    // No runtime package dependency is added to the consumer.
+    const pkgFresh = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
+    expect(pkgFresh.dependencies).toBeUndefined();
+
+    // Upgrade from the shipped layout: an old managed block, a customised outer driver (and
+    // one untouched default), and a custom registration group alongside bkit's own.
+    const customised = new Map<string, { head: string; tail: string }>();
+    for (const rel of hosts.flatMap((h) => HOOKS[h])) {
+      const parts = split(fresh[rel]);
+      // The gateguard driver is customised; the guardrails driver stays the shipped default.
+      const edits: Record<string, { head: string; tail: string }> = {
+        "bkit-gateguard.cjs": {
+          head: `// consumer-owned driver note \u00e9 ${rel}\n`,
+          tail: `\n// consumer tail ${rel}\n`,
+        },
+        "bkit-guardrails.cjs": { head: "", tail: "" },
+      };
+      const edit = edits[path.basename(rel)];
+      const head = parts.head + edit.head;
+      const tail = parts.tail + edit.tail;
+      fs.writeFileSync(
+        path.join(tmpDir, rel),
+        `${head}${START}\n// stale managed engine from the shipped layout\n${END}${tail}`,
+        "utf-8",
+      );
+      customised.set(rel, { head, tail });
+    }
+    const settingsPath = path.join(tmpDir, ".claude", "settings.json");
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as {
+      hooks: { PreToolUse: object[] };
+    };
+    const customGroup = {
+      matcher: "ConsumerTool",
+      hooks: [{ type: "command", command: "node scripts/consumer-hook.js" }],
+    };
+    settings.hooks.PreToolUse.push(customGroup);
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf-8");
+
+    dispatchModules(modules, installCtx());
+
+    for (const rel of hosts.flatMap((h) => HOOKS[h])) {
+      const now = split(fs.readFileSync(path.join(tmpDir, rel), "utf-8"));
+      const before = customised.get(rel) as { head: string; tail: string };
+      // Owned bytes identical; managed behaviour restored to the current shared engine.
+      expect(now.head, `${rel} head`).toBe(before.head);
+      expect(now.tail, `${rel} tail`).toBe(before.tail);
+      expect(now.managed, `${rel} managed`).toBe(split(fresh[rel]).managed);
+    }
+    const after = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as {
+      hooks: { PreToolUse: { matcher?: string }[] };
+    };
+    expect(after.hooks.PreToolUse).toContainEqual(customGroup);
+    expect(JSON.stringify(after.hooks.PreToolUse)).toContain("bkit-gateguard.cjs");
+    const pkgAfter = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
+    expect(pkgAfter.dependencies).toBeUndefined();
+    expect(pkgAfter.devDependencies).toEqual(pkgFresh.devDependencies);
+  });
+
+  it("upgrades shipped registrations without dropping consumer hook groups or permissions", () => {
+    // The shipped text at da97be38, frozen in tests/fixtures/shipped-text.
+    const shipped = (rel: string): string =>
+      fs.readFileSync(
+        path.join(getPkgRoot(), "tests/fixtures/shipped-text/da97be38", rel),
+        "utf-8",
+      );
+    const modules = new Set<import("../../cli").ModuleFlag>([
+      "core",
+      "claude",
+      "cursor",
+      "antigravity",
+    ] as never);
+
+    const claudePath = path.join(tmpDir, ".claude", "settings.json");
+    const cursorPath = path.join(tmpDir, ".cursor", "hooks.json");
+    const agyPath = path.join(tmpDir, ".agents", "plugins", "bkit", "hooks.json");
+    for (const [p, rel] of [
+      [claudePath, ".claude/settings.json"],
+      [cursorPath, ".cursor/hooks.json"],
+      [agyPath, ".agents/plugins/bkit/hooks.json"],
+    ] as const) {
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      fs.writeFileSync(p, shipped(rel), "utf-8");
+    }
+
+    const claudeGroup = {
+      matcher: "ConsumerTool",
+      hooks: [{ type: "command", command: "node scripts/consumer-hook.js" }],
+    };
+    const agyGroup = {
+      matcher: "consumer_tool",
+      hooks: [{ type: "command", command: "node scripts/consumer-agy.js" }],
+    };
+    const cursorEntry = { command: "node scripts/consumer-cursor.js", matcher: "ConsumerTool" };
+    const ownAllow = "Bash(consumer-own-command:*)";
+
+    const claude = JSON.parse(fs.readFileSync(claudePath, "utf-8"));
+    claude.hooks.PreToolUse.push(claudeGroup);
+    claude.permissions.allow = [...claude.permissions.allow, ownAllow];
+    fs.writeFileSync(claudePath, JSON.stringify(claude, null, 2) + "\n", "utf-8");
+    const cursor = JSON.parse(fs.readFileSync(cursorPath, "utf-8"));
+    cursor.hooks.preToolUse.push(cursorEntry);
+    fs.writeFileSync(cursorPath, JSON.stringify(cursor, null, 2) + "\n", "utf-8");
+    const agy = JSON.parse(fs.readFileSync(agyPath, "utf-8"));
+    agy.hooks.PreToolUse.push(agyGroup);
+    fs.writeFileSync(agyPath, JSON.stringify(agy, null, 2) + "\n", "utf-8");
+
+    const ctx = (): ModuleContext => {
+      const promptsMd = path.join(getBkitDocsRoot(), "prompts.md");
+      return makeCtx({
+        modelLookup: parseModelLookup(promptsMd),
+        codexModelLookup: buildOpencodeModelLookup(promptsMd, "openai"),
+        antigravityModelLookup: buildAntigravityModelLookup(promptsMd),
+        effortMap: parseEffortMap(promptsMd),
+      });
+    };
+    dispatchModules(modules, ctx());
+
+    const read = (p: string) => fs.readFileSync(p, "utf-8");
+
+    // New matchers arrive.
+    const claudeAfter = JSON.parse(read(claudePath));
+    expect(JSON.stringify(claudeAfter.hooks.PreToolUse)).toContain("NotebookEdit");
+    expect(read(cursorPath)).toContain("Write|Delete");
+    expect(read(agyPath)).toContain("multi_replace_file_content");
+
+    // Consumer-owned entries survive, byte-for-byte.
+    expect(claudeAfter.hooks.PreToolUse).toContainEqual(claudeGroup);
+    expect(claudeAfter.permissions.allow).toContain(ownAllow);
+    expect(JSON.parse(read(cursorPath)).hooks.preToolUse).toContainEqual(cursorEntry);
+    expect(JSON.parse(read(agyPath)).hooks.PreToolUse).toContainEqual(agyGroup);
+
+    // No duplicate bkit group: each bkit hook command is registered once per event.
+    const gateguardCommand = /"command":"(?:[^"\\]|\\.)*bkit-gateguard\.cjs(?:[^"\\]|\\.)*"/g;
+    const countCommands = (hooks: unknown): number =>
+      Array.from(JSON.stringify(hooks).matchAll(gateguardCommand)).length;
+    expect(countCommands(claudeAfter.hooks.PreToolUse)).toBe(1);
+    expect(countCommands(JSON.parse(read(cursorPath)).hooks.preToolUse)).toBe(1);
+    expect(countCommands(JSON.parse(read(agyPath)).hooks.PreToolUse)).toBe(1);
+
+    // A second install is a no-op.
+    const snapshot = [claudePath, cursorPath, agyPath].map(read);
+    dispatchModules(modules, ctx());
+    expect([claudePath, cursorPath, agyPath].map(read)).toEqual(snapshot);
+  });
+
+  it("upgrades a shipped Claude edit group without dropping a consumer hook inside it", () => {
+    const shippedSettings = fs.readFileSync(
+      path.join(getPkgRoot(), "tests/fixtures/shipped-text/da97be38/.claude/settings.json"),
+      "utf-8",
+    );
+    const claudePath = path.join(tmpDir, ".claude", "settings.json");
+    fs.mkdirSync(path.dirname(claudePath), { recursive: true });
+
+    const consumerHook = { type: "command", command: "node scripts/my-check.js" };
+    const shipped = JSON.parse(shippedSettings) as {
+      hooks: { PreToolUse: { hooks: object[] }[] };
+    };
+    const gateGroup = shipped.hooks.PreToolUse.find((g) =>
+      JSON.stringify(g.hooks).includes("bkit-gateguard.cjs"),
+    );
+    expect(gateGroup, "shipped gateguard group").toBeDefined();
+    gateGroup?.hooks.push(consumerHook);
+    fs.writeFileSync(claudePath, JSON.stringify(shipped, null, 2) + "\n", "utf-8");
+
+    const modules = new Set<import("../../cli").ModuleFlag>(["core", "claude"] as never);
+    const ctx = (): ModuleContext => {
+      const promptsMd = path.join(getBkitDocsRoot(), "prompts.md");
+      return makeCtx({
+        modelLookup: parseModelLookup(promptsMd),
+        codexModelLookup: buildOpencodeModelLookup(promptsMd, "openai"),
+        antigravityModelLookup: buildAntigravityModelLookup(promptsMd),
+        effortMap: parseEffortMap(promptsMd),
+      });
+    };
+    dispatchModules(modules, ctx());
+
+    const after = JSON.parse(fs.readFileSync(claudePath, "utf-8")) as {
+      hooks: { PreToolUse: { matcher?: string; hooks: object[] }[] };
+    };
+    const groups = after.hooks.PreToolUse;
+    const upgraded = groups.filter((g) => JSON.stringify(g.hooks).includes("bkit-gateguard.cjs"));
+    // The new matcher arrives, the group is not duplicated, and the consumer hook survives in it.
+    expect(upgraded).toHaveLength(1);
+    expect(upgraded[0].matcher).toContain("NotebookEdit");
+    expect(upgraded[0].hooks).toContainEqual(consumerHook);
+    expect(JSON.stringify(groups).split("scripts/my-check.js")).toHaveLength(2);
   });
 });

@@ -25,10 +25,18 @@ import * as path from "node:path";
 import { readJsonFile } from "../../shared/json.js";
 
 import {
+  appendLine,
+  CI_HANDOFF_RESULTS,
   CI_TIERS,
+  foldCiHandoff,
   lastRun,
   statusTimestamp,
+  validateCiHandoffEvent,
   validateCiSelection,
+  type CiHandoffResult,
+  type CiHandoffRetrigger,
+  type CiHandoffState,
+  type CiHandoffTarget,
   type CiSelection,
   type CiTier,
 } from "../../ledgers/status.js";
@@ -39,6 +47,7 @@ import {
   DEV,
   EXIT,
   git,
+  INVOCATION_FLAG,
   isSharedBranch,
   parseJson,
   runGh,
@@ -58,18 +67,27 @@ import { FID_PATTERNS, fromBranch, fromMarker, issueIdOf, readIssueTracker } fro
 import type { IssueTracker } from "../../install/manifest.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { fetchRemoteRef, pushBranch } from "./branches.js";
-import { activeRecord, checkOnlyBookkeeping, retriggerCommit } from "./ledgers.js";
+import {
+  activeRecord,
+  appendRecordCommit,
+  checkOnlyBookkeeping,
+  commitOwnSet,
+  markRecordPushed,
+  readRecord,
+  retriggerCommit,
+} from "./ledgers.js";
 import {
   closeTransportRow,
   crossCheckFile,
   devRequiresChecks,
   prRepoSlug,
   probePr,
+  validPrFacts,
   type PrInfo,
 } from "./prs.js";
-import { resolveOwnerRepo, splitSlug } from "./repo.js";
+import { originOwnerRepo, resolveOwnerRepo, splitSlug } from "./repo.js";
 import { restateOutcome } from "./run-facts.js";
-import { extraField, readRuns, str } from "./status.js";
+import { extraField, readRuns, readStatusRows, str } from "./status.js";
 import { writeStepRow } from "./steps.js";
 import { attempt, issueRef, readLabels, trackerTarget } from "./tracker.js";
 
@@ -108,6 +126,9 @@ export function checkNamespace(capstoneJob: string): string {
   return i > 0 ? capstoneJob.slice(0, i) : capstoneJob;
 }
 
+/** The conclusions of a finished run or job that count as a failure. */
+const FAILED_CONCLUSIONS = ["failure", "timed_out", "startup_failure"];
+
 /** Whether `.github/workflows/<bkit.testing.ciWorkflow>` exists — the only honest ground for a `no-ci` pass. */
 export function ciDeclared(root: string): { declared: boolean; ciWorkflow: string; path: string } {
   const { ciWorkflow } = readBkitConfig(root);
@@ -120,7 +141,7 @@ type CiReference = { kind: "run" | "pr"; repo: string; id: string; attempt?: num
 /** Only the winning reference kind is actionable; a run takes precedence over a PR. */
 export function parseCiReference(input: string): CiReference | undefined {
   const references: CiReference[] = [];
-  const urls = [...input.matchAll(/https:\/\/github\.com\/[^\s<>"`]+/g)].map((match) =>
+  const urls = [...input.matchAll(/https:\/\/github\.com\/[^\s<>"`\[\]()]+/g)].map((match) =>
     match[0].replace(/[),.;\]]+$/, ""),
   );
   const parsed = urls.flatMap((url) => {
@@ -399,10 +420,7 @@ function locateCi(ctx: RunContext): number {
         throw new CommandError(82, "PR lookup returned a run from another head");
     }
     validateRun(run);
-    if (
-      run.status !== "completed" ||
-      !["failure", "timed_out", "startup_failure"].includes(text(run.conclusion))
-    ) {
+    if (run.status !== "completed" || !FAILED_CONCLUSIONS.includes(text(run.conclusion))) {
       if (reference)
         throw new CommandError(
           82,
@@ -468,15 +486,13 @@ function locateCi(ctx: RunContext): number {
     text(obj(run.head_repository).full_name).toLowerCase() !== repo.toLowerCase()
   )
     throw new CommandError(82, "run attempt, repository or fork identity does not match");
-  const failedJobs = jobs.filter((job) =>
-    ["failure", "timed_out", "startup_failure"].includes(text(job.conclusion)),
+  const failedJobs = jobs.filter((job) => FAILED_CONCLUSIONS.includes(text(job.conclusion)));
+  const failedNames = failedJobs
+    .map((job) => text(job.name))
+    .filter((name) => name !== "bkit-tests-check");
+  const mapped = failedNames.map(
+    (name) => /^bkit-tests-(static|unit|integration|e2e|live|migration)$/.exec(name)?.[1],
   );
-  const mapped = failedJobs
-    .filter((job) => job.name !== "bkit-tests-check")
-    .map(
-      (job) =>
-        /^bkit-tests-(static|unit|integration|e2e|live|migration)$/.exec(text(job.name))?.[1],
-    );
   const tiers: CiTier[] = mapped.some((tier) => tier === undefined)
     ? []
     : CI_TIERS.filter((tier) => mapped.includes(tier));
@@ -493,6 +509,12 @@ function locateCi(ctx: RunContext): number {
     headSha: text(run.head_sha),
     conclusion: text(run.conclusion) as Extract<CiSelection, { mode: "ci" }>["conclusion"],
     redTiers: tiers,
+    ...(failedJobs.length > 0
+      ? {
+          failedJobCount: Math.max(1, mapped.length),
+          failedJobs: [...new Set(failedNames)].sort(),
+        }
+      : {}),
     via,
   };
   if (
@@ -683,10 +705,47 @@ export interface CiDispatch {
   reason?: DispatchReason;
 }
 
-export interface SuppliedPoll {
-  pollResult: "found" | "none" | "err";
+/** What one poll phase saw, in that phase's own counts. */
+export interface DispatchFacts {
+  /** `poll` before the re-trigger, `repoll` after its receipt. */
+  phase: "poll" | "repoll";
+  /** A check or run exists at the head. */
+  found: boolean;
   attempts: number;
-  allErrored: boolean;
+  errors: number;
+  /** How many polls the phase may spend before it decides on silence. */
+  budget: number;
+  /** The head that was polled carries a CI suppressor (`poll`: the pushed head; `repoll`: the re-trigger commit). */
+  headSuppressed: boolean;
+  /** The repo declares a CI workflow file. */
+  ciDeclared: boolean;
+}
+
+export type DispatchDecision =
+  | { next: "verdict"; outcome: DispatchOutcome; reason?: DispatchReason }
+  | { next: "poll-again" }
+  | { next: "retrigger" };
+
+/**
+ * The one CI-Dispatch decision: the gate and `runs handoff` both call it, so a turn loop and an
+ * in-process poll reach the same verdict on the same evidence. Zero polls (no PR to read) count
+ * as every poll errored.
+ */
+export function decideDispatch(f: DispatchFacts): DispatchDecision {
+  const unresolved = (reason: DispatchReason): DispatchDecision => ({
+    next: "verdict",
+    outcome: "unresolved",
+    reason,
+  });
+  if (!f.found && f.attempts < f.budget) return { next: "poll-again" };
+  // A run found on a suppressed re-trigger head cannot tell CI from suppression.
+  if (f.phase === "repoll" && f.headSuppressed) return unresolved("retrigger-suppressed");
+  if (f.found)
+    return { next: "verdict", outcome: f.phase === "repoll" ? "self-healed" : "dispatched" };
+  if (f.errors === f.attempts) return unresolved("gh-error");
+  if (f.phase === "poll")
+    return f.headSuppressed ? unresolved("timeout-dirty") : { next: "retrigger" };
+  return f.ciDeclared ? unresolved("ci-declared-no-run") : { next: "verdict", outcome: "no-ci" };
 }
 
 export interface DispatchOptions {
@@ -696,15 +755,25 @@ export interface DispatchOptions {
   autoRouteSuffix: string;
   budgetS: number;
   intervalS: number;
-  /** The poll result an agent turn loop resolved after a hand-off. */
-  supplied?: SuppliedPoll;
-  /** The re-trigger commit is already pushed (re-entry after a hand-off in the re-poll). */
-  retriggered: boolean;
   /**
    * The sha the run's last push landed on a shared branch, for a run with no PR.
    * An own-commit push lands copies, so it is not necessarily local HEAD.
    */
   sha?: string;
+  /**
+   * Durable continuation: every poll observation and re-trigger checkpoint is appended to
+   * `statusPath` as a `ci-handoff` row, and a fresh call with the same path resumes from them.
+   */
+  handoff: HandoffOptions;
+}
+
+export interface HandoffOptions {
+  statusPath: string;
+  /** The receipt written once the re-trigger is complete. */
+  operation: string;
+  workflow?: string;
+  /** Called after each re-trigger checkpoint is durable. */
+  checkpoint?: (name: "commit-created" | "push-completed" | "receipt-completed") => void;
 }
 
 export interface DispatchResult {
@@ -737,6 +806,107 @@ function pushCurrentBranch(cwd: string): { ok: boolean; error: string } {
 }
 
 /**
+ * Land a shared-branch run's own commits when every one of them changes nothing (a re-trigger and
+ * an empty close): each is copied onto the remote tip with that tip's own tree and pushed as a
+ * fast-forward. The tree is one the remote already holds, so there is nothing for a landing gate
+ * to validate, and no foreign local commit rides along. `not-empty` hands the push to
+ * `pushBranch`, whose landing gate covers content.
+ */
+function landEmptyOwnCommits(
+  cwd: string,
+  fid: string,
+  branch: string,
+  log: (m: string) => void,
+  /** Called with the copy's SHA before it is pushed, so a lost push response is recoverable. */
+  onCopy?: (sha: string) => void,
+): { kind: "landed"; sha: string } | { kind: "not-empty" } | { kind: "failed" } {
+  const rec = readRecord(cwd, fid);
+  if (rec === null || !runGit(cwd, ["fetch", "origin", branch]).ok) return { kind: "failed" };
+  const tip = git(cwd, ["rev-parse", "-q", "--verify", `origin/${branch}`]);
+  const tipTree = tip === null ? null : git(cwd, ["rev-parse", `${tip}^{tree}`]);
+  if (tip === null || tipTree === null) return { kind: "failed" };
+  const landed = new Set(rec.pushed ?? []);
+  const pending = rec.commits.filter(
+    (c) => !landed.has(c) && !runGit(cwd, ["merge-base", "--is-ancestor", c, tip]).ok,
+  );
+  // Every run commit is already on the remote, or was pushed as a copy with a SHA of its own:
+  // the remote tip is what holds them, never a recorded local original.
+  if (pending.length === 0) return { kind: "landed", sha: tip };
+  const empty = (c: string) => {
+    const tree = git(cwd, ["rev-parse", `${c}^{tree}`]);
+    return tree !== null && tree === git(cwd, ["rev-parse", `${c}^^{tree}`]);
+  };
+  if (!pending.every(empty)) return { kind: "not-empty" };
+  let parent = tip;
+  for (const c of pending) {
+    const made = runGit(cwd, [
+      "commit-tree",
+      tipTree,
+      "-p",
+      parent,
+      "-m",
+      git(cwd, ["log", "-1", "--format=%B", c]) ?? "",
+    ]);
+    if (!made.ok) return { kind: "failed" };
+    parent = made.stdout;
+  }
+  onCopy?.(parent);
+  const pushed = runGit(cwd, ["push", "origin", `${parent}:refs/heads/${branch}`]);
+  if (!pushed.ok) {
+    log(`pushing the run's empty commits to ${branch} failed: ${pushed.stderr}`);
+    return { kind: "failed" };
+  }
+  markRecordPushed(cwd, fid, pending);
+  log(
+    `landed ${pending.length} empty commit(s) of the run on ${branch} as copies (${parent.slice(0, 12)})`,
+  );
+  return { kind: "landed", sha: parent };
+}
+
+/** The persisted `ci-handoff` rows of a status file (none when the file does not exist yet). */
+function handoffRowsOf(statusPath: string): object[] {
+  return fs.existsSync(statusPath) ? readStatusRows(statusPath) : [];
+}
+
+/** The tip of `branch` on origin: its sha, "" when the branch is absent there, null when the lookup failed. */
+function remoteTip(cwd: string, branch: string): string | null {
+  const res = runGit(cwd, ["ls-remote", "origin", `refs/heads/${branch}`]);
+  if (!res.ok) return null;
+  return res.stdout.split(/\s+/)[0] ?? "";
+}
+
+/**
+ * The head a target is persisted under. Rows written before a re-trigger carry the head the
+ * re-trigger started from, so a process that finds HEAD on the re-trigger commit resumes them.
+ */
+function resolveHandoffHead(
+  rows: object[],
+  identity: Omit<CiHandoffTarget, "head">,
+  cwd: string,
+  current: string,
+): string {
+  const mine = rows
+    .filter(validateCiHandoffEvent)
+    .filter(
+      (e) =>
+        e.target.repo.toLowerCase() === identity.repo.toLowerCase() &&
+        e.target.pr === identity.pr &&
+        e.target.branch === identity.branch,
+    );
+  const latest = mine.at(-1);
+  if (latest === undefined || latest.target.head === current) return current;
+  const rt = latest.retrigger;
+  if (rt?.commit === current || rt?.remote === current) return latest.target.head;
+  if (
+    rt?.state === "intended" &&
+    git(cwd, ["rev-parse", "HEAD^"]) === rt.original &&
+    /re-trigger/.test(commitMessage(cwd, current) ?? "")
+  )
+    return latest.target.head;
+  return current;
+}
+
+/**
  * The CI-Dispatch Gate after build / debug's last push. Never pushes after the
  * verdict: a later commit would move the PR head away from the run it proved.
  */
@@ -766,7 +936,7 @@ export async function ciDispatchGate(
     ciDispatch: null,
     head: head(),
     attempts: 0,
-    retrigger: o.retriggered,
+    retrigger: false,
     ciWorkflow: declared.ciWorkflow,
     runBranch: byRun ? branch : null,
   };
@@ -784,35 +954,95 @@ export async function ciDispatchGate(
         ciWorkflow: declared.ciWorkflow,
         namespace: checkNamespace(capstoneJob),
       };
-  const poll = async (phase: "poll" | "repoll"): Promise<SuppliedPoll | null> => {
-    // A supplied result answers only the poll that was handed off; later polls run fresh.
-    if (o.supplied && (phase === "repoll") === o.retriggered) {
-      deps.log(
-        `poll result supplied by the agent turn loop: ${o.supplied.pollResult} (attempts ${o.supplied.attempts})`,
-      );
-      return o.supplied;
-    }
-    // No PR to read is the shell's empty-PR poll: zero attempts, all errored.
-    if (o.pr === null && !byRun) return { pollResult: "err", attempts: 0, allErrored: true };
+  // Durable continuation: the persisted state of this target, and the totals kept in step with it.
+  const hand = o.handoff;
+  const rowsAtStart = handoffRowsOf(hand.statusPath);
+  const identity = {
+    provider: "github" as const,
+    repo: originOwnerRepo(o.cwd) ?? "local/origin",
+    pr: o.pr,
+    branch: branch || "HEAD",
+  };
+  const ht: CiHandoffTarget = {
+    ...identity,
+    head: resolveHandoffHead(rowsAtStart, identity, o.cwd, res.head),
+  };
+  const hs: CiHandoffState = foldCiHandoff(rowsAtStart, ht);
+  let cumAttempts = hs.attempts;
+  let cumErrors = hs.errors;
+  let curRt: CiHandoffRetrigger | null = hs.retrigger;
+  const repollBase = hs.retriggerBase;
+  let lastResult: CiHandoffResult = hs.last?.result ?? "none";
+  res.attempts = hs.attempts;
+  const persist = (phase: "poll" | "repoll", result: CiHandoffResult) => {
+    lastResult = result;
+    fs.appendFileSync(
+      hand.statusPath,
+      appendLine({
+        type: "ci-handoff",
+        workflow: hand.workflow ?? "build",
+        at: statusTimestamp(),
+        phase,
+        target: ht,
+        observation: { result, attempts: cumAttempts, errors: cumErrors },
+        ...(curRt === null ? {} : { retrigger: curRt }),
+      }),
+    );
+  };
+  const pollBudget = Math.max(1, Math.ceil(o.budgetS / o.intervalS));
+  /** One phase's poll, resumed from the persisted rows: what it saw, in the phase's own counts. */
+  const poll = async (
+    phase: "poll" | "repoll",
+  ): Promise<{ found: boolean; attempts: number; errors: number; budget: number } | null> => {
+    // No PR to read is the shell's empty-PR poll: zero attempts, all errored, nothing to spend.
+    if (o.pr === null && !byRun) return { found: false, attempts: 0, errors: 0, budget: 0 };
     if (byRun) target.head = head();
+    // The first phase ends where the re-trigger began; the re-poll counts from there.
+    const baseA = phase === "repoll" ? (repollBase?.attempts ?? cumAttempts) : 0;
+    const baseE = phase === "repoll" ? (repollBase?.errors ?? cumErrors) : 0;
+    const endA = phase === "poll" && repollBase ? repollBase.attempts : cumAttempts;
+    const endE = phase === "poll" && repollBase ? repollBase.errors : cumErrors;
+    const seen = (found: boolean, a: number, e: number) => ({
+      found,
+      attempts: a - baseA,
+      errors: e - baseE,
+      budget: pollBudget,
+    });
+    const foundBefore =
+      hs.last !== null &&
+      ["pending", "success", "failure"].includes(hs.last.result) &&
+      hs.phase === phase;
+    if (foundBefore && endA === cumAttempts) return seen(true, cumAttempts, cumErrors);
+    const remaining = pollBudget - (endA - baseA);
+    if (remaining <= 0) return seen(false, endA, endE);
+    let errs = 0;
     deps.log(
       byRun
-        ? `polling for a ${target.ciWorkflow} run on ${branch} at ${target.head} (budget ${o.budgetS}s, interval ${o.intervalS}s)`
-        : `polling for a ${target.namespace} check on PR #${o.pr} (budget ${o.budgetS}s, interval ${o.intervalS}s)`,
+        ? `polling for a ${target.ciWorkflow} run on ${branch} at ${target.head} (${remaining} attempt(s) left, interval ${o.intervalS}s)`
+        : `polling for a ${target.namespace} check on PR #${o.pr} (${remaining} attempt(s) left, interval ${o.intervalS}s)`,
     );
     const w = await waitLoop(
-      { budgetS: o.budgetS, intervalS: o.intervalS, once: false },
-      () => pollOnce(target, deps.gh),
+      { budgetS: remaining * o.intervalS, intervalS: o.intervalS, once: false },
+      () => {
+        const p = pollOnce(target, deps.gh);
+        if (p.state === "err") errs += 1;
+        return p;
+      },
       deps.sleep,
       deps.log,
     );
+    cumAttempts += w.attempts;
+    cumErrors += errs;
+    res.attempts = cumAttempts;
+    const phaseAttempts = cumAttempts - baseA;
+    const allErrored = phaseAttempts > 0 && cumErrors - baseE === phaseAttempts;
+    persist(phase, w.result === "found" ? "pending" : allErrored ? "provider-error" : "none");
     if (w.blocked || w.ghMissing) {
       res.phase = phase;
       res.handoff = w.ghMissing ? EXIT.USE_MCP : EXIT.AGENT_WAIT;
-      res.attempts += w.attempts;
       return null;
     }
-    return { pollResult: w.result, attempts: w.attempts, allErrored: w.allErrored };
+    return seen(w.result === "found", cumAttempts, cumErrors);
   };
   const verdict = (outcome: DispatchOutcome, reason?: DispatchReason): DispatchResult => {
     res.ciDispatch = {
@@ -828,21 +1058,159 @@ export async function ciDispatchGate(
     return res;
   };
 
-  if (!o.retriggered) {
+  /**
+   * The re-trigger as persisted checkpoints: intended -> commit-created -> push-completed ->
+   * receipt-completed. A fresh process continues from the last one; no effect repeats.
+   */
+  const handoffRetrigger = async (
+    message: string,
+    rec: ReturnType<typeof activeRecord>,
+  ): Promise<boolean> => {
+    const refName = `refs/heads/${branch}`;
+    let cur: CiHandoffRetrigger = curRt ?? { state: "intended", original: head() };
+    if (curRt === null) {
+      curRt = cur;
+      persist("poll", lastResult);
+    }
+    if (cur.state === "intended") {
+      const parent = git(o.cwd, ["rev-parse", "HEAD^"]);
+      const adopted =
+        git(o.cwd, ["rev-parse", "HEAD"]) !== cur.original &&
+        parent === cur.original &&
+        /re-trigger/.test(commitMessage(o.cwd, "HEAD") ?? "");
+      let sha: string | null;
+      if (adopted) {
+        sha = git(o.cwd, ["rev-parse", "HEAD"]);
+        if (rec !== null && sha !== null && !readRecord(o.cwd, o.fid)?.commits.includes(sha))
+          appendRecordCommit(o.cwd, o.fid, sha);
+      } else {
+        const made =
+          rec === null
+            ? commitOwnSet(o.cwd, { plain: [], ledgers: [] }, message, { allowEmpty: true })
+            : retriggerCommit(o.cwd, rec, message);
+        if (!made.ok) deps.log(`re-trigger commit failed: ${made.error}`);
+        sha = made.ok ? made.sha : null;
+      }
+      if (sha === null) return false;
+      cur = { state: "commit-created", original: cur.original, commit: sha };
+      curRt = cur;
+      persist("poll", lastResult);
+      hand.checkpoint?.("commit-created");
+    }
+    if (cur.state === "commit-created" && cur.commit !== undefined) {
+      let remoteSha: string | null;
+      if (rec === null) {
+        const tip = remoteTip(o.cwd, branch);
+        if (tip === null) {
+          deps.log("re-trigger push blocked: the remote branch could not be read");
+          return false;
+        }
+        if (tip !== cur.commit) {
+          // Whatever `origin/<branch>` holds, a tip that is not behind the re-trigger commit is
+          // someone else's work: a lease taken against an up-to-date tracking ref would overwrite it.
+          const fastForward =
+            tip === "" || runGit(o.cwd, ["merge-base", "--is-ancestor", tip, cur.commit]).ok;
+          if (!fastForward) {
+            deps.log(
+              `re-trigger push blocked: ${branch} moved on the remote to ${tip.slice(0, 12)} after the re-trigger commit was made`,
+            );
+            return false;
+          }
+          const push = pushCurrentBranch(o.cwd);
+          if (!push.ok) {
+            deps.log(`re-trigger push failed: ${push.error}`);
+            return false;
+          }
+        }
+        remoteSha = remoteTip(o.cwd, branch) === cur.commit ? cur.commit : null;
+      } else {
+        // A copy persisted by an earlier attempt may already be on the remote: the push
+        // response can be lost, so check before copying again.
+        const earlier = cur.copy;
+        const held =
+          earlier !== undefined &&
+          runGit(o.cwd, ["fetch", "origin", branch]).ok &&
+          runGit(o.cwd, ["merge-base", "--is-ancestor", earlier, `origin/${branch}`]).ok;
+        if (held) {
+          markRecordPushed(o.cwd, o.fid, [cur.commit]);
+          remoteSha = earlier;
+        }
+        const empties = held
+          ? ({ kind: "landed", sha: earlier } as const)
+          : landEmptyOwnCommits(o.cwd, o.fid, branch, deps.log, (copy) => {
+              cur = { ...cur, copy };
+              curRt = cur;
+              persist("poll", lastResult);
+            });
+        if (empties.kind === "landed") remoteSha = empties.sha;
+        else if (empties.kind === "failed") remoteSha = null;
+        else {
+          const out = await pushBranch(o.cwd, { mode: "feature", fid: o.fid }, deps.log);
+          remoteSha = out.out.pushed
+            ? out.out.sha
+            : out.out.skipped === "no-run-commits"
+              ? (readRecord(o.cwd, o.fid)?.pushed?.at(-1) ?? null)
+              : null;
+        }
+      }
+      if (remoteSha === null) {
+        deps.log("re-trigger push did not land the re-trigger commit on the remote");
+        return false;
+      }
+      cur = { ...cur, state: "push-completed", ref: refName, remote: remoteSha };
+      curRt = cur;
+      persist("poll", lastResult);
+      hand.checkpoint?.("push-completed");
+    }
+    if (cur.state === "push-completed" && cur.remote !== undefined) {
+      if (rec === null && remoteTip(o.cwd, branch) !== cur.remote) {
+        deps.log("re-trigger receipt blocked: the remote branch no longer holds the pushed commit");
+        return false;
+      }
+      cur = { ...cur, state: "receipt-completed", receipt: hand.operation };
+      curRt = cur;
+      persist("repoll", lastResult);
+      hand.checkpoint?.("receipt-completed");
+    }
+    return curRt.state === "receipt-completed";
+  };
+
+  /** Why each verdict was reached, for the log. */
+  const why: Record<string, string> = {
+    "gh-error":
+      "every poll of the phase errored — gh unavailable or unauthenticated; silence proves nothing",
+    "timeout-dirty":
+      "no run and the pushed head carries a CI suppressor — not re-triggering a dirty head",
+    "retrigger-suppressed":
+      "the re-trigger head carries a suppressor — cannot tell no-ci from suppression",
+    "ci-declared-no-run": `${declared.path} exists but a clean re-trigger dispatched no check — look for a startup failure`,
+    "no-ci": `a clean re-trigger dispatched nothing and ${declared.path} is absent — the repo has no CI workflow (logged pass)`,
+  };
+  /** The shared decision on what a phase saw; null when the phase must re-trigger. */
+  const decide = (
+    phase: "poll" | "repoll",
+    seen: { found: boolean; attempts: number; errors: number; budget: number },
+    headSuppressed: boolean,
+  ): DispatchResult | null => {
+    const d = decideDispatch({ phase, ...seen, headSuppressed, ciDeclared: declared.declared });
+    if (d.next === "retrigger") return null;
+    if (d.next === "poll-again") {
+      throw new Error(`CI-Dispatch ${phase} ended with polls left in its budget`);
+    }
+    const note = why[d.reason ?? d.outcome];
+    if (note !== undefined)
+      deps.log(`${d.reason === undefined ? d.outcome : `unresolved(${d.reason})`}: ${note}`);
+    return verdict(d.outcome, d.reason);
+  };
+  const suppressed = (sha: string) => SKIP_CI_TOKEN.test(commitMessage(o.cwd, sha) ?? "");
+
+  if (curRt?.state !== "receipt-completed") {
     const first = await poll("poll");
     if (first === null) return res;
-    res.attempts = first.attempts;
-    if (first.pollResult === "found") return verdict("dispatched");
-    if (first.allErrored) {
-      deps.log("unresolved(gh-error): every poll errored — gh unavailable or unauthenticated");
-      return verdict("unresolved", "gh-error");
-    }
-    if (SKIP_CI_TOKEN.test(commitMessage(o.cwd, res.head) ?? "")) {
-      deps.log(
-        "unresolved(timeout-dirty): no run and the pushed head carries a CI suppressor — not re-triggering a dirty head",
-      );
-      return verdict("unresolved", "timeout-dirty");
-    }
+    res.attempts = cumAttempts;
+    // A re-trigger already under way is resumed, never refused for the head it started from.
+    const done = decide("poll", first, curRt === null && suppressed(res.head));
+    if (done !== null) return done;
     const message = `chore(${o.fid}): re-trigger${o.autoRouteSuffix}`;
     // A run in place on a shared branch commits and pushes only its own work; with
     // no record of the run there, nothing is committed or pushed.
@@ -855,77 +1223,25 @@ export async function ciDispatchGate(
       res.handoff = EXIT_RETRIGGER_FAILED;
       return res;
     }
-    let pushed: boolean;
-    let failure = "";
-    if (rec === null) {
-      landed = null;
-      const before = git(o.cwd, ["rev-parse", "HEAD"]);
-      const made = runGit(o.cwd, ["commit", "--allow-empty", "-m", message]);
-      if (!made.ok) {
-        pushed = false;
-        failure = made.stderr || made.stdout;
-      } else {
-        const push = pushCurrentBranch(o.cwd);
-        pushed = push.ok;
-        if (!push.ok) {
-          failure = push.error;
-          // The commit never reached the remote: drop it so a re-run does not pile
-          // up orphan re-triggers. --soft restores the index exactly as the commit left it.
-          if (before !== null) runGit(o.cwd, ["reset", "--soft", before]);
-        }
-      }
-    } else {
-      const made = retriggerCommit(o.cwd, rec, message);
-      if (!made.ok) deps.log(`re-trigger commit failed: ${made.error}`);
-      const out = made.ok
-        ? await pushBranch(o.cwd, { mode: "feature", fid: o.fid }, deps.log)
-        : null;
-      landed = out?.out.pushed === true ? out.out.sha : landed;
-      pushed = out?.out.pushed === true && out.out.sha !== null;
-      if (pushed) fetchLanded();
-    }
-    if (!pushed) {
-      deps.log(
-        `re-trigger commit or push failed${failure ? `: ${failure}` : ""} — no verdict; route to the Failure Path`,
-      );
+    if (!(await handoffRetrigger(message, rec))) {
+      deps.log("re-trigger commit or push failed — no verdict; route to the Failure Path");
       res.phase = "repoll";
       res.handoff = EXIT_RETRIGGER_FAILED;
       return res;
     }
-    res.retrigger = true;
-    res.head = head();
     deps.log("re-trigger pushed; re-polling");
   }
+  res.retrigger = true;
+  if (shared && curRt?.remote !== undefined) landed = curRt.remote;
+  res.head = head();
 
-  const prior = res.attempts;
   const second = await poll("repoll");
   if (second === null) return res;
-  // A supplied re-poll carries the running total; a fresh one adds to the first poll.
-  res.attempts = o.retriggered && o.supplied ? second.attempts : prior + second.attempts;
+  res.attempts = cumAttempts;
   res.head = head();
-  if (SKIP_CI_TOKEN.test(commitMessage(o.cwd, res.head) ?? "")) {
-    deps.log(
-      "unresolved(retrigger-suppressed): the re-trigger head carries a suppressor — cannot tell no-ci from suppression",
-    );
-    return verdict("unresolved", "retrigger-suppressed");
-  }
-  if (second.pollResult === "found") return verdict("self-healed");
-  if (second.allErrored) {
-    deps.log(
-      "unresolved(gh-error): every re-poll errored — silence after the re-trigger proves nothing",
-    );
-    return verdict("unresolved", "gh-error");
-  }
-  if (declared.declared) {
-    deps.log(
-      `unresolved(ci-declared-no-run): ${declared.path} exists but a clean re-trigger dispatched no check — look for a startup failure: gh run list --commit ${res.head}`,
-    );
-    return verdict("unresolved", "ci-declared-no-run");
-  }
-  deps.log(
-    `no-ci: a clean re-trigger dispatched nothing and ${declared.path} is absent — the repo has no CI workflow (logged pass)`,
-  );
-  return verdict("no-ci");
+  const done = decide("repoll", second, suppressed(res.head));
+  if (done === null) throw new Error("CI-Dispatch re-poll cannot re-trigger a second time");
+  return done;
 }
 
 // ---------------------------------------------------------------------------
@@ -952,6 +1268,8 @@ export const GATE = {
   NOT_BOOKKEEPING: 17,
   /** --pr: the PR title carries a CI-suppressing token (its squash would skip CI on dev). */
   TITLE_SKIP: 18,
+  /** The current dev is absent from the validated code head. */
+  STALE_BASE: 19,
   /** API error, rate limit, or auth — distinct from "no run". */
   API_ERROR: 20,
 } as const;
@@ -1725,6 +2043,114 @@ async function waitFor(
   return { code: EXIT.NO, out };
 }
 
+/**
+ * `runs handoff`: record one batch of CI poll observations in the invocation's run and derive the
+ * phase, the cumulative totals and the next action from the persisted rows. The caller supplies
+ * what it saw (`--result`, `--polls`), never a count, a phase or a verdict.
+ */
+function runHandoff(ctx: RunContext): number {
+  const f = ctx.flags;
+  const inv = ctx.invocation;
+  if (
+    inv === undefined ||
+    inv.scope !== "run" ||
+    inv.statusPath === null ||
+    inv.workflow === null
+  ) {
+    throw new CommandError(
+      EXIT.USAGE,
+      "--invocation is required: an invocation issued by `bkit status invocation` for a workflow run",
+    );
+  }
+  const text = (v: FlagValue) => (typeof v === "string" ? v : "");
+  const repo = text(f.repo);
+  // A run in place on a shared branch has no PR: an empty --pr names that target.
+  const pr = text(f.pr) === "" ? null : text(f.pr);
+  const suppliedHead = text(f.head);
+  const branch = text(f.branch);
+  const result = CI_HANDOFF_RESULTS.find((r) => r === text(f.result));
+  if (result === undefined) {
+    throw new CommandError(EXIT.USAGE, `--result must be one of ${CI_HANDOFF_RESULTS.join(" | ")}`);
+  }
+  const polls = wholeNumber(f.polls, "polls", 0, 1);
+  const budgetS = wholeNumber(f.budgetS, "budget-s", 60);
+  const intervalS = wholeNumber(f.intervalS, "interval-s", 10, 1);
+  // After a re-trigger the printed head is the re-trigger commit; its rows live under the original head.
+  const head = resolveHandoffHead(
+    handoffRowsOf(inv.statusPath),
+    { provider: "github", repo, pr, branch },
+    ctx.cwd,
+    suppliedHead,
+  );
+  const target: CiHandoffTarget = { provider: "github", repo, pr, head, branch };
+  const probe = {
+    type: "ci-handoff",
+    workflow: inv.workflow,
+    at: statusTimestamp(),
+    phase: "poll",
+    target,
+    observation: { result: "none", attempts: 0, errors: 0 },
+  };
+  if (!validateCiHandoffEvent(probe)) {
+    throw new CommandError(
+      EXIT.USAGE,
+      "--repo, --pr, --head and --branch must name the owner/repo, PR number, full commit sha and branch",
+    );
+  }
+  const state = foldCiHandoff(readStatusRows(inv.statusPath), target);
+  const attempts = state.attempts + polls;
+  const errors = state.errors + (result === "provider-error" ? polls : 0);
+  const retrigger = state.retrigger;
+  const phase = retrigger?.state === "receipt-completed" ? "repoll" : "poll";
+  fs.appendFileSync(
+    inv.statusPath,
+    appendLine({
+      ...probe,
+      phase,
+      observation: { result, attempts, errors },
+      ...(retrigger === null ? {} : { retrigger }),
+    }),
+  );
+  const max = Math.max(1, Math.ceil(budgetS / intervalS));
+  const base = phase === "repoll" ? (state.retriggerBase ?? { attempts: 0, errors: 0 }) : null;
+  const phaseAttempts = attempts - (base?.attempts ?? 0);
+  const phaseErrors = errors - (base?.errors ?? 0);
+  const found = result === "pending" || result === "success" || result === "failure";
+  const out: Record<string, unknown> = {
+    phase,
+    attempts,
+    errors,
+    ciResult: result,
+    stale: state.stale,
+  };
+  if (retrigger !== null && retrigger.state !== "receipt-completed") {
+    ctx.emit({ ...out, nextAction: "reconcile-retrigger", retrigger });
+    return EXIT.OK;
+  }
+  // The head the phase polled: the pushed head before the re-trigger, the re-trigger commit after it.
+  const polled = phase === "repoll" ? (retrigger?.commit ?? head) : head;
+  const d = decideDispatch({
+    phase,
+    found,
+    attempts: phaseAttempts,
+    errors: phaseErrors,
+    budget: max,
+    headSuppressed: SKIP_CI_TOKEN.test(commitMessage(ctx.cwd, polled) ?? ""),
+    ciDeclared: ciDeclared(checkoutRoot(ctx.cwd)).declared,
+  });
+  ctx.emit(
+    d.next === "verdict"
+      ? {
+          ...out,
+          nextAction: "verdict",
+          outcome: d.outcome,
+          ...(d.reason === undefined ? {} : { reason: d.reason }),
+        }
+      : { ...out, nextAction: d.next },
+  );
+  return EXIT.OK;
+}
+
 async function runWait(ctx: RunContext): Promise<number> {
   const f = ctx.flags;
   const r = await waitFor(
@@ -1759,6 +2185,15 @@ const waitOutput = (w: WaitResult, kind: WaitKind) => ({
 async function runDispatch(ctx: RunContext): Promise<number> {
   const f = ctx.flags;
   const d = deps(ctx);
+  const inv = ctx.invocation;
+  // Every poll and re-trigger checkpoint is saved in the run's status log, so a re-entry resumes
+  // from what was persisted: without a run's invocation there is nowhere to save it.
+  if (inv === undefined || inv.scope !== "run" || inv.statusPath === null) {
+    throw new CommandError(
+      EXIT.USAGE,
+      "--invocation is required: an invocation issued by `bkit status invocation` for a workflow run",
+    );
+  }
   // An empty --pr is the workflow's unresolved PR_NUMBER: derive it, as if omitted.
   let pr = str(f.pr) || null;
   if (pr === null) {
@@ -1783,13 +2218,6 @@ async function runDispatch(ctx: RunContext): Promise<number> {
       "--sha goes with a run in place on a shared branch that has no PR",
     );
   }
-  const pollResult = str(f.pollResult);
-  if (pollResult !== undefined && !["found", "none", "err"].includes(pollResult)) {
-    throw new CommandError(EXIT.USAGE, "--poll-result must be found, none, or err");
-  }
-  if (pollResult === undefined && (f.attempts !== undefined || f.allErrored === true)) {
-    throw new CommandError(EXIT.USAGE, "--attempts / --all-errored go with --poll-result");
-  }
   const r = await ciDispatchGate(
     {
       cwd: ctx.cwd,
@@ -1800,16 +2228,12 @@ async function runDispatch(ctx: RunContext): Promise<number> {
         : "",
       budgetS: wholeNumber(f.budgetS, "budget-s", 60),
       intervalS: wholeNumber(f.intervalS, "interval-s", 10, 1),
-      supplied:
-        pollResult === undefined
-          ? undefined
-          : {
-              pollResult: pollResult as SuppliedPoll["pollResult"],
-              attempts: wholeNumber(f.attempts, "attempts", 0),
-              allErrored: f.allErrored === true,
-            },
-      retriggered: f.retriggered === true,
       sha,
+      handoff: {
+        statusPath: inv.statusPath,
+        operation: `ci-retrigger:${inv.id}`,
+        ...(inv.workflow === null ? {} : { workflow: inv.workflow }),
+      },
     },
     d,
   );
@@ -1825,7 +2249,7 @@ async function runDispatch(ctx: RunContext): Promise<number> {
   let row: Record<string, unknown> | null = null;
   let progressLine: string | undefined;
   let transport: Record<string, unknown> | null = null;
-  const code = dispatchCode(r, pr, scanResult, ctx.log);
+  const code = dispatchCode(r, pr, scanResult, ctx.log, inv.id);
   if (file !== undefined && r.ciDispatch !== null) {
     const status = path.resolve(ctx.cwd, file);
     const written = writeStepRow(
@@ -1897,15 +2321,16 @@ function dispatchCode(
   pr: string | null,
   scanResult: ReturnType<typeof scanBody> | null,
   log: (m: string) => void,
+  invocation: string,
 ): number {
   if (r.handoff === EXIT.AGENT_WAIT || r.handoff === EXIT.USE_MCP) {
-    const again = r.phase === "repoll" ? " --retriggered" : "";
     const [wait, keep] =
       r.runBranch === null
         ? [`--pr=${pr ?? "<n>"}`, ""]
         : [`--head=${r.head} --branch=${r.runBranch} --until=present`, ` --sha=${r.head}`];
+    const lead = `${r.handoff === EXIT.USE_MCP ? GH_MISSING : "this runtime cannot wait"}: resolve the ${r.phase} each turn with \`bkit runs wait ${wait} --once\``;
     log(
-      `${r.handoff === EXIT.USE_MCP ? GH_MISSING : "this runtime cannot wait"}: resolve the ${r.phase} each turn with \`bkit runs wait ${wait} --once\`, then re-run with --poll-result=<found|none|err> --attempts=<total>${again}${keep}`,
+      `${lead}, record what it saw with \`bkit runs handoff --invocation=${invocation} --head=${r.head} --result=<none|pending|success|failure|provider-error> --polls=1\`, follow its nextAction, then re-run this command with the same --invocation${keep}`,
     );
     return r.handoff;
   }
@@ -1955,8 +2380,35 @@ function logResolvedPrRepo(
   }
 }
 
-function runGate(ctx: RunContext): number {
+async function runGate(ctx: RunContext): Promise<number> {
   const f = ctx.flags;
+  if (f.wait === true && f.squashOf === undefined)
+    throw new CommandError(EXIT.USAGE, "--wait needs --squash-of");
+  const freshBase = f.freshBase === true;
+  if (freshBase && (f.pr === undefined || f.capstoneOnly === true))
+    throw new CommandError(EXIT.USAGE, "--fresh-base requires --pr without --capstone-only");
+  const factsPath = str(f.factsFile);
+  let facts: Record<string, unknown> | undefined;
+  if (factsPath !== undefined) {
+    if (!freshBase) throw new CommandError(EXIT.USAGE, "--facts-file requires --fresh-base");
+    const parsed = readJsonFile(path.resolve(ctx.cwd, factsPath));
+    if (!parsed.ok) throw new CommandError(EXIT.USAGE, "cannot read scoped gate facts");
+    facts = obj(parsed.value);
+    const info = facts.pr;
+    if (
+      !validPrFacts(info) ||
+      facts.ownerRepo !== prRepoSlug(info.url) ||
+      (str(f.repo) !== undefined && facts.ownerRepo !== str(f.repo)) ||
+      facts.prNumber !== Number(f.pr) ||
+      info.number !== Number(f.pr) ||
+      facts.headRefName !== info.headRefName ||
+      (str(f.branch) !== undefined && facts.headRefName !== str(f.branch)) ||
+      facts.baseRefName !== DEV ||
+      info.baseRefName !== DEV ||
+      info.state !== "OPEN"
+    )
+      throw new CommandError(EXIT.USAGE, "gate facts repository, PR, head or base scope mismatch");
+  }
   let selection: CiSelection | undefined;
   const selectionFile = str(f.ciSelectionFile);
   if (selectionFile !== undefined) {
@@ -1980,7 +2432,84 @@ function runGate(ctx: RunContext): number {
       ctx.log(`fetch of origin/${branch} failed: ${fetched.stderr.trim()}`);
   }
   const root = checkoutRoot(ctx.cwd);
-  const gh: Gh = (args) => runGh(ctx.cwd, args);
+  const gh: Gh =
+    facts === undefined
+      ? (args) => runGh(ctx.cwd, args)
+      : (args) => {
+          const reply = (value: unknown): GhResult => ({
+            ok: true,
+            stdout: JSON.stringify(value),
+            stderr: "",
+            missing: false,
+          });
+          const ci = obj(facts.ci);
+          const repo = text(facts.ownerRepo);
+          const endpoint = args[1]?.replace(/^\//, "") ?? "";
+          if (args[0] === "repo" && args[1] === "view")
+            return { ok: true, stdout: repo, stderr: "", missing: false };
+          const workflow = readBkitConfig(checkoutRoot(ctx.cwd)).ciWorkflow;
+          const scopedRuns = arr(obj(ci.workflowRuns).workflow_runs).map(obj);
+          const workflowPath = workflow.startsWith(".github/workflows/")
+            ? workflow
+            : `.github/workflows/${workflow}`;
+          const validRun = (run: Record<string, unknown>) =>
+            Number.isSafeInteger(run.id) &&
+            Number(run.id) > 0 &&
+            text(obj(run.repository).full_name).toLowerCase() === repo.toLowerCase() &&
+            text(obj(run.head_repository).full_name).toLowerCase() === repo.toLowerCase() &&
+            (text(run.path) === workflowPath ||
+              (/^[1-9][0-9]*$/.test(workflow) && String(run.workflow_id) === workflow)) &&
+            run.head_sha === (str(f.validated) ?? obj(facts.pr).headRefOid) &&
+            run.head_branch === facts.headRefName &&
+            run.html_url === `https://github.com/${repo}/actions/runs/${run.id}`;
+          const invalidEvidence = (): GhResult => ({
+            ok: false,
+            stdout: "",
+            stderr: "scoped gate CI provenance is missing or mismatched",
+            missing: false,
+          });
+          if (
+            args[0] === "api" &&
+            endpoint.startsWith(`repos/${repo}/actions/workflows/${workflow}/runs?`)
+          ) {
+            if (
+              !Array.isArray(obj(ci.workflowRuns).workflow_runs) ||
+              scopedRuns.some((run) => !validRun(run))
+            )
+              return invalidEvidence();
+            return reply(ci.workflowRuns);
+          }
+          const jobMatch = new RegExp(`^repos/${repo}/actions/runs/([0-9]+)/jobs$`).exec(endpoint);
+          if (args[0] === "api" && jobMatch) {
+            const run = scopedRuns.find((candidate) => String(candidate.id) === jobMatch[1]);
+            const pages = Array.isArray(ci.jobs) ? ci.jobs : [ci.jobs];
+            if (
+              !run ||
+              !validRun(run) ||
+              pages.length === 0 ||
+              pages.some(
+                (page) =>
+                  !Array.isArray(obj(page).jobs) ||
+                  arr(obj(page).jobs).some((value) => {
+                    const job = obj(value);
+                    return (
+                      job.run_id !== run.id ||
+                      job.head_sha !== run.head_sha ||
+                      job.run_url !== `https://api.github.com/repos/${repo}/actions/runs/${run.id}`
+                    );
+                  }),
+              )
+            )
+              return invalidEvidence();
+            return reply(ci.jobs);
+          }
+          return {
+            ok: false,
+            stdout: "",
+            stderr: "scoped gate facts do not contain this API evidence",
+            missing: false,
+          };
+        };
   const record = str(f.record);
   const recordFile = record === undefined ? undefined : path.resolve(ctx.cwd, record);
   const prNumber = str(f.pr) ?? str(f.squashOf);
@@ -1991,7 +2520,10 @@ function runGate(ctx: RunContext): number {
   if (prNumber !== undefined) {
     if (!/^[1-9][0-9]*$/.test(prNumber))
       throw new CommandError(EXIT.USAGE, "--pr / --squash-of take a PR number");
-    pr = probePr(ctx.cwd, { number: prNumber, state: "open", repo: str(f.repo) });
+    pr =
+      facts !== undefined && validPrFacts(facts.pr)
+        ? { kind: "ok", pr: facts.pr }
+        : probePr(ctx.cwd, { number: prNumber, state: "open", repo: str(f.repo) });
     if (pr.kind === "unavailable") {
       ctx.log(pr.message);
       return EXIT.USE_MCP;
@@ -2015,6 +2547,71 @@ function runGate(ctx: RunContext): number {
   }
   if (head === "") throw new CommandError(EXIT.USAGE, "--head needs a non-empty value");
 
+  const info = pr?.kind === "ok" ? pr.pr : undefined;
+  const repo = str(f.repo) ?? prRepoSlug(info?.url);
+  if (f.wait === true) {
+    // The squash commit's CI runs on the PR's base branch. A wait that runs out is not a verdict:
+    // the gate below still judges what it finds (a run still going is 11, with no row).
+    const waited = await waitFor(
+      ctx.cwd,
+      {
+        head,
+        branch: info?.baseRefName ?? DEV,
+        until: "completed",
+        budgetS: f.budgetS,
+        intervalS: f.intervalS,
+      },
+      deps(ctx, str(f.repo)),
+    );
+    if (waited.code === EXIT.AGENT_WAIT) return EXIT.AGENT_WAIT;
+    if (waited.code === EXIT.NO) ctx.log(`the CI run at ${head} did not finish within the wait`);
+  }
+  const codeHead = str(f.validated) ?? head;
+  let baseEvidence: { devSha: string; comparedHead: string; ancestor: boolean | null } | undefined;
+  if (freshBase) {
+    baseEvidence = { devSha: "", comparedHead: codeHead, ancestor: null };
+    if (facts !== undefined) {
+      const base = obj(facts.base);
+      if (
+        base.ref === DEV &&
+        /^[0-9a-f]{40,64}$/i.test(text(base.sha)) &&
+        base.comparedHead === codeHead &&
+        ["ahead", "identical", "behind", "diverged"].includes(text(base.status))
+      ) {
+        baseEvidence.devSha = text(base.sha);
+        baseEvidence.ancestor = ["ahead", "identical"].includes(text(base.status));
+      }
+    } else if (repo !== undefined && isForeignRepo(ctx.cwd, repo)) {
+      const dev = gh(["api", `repos/${repo}/commits/dev`, "--jq", ".sha"]);
+      if (dev.ok && /^[0-9a-f]{40,64}$/i.test(dev.stdout.trim())) {
+        baseEvidence.devSha = dev.stdout.trim();
+        const compare = gh([
+          "api",
+          `repos/${repo}/compare/${baseEvidence.devSha}...${codeHead}`,
+          "--jq",
+          ".status",
+        ]);
+        if (
+          compare.ok &&
+          ["ahead", "identical", "behind", "diverged"].includes(compare.stdout.trim())
+        )
+          baseEvidence.ancestor = ["ahead", "identical"].includes(compare.stdout.trim());
+      }
+    } else {
+      const fetched = fetchRemoteRef(ctx.cwd, "origin/dev");
+      if (fetched?.ok) {
+        baseEvidence.devSha = git(ctx.cwd, ["rev-parse", "--verify", "origin/dev^{commit}"]) ?? "";
+        const compared = runTool(
+          "git",
+          ["merge-base", "--is-ancestor", baseEvidence.devSha, codeHead],
+          ctx.cwd,
+        );
+        if (compared.status === 0 || compared.status === 1)
+          baseEvidence.ancestor = compared.status === 0;
+      }
+    }
+  }
+
   // The pre-merge snapshot, written BEFORE the gate decides.
   const snapshot = str(f.snapshot);
   if (snapshot !== undefined) {
@@ -2024,7 +2621,10 @@ function runGate(ctx: RunContext): number {
     // A foreign repo's dev and ancestry come from the API: the checkout's origin/dev is another repo's.
     let dev: string;
     let ancestor: boolean;
-    if (foreign && repoFlag !== undefined) {
+    if (baseEvidence !== undefined) {
+      dev = baseEvidence.devSha;
+      ancestor = baseEvidence.ancestor === true;
+    } else if (foreign && repoFlag !== undefined) {
       const devRes = gh(["api", `repos/${repoFlag}/commits/dev`, "--jq", ".sha"]);
       dev = devRes.ok ? devRes.stdout.trim() : "";
       const cmp = gh(["api", `repos/${repoFlag}/compare/dev...${head}`, "--jq", ".status"]);
@@ -2061,6 +2661,12 @@ function runGate(ctx: RunContext): number {
         validatedHead: str(f.validated) ?? "",
         devSha: dev,
         ancestor: String(ancestor),
+        ...(baseEvidence === undefined
+          ? {}
+          : {
+              comparedHead: baseEvidence.comparedHead,
+              baseEvidenceAvailable: baseEvidence.ancestor !== null,
+            }),
         capstone,
         mergeable: info?.mergeable ?? "",
       })}\n`,
@@ -2070,10 +2676,22 @@ function runGate(ctx: RunContext): number {
   // A title carrying a skip token would squash into a dev commit CI never runs on.
   const title = pr?.kind === "ok" ? (pr.pr?.title ?? "") : "";
   const titleToken = f.pr !== undefined ? SKIP_CI_TOKEN.exec(title)?.[0] : undefined;
+  const baseUnavailable =
+    baseEvidence?.ancestor === null || (freshBase && info?.baseRefName !== DEV);
+  const baseRefused = freshBase && (baseEvidence?.ancestor !== true || baseUnavailable);
+  const safetyReason = baseRefused
+    ? baseUnavailable
+      ? "fresh dev base evidence is unavailable or the PR base is not dev"
+      : `dev base ${baseEvidence?.devSha ?? ""} is absent from validated code head ${codeHead}; integrate dev and revalidate`
+    : `PR title '${title}' contains the CI-suppressing token ${titleToken ?? ""}`;
   let r: GateResult =
-    titleToken !== undefined
+    baseRefused || titleToken !== undefined
       ? {
-          code: GATE.TITLE_SKIP,
+          code: baseRefused
+            ? baseUnavailable
+              ? GATE.API_ERROR
+              : GATE.STALE_BASE
+            : GATE.TITLE_SKIP,
           passed: false,
           overridden: false,
           head,
@@ -2084,12 +2702,12 @@ function runGate(ctx: RunContext): number {
           conclusion: null,
           capstone: "",
           ciWorkflow: "",
-          repo: str(f.repo) ?? null,
+          repo: repo ?? null,
           skippedLanes: [],
           nonBookkeepingPaths: [],
           failedSteps: [],
           regenerable: false,
-          reason: `PR title '${title}' contains the CI-suppressing token ${titleToken}`,
+          reason: safetyReason,
         }
       : shipGate(
           {
@@ -2108,7 +2726,7 @@ function runGate(ctx: RunContext): number {
           gh,
           ctx.log,
         );
-  if (titleToken !== undefined) ctx.log(r.reason);
+  if (baseRefused || titleToken !== undefined) ctx.log(r.reason);
 
   // Debug retains the configured gate above and also proves the original
   // selected workflow at the pushed head. A different workflow need not contain
@@ -2160,13 +2778,16 @@ function runGate(ctx: RunContext): number {
 
   if (recordFile !== undefined && r.code !== EXIT.USE_MCP) {
     if (f.capstoneOnly === true) {
-      const verdict = r.code === EXIT.OK ? "PASS" : "FAIL";
-      auditRow(recordFile, "ship-merge-ci", {
-        sha: head,
-        run: String(r.runId ?? ""),
-        verdict,
-        reason: verdict === "PASS" ? "" : r.reason,
-      });
+      // No run yet (10) and a run still in progress (11) are not verdicts: the row waits for one.
+      if (r.code !== GATE.NO_RUN && r.code !== GATE.IN_PROGRESS) {
+        const verdict = r.code === EXIT.OK ? "PASS" : "FAIL";
+        auditRow(recordFile, "ship-merge-ci", {
+          sha: head,
+          run: String(r.runId ?? ""),
+          verdict,
+          reason: verdict === "PASS" ? "" : r.reason,
+        });
+      }
     } else if (r.code !== EXIT.OK) {
       auditRow(recordFile, "ship-gate-refusal", { exitCode: r.code, head: r.mergeHead });
     }
@@ -2217,6 +2838,7 @@ async function runRevalidate(ctx: RunContext): Promise<number> {
   // CI must pass at the code head while the PR head adds bookkeeping only and dev
   // demands no status checks; otherwise at the PR head.
   let validated = codeHead;
+  let reconcileRequired = current !== codeHead;
   if (foreign) {
     // The bookkeeping diff reads the checkout's git, which is not the named repo's history.
     ctx.log(
@@ -2230,7 +2852,22 @@ async function runRevalidate(ctx: RunContext): Promise<number> {
       from: codeHead,
       to: current,
     });
+    reconcileRequired = !book.ok;
     if (!book.ok) validated = current;
+  }
+  if (f.requireReconciled === true && reconcileRequired) {
+    auditRow(status, "ship-gate-refusal", { exitCode: 21, head: current });
+    ctx.log(`feature code changed at ${current} — reconcile before CI validation`);
+    ctx.emit({
+      reconcileRequired: true,
+      validatedHead: null,
+      currentHead: current,
+      revalidated: false,
+      probe: null,
+      dispatched: false,
+      wait: null,
+    });
+    return 21;
   }
   const repo = repoFlag ?? resolveOwnerRepo(ctx.cwd)?.ownerRepo;
   if (repo !== undefined && devRequiresChecks(d.gh, repo)) {
@@ -2239,6 +2876,7 @@ async function runRevalidate(ctx: RunContext): Promise<number> {
   }
 
   const out: Record<string, unknown> = {
+    ...(f.requireReconciled === true ? { reconcileRequired: false } : {}),
     validatedHead: validated,
     currentHead: current,
     revalidated: false,
@@ -2315,7 +2953,7 @@ const PHASES: Record<string, { phase: string; mode: "CI" | "BRIEF" }> = {
 export const EXIT_UNKNOWN_PHASE = 3;
 /** Exit code (context): the CI PR is not OPEN. */
 export const EXIT_PR_NOT_OPEN = 7;
-/** Exit code (context): no CI run at the PR head. */
+/** Exit code (context): no matching CI run at the PR head (the test workflow's newest run, or its newest failed run for debug). */
 export const EXIT_NO_RUN_ID = 8;
 /** Exit code (context): no FID from the marker, the branch, or the slug. */
 export const EXIT_NO_FID = 9;
@@ -2407,22 +3045,34 @@ async function runContext(ctx: RunContext): Promise<number> {
     ctx.emit(out);
     return EXIT_PR_NOT_OPEN;
   }
+  const testWorkflow = ciDeclared(checkoutRoot(ctx.cwd));
+  const wantsFailed = chosen.phase === "debug";
   const runs = runGh(ctx.cwd, [
     "run",
     "list",
     "--branch",
     branch,
+    ...(testWorkflow.declared ? ["--workflow", testWorkflow.ciWorkflow] : []),
+    "--commit",
+    headSha,
     "--limit",
     "5",
     "--json",
-    "databaseId,headSha",
+    "databaseId,headSha,status,conclusion",
   ]);
   const run = arr(runs.ok ? jsonOrUndefined(runs.stdout) : undefined)
     .map(obj)
-    .find((r) => r.headSha === headSha);
+    .find(
+      (r) =>
+        r.headSha === headSha &&
+        (!wantsFailed ||
+          (r.status === "completed" && FAILED_CONCLUSIONS.includes(text(r.conclusion)))),
+    );
   out.runId = run?.databaseId === undefined ? null : String(run.databaseId);
   if (out.runId === null) {
-    ctx.log(`no CI run at ${headSha} on ${branch}`);
+    ctx.log(
+      `no ${wantsFailed ? "failed " : ""}CI run of ${testWorkflow.declared ? testWorkflow.ciWorkflow : "any workflow"} at ${headSha} on ${branch}`,
+    );
     ctx.emit(out);
     return EXIT_NO_RUN_ID;
   }
@@ -2604,11 +3254,49 @@ export const runsCommand: CommandSpec = {
       exitCodes: { [EXIT_TRIGGER_FAILED]: "--dispatch-if-absent: gh workflow run failed" },
       run: runWait,
     },
-    dispatch: {
+    handoff: {
       summary:
-        "CI-Dispatch Gate after the last push: poll, one clean re-trigger, the ciDispatch verdict, and the body scan. A run in place on dev has no PR: it polls the push-event run at the pushed sha, and its re-trigger commits and pushes only the run's own work.",
+        "Persist one batch of CI poll observations into the invocation's run and derive the phase, cumulative attempts and errors, next action and verdict from the persisted rows (poll-again | retrigger | reconcile-retrigger | verdict). Rows for another repo, PR or head never count.",
       use: "workflow",
       flags: [
+        INVOCATION_FLAG,
+        { name: "repo", type: "string", required: true, help: "owner/repo of the PR" },
+        {
+          name: "pr",
+          type: "string",
+          help: "PR number; empty for a run in place on a shared branch (no PR)",
+        },
+        { name: "head", type: "string", required: true, help: "full commit sha the polls ran at" },
+        { name: "branch", type: "string", required: true, help: "branch the PR is on" },
+        BUDGET_FLAG,
+        INTERVAL_FLAG,
+        {
+          name: "result",
+          type: "string",
+          required: true,
+          help: "what the polls saw: none | pending | success | failure | provider-error",
+        },
+        { name: "polls", type: "string", required: true, help: "polls this batch ran (>= 1)" },
+      ],
+      output: {
+        phase: "poll | repoll (repoll once the re-trigger is receipt-completed)",
+        attempts: "cumulative polls for this target",
+        errors: "cumulative provider-error polls for this target",
+        nextAction: "poll-again | retrigger | reconcile-retrigger | verdict",
+        outcome: "dispatched | self-healed | no-ci | unresolved (nextAction verdict only)",
+        reason:
+          "unresolved reason: gh-error | timeout-dirty | retrigger-suppressed | ci-declared-no-run (the same decision `runs dispatch` makes)",
+        ciResult: "the result this batch recorded",
+        stale: "persisted rows for another repo, PR, head or branch, not counted",
+      },
+      run: runHandoff,
+    },
+    dispatch: {
+      summary:
+        "CI-Dispatch Gate after the last push: poll, one clean re-trigger, the ciDispatch verdict, and the body scan. A run in place on dev has no PR: it polls the push-event run at the pushed sha, and its re-trigger commits and pushes only the run's own work. It needs a workflow run's --invocation and resumes from the rows that run persisted (its own polls and `runs handoff` turns): attempts, errors and the re-trigger checkpoint are never supplied.",
+      use: "workflow",
+      flags: [
+        INVOCATION_FLAG,
         {
           name: "pr",
           type: "string",
@@ -2652,22 +3340,6 @@ export const runsCommand: CommandSpec = {
         },
         { ...BUDGET_FLAG, help: "poll budget in seconds (default 60)" },
         { ...INTERVAL_FLAG, help: "seconds between polls (default 10)" },
-        {
-          name: "poll-result",
-          type: "string",
-          help: "re-entry after a hand-off: found | none | err, as the agent turn loop resolved it",
-        },
-        {
-          name: "attempts",
-          type: "string",
-          help: "re-entry: total poll attempts so far (hand-off attempts + turns)",
-        },
-        { name: "all-errored", type: "boolean", help: "re-entry: every turn-loop poll errored" },
-        {
-          name: "retriggered",
-          type: "boolean",
-          help: "re-entry: the hand-off was in the re-poll (re-trigger already pushed)",
-        },
       ],
       output: {
         ciDispatch:
@@ -2702,6 +3374,16 @@ export const runsCommand: CommandSpec = {
           type: "string",
           help: "validated original debug selection: additionally require its workflow to succeed at the exact pushed head",
         },
+        {
+          name: "fresh-base",
+          type: "boolean",
+          help: "ship pre-merge: require fresh dev ancestry in the validated code head; CI overrides cannot waive it",
+        },
+        {
+          name: "facts-file",
+          type: "string",
+          help: "with --fresh-base: scoped independently read PR, CI and dev comparison facts, without gh calls",
+        },
         { ...HEAD_FLAG, help: "the PR head to merge (or --pr / --squash-of)" },
         {
           name: "pr",
@@ -2721,7 +3403,7 @@ export const runsCommand: CommandSpec = {
         {
           name: "record",
           type: "string",
-          help: "status.jsonl: append ship-gate-refusal on a refusal, or ship-merge-ci with --capstone-only",
+          help: "status.jsonl: append ship-gate-refusal on a refusal, or ship-merge-ci with --capstone-only once CI has a verdict (no row on exit 10 or 11)",
         },
         {
           name: "validated",
@@ -2756,6 +3438,13 @@ export const runsCommand: CommandSpec = {
           type: "boolean",
           help: "pass or fail on the capstone job's result alone; the run's conclusion, other jobs and required lanes do not count (ship post-merge)",
         },
+        {
+          name: "wait",
+          type: "boolean",
+          help: "with --squash-of: first wait until the CI run at the squash commit on the PR's base branch has finished, then gate it (a run still going when the wait runs out is exit 11)",
+        },
+        { ...BUDGET_FLAG, help: "with --wait: the wait budget in seconds" },
+        { ...INTERVAL_FLAG, help: "with --wait: seconds between polls (>= 1)" },
       ],
       output: {
         code: "the exit code",
@@ -2792,6 +3481,8 @@ export const runsCommand: CommandSpec = {
         [GATE.LANE_SKIPPED]: "a required lane concluded skipped",
         [GATE.NOT_BOOKKEEPING]: "non-bookkeeping change past --validated, or not its descendant",
         [GATE.TITLE_SKIP]: "--pr: the PR title carries a CI-suppressing token",
+        [GATE.STALE_BASE]:
+          "fresh dev is absent from the validated code head; integrate and revalidate",
         [GATE.API_ERROR]:
           "API error / rate limit / auth, or the PR head / squash commit unreadable",
       },
@@ -2802,6 +3493,11 @@ export const runsCommand: CommandSpec = {
         "Ship: pick the head CI must pass at, probe for a run there, dispatch only when none, wait for it to complete.",
       use: "workflow",
       flags: [
+        {
+          name: "require-reconciled",
+          type: "boolean",
+          help: "refuse newly observed feature code before CI validation",
+        },
         { name: "pr", type: "string", required: true, help: "the PR number" },
         { name: "entry-head", type: "string", required: true, help: "the PR head read at Step 2" },
         {
@@ -2838,13 +3534,18 @@ export const runsCommand: CommandSpec = {
       ],
       output: {
         validatedHead: "the head CI was (or must be) checked at",
+        reconcileRequired:
+          "with --require-reconciled, whether new feature code needs reconciliation",
         currentHead: "the PR head now",
         revalidated: "a probe / wait ran (the head moved, or a gate refusal re-entered)",
         probe: "the presence probe's wait result, or null",
         dispatched: "the probe found no run and dispatched one",
         wait: "the completion wait's result, or null",
       },
-      exitCodes: { [EXIT_TRIGGER_FAILED]: "no run and gh workflow run failed" },
+      exitCodes: {
+        [EXIT_TRIGGER_FAILED]: "no run and gh workflow run failed",
+        21: "--require-reconciled: new feature code needs reconciliation",
+      },
       run: runRevalidate,
     },
     mirror: {
@@ -2922,12 +3623,14 @@ export const runsCommand: CommandSpec = {
         headSha: "the PR head (CI) or origin/dev (CI_DEV), else null",
         prUrl: "the PR URL (CI), else null",
         prState: "the PR state (CI), else null",
-        runId: "the CI run at the PR head (CI), else null",
+        runId:
+          "the CI run at the PR head (CI), else null: the newest run of the test workflow for ship, the newest failed run of it for debug",
       },
       exitCodes: {
         [EXIT_UNKNOWN_PHASE]: "the phase word is not one bkit dispatches",
         [EXIT_PR_NOT_OPEN]: "the PR is not OPEN",
-        [EXIT_NO_RUN_ID]: "no CI run at the PR head",
+        [EXIT_NO_RUN_ID]:
+          "no CI run at the PR head: no run of the test workflow (any workflow when none is declared), and for debug no failed one (failure, timed_out or startup_failure)",
         [EXIT_NO_FID]:
           "no valid FID or no issue (CI_DEV slug off the allowlist, no marker / feat/{FID} branch, or an issue-less FID: /bkit-auto runs issue-only)",
       },

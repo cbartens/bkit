@@ -58,10 +58,10 @@ const setUp = (workflow: ResumableWorkflow) => [
 ];
 
 describe("workflow progress", () => {
-  it("runProgress flat workflow", () => {
+  it("workflow progress runProgress flat workflow", () => {
     expect(runProgress({ workflow: "ship", step: "ship-merge-pr" })).toMatchObject({
-      percent: 71,
-      progressLine: "Progress: ███████░░░ 71% · Step 10/14 Merge Gate + Merge PR",
+      percent: 83,
+      progressLine: "Progress: ████████░░ 83% · Step 10/12 Merge Gate + Merge PR",
     });
   });
 
@@ -116,8 +116,8 @@ describe("workflow progress", () => {
     }
   });
 
-  it("runProgress all workflow numbers", () => {
-    const totals = { design: 12, plan: 8, build: 16, debug: 11, ship: 14 };
+  it("workflow progress runProgress all workflow numbers", () => {
+    const totals = { design: 12, plan: 8, build: 16, debug: 11, ship: 12 };
     for (const workflow of Object.keys(totals) as ResumableWorkflow[]) {
       for (const position of WORKFLOW_STEPS[workflow]) {
         const result = runProgress({ workflow, number: position.number });
@@ -128,10 +128,10 @@ describe("workflow progress", () => {
       }
     }
     expect(runProgress({ workflow: "ship", number: 3 }).progressLine).toBe(
-      "Progress: ██░░░░░░░░ 21% · Step 3/14 Base Check",
+      "Progress: ███░░░░░░░ 25% · Step 3/12 Base Check",
     );
     expect(runProgress({ workflow: "ship", number: 9 }).progressLine).toBe(
-      "Progress: ██████░░░░ 64% · Step 9/14 Re-validate",
+      "Progress: ████████░░ 75% · Step 9/12 Re-validate",
     );
     expect(runProgress({ workflow: "build", step: "build-plan-tests" }).percent).toBe(
       runProgress({ workflow: "build", step: "build-plan-tasks" }).percent,
@@ -152,15 +152,15 @@ describe("workflow progress", () => {
     expect(empty).toEqual(missing);
   });
 
-  it("runProgress attempt suffix", () => {
+  it("workflow progress runProgress attempt suffix", () => {
     expect(
       runProgress({ workflow: "ship", step: "ship-merge-pr", attempt: 1, max: 3 }).progressLine,
-    ).toBe("Progress: ███████░░░ 71% · Step 10/14 Merge Gate + Merge PR");
+    ).toBe("Progress: ████████░░ 83% · Step 10/12 Merge Gate + Merge PR");
     expect(
       runProgress({ workflow: "ship", step: "ship-merge-pr", attempt: 2, max: 3 }).progressLine,
-    ).toBe("Progress: ███████░░░ 71% · Step 10/14 Merge Gate + Merge PR · Attempt 2 of 3");
+    ).toBe("Progress: ████████░░ 83% · Step 10/12 Merge Gate + Merge PR · Attempt 2 of 3");
     expect(runProgress({ workflow: "ship", step: "ship-merge-pr", attempt: 2 }).progressLine).toBe(
-      "Progress: ███████░░░ 71% · Step 10/14 Merge Gate + Merge PR · Attempt 2",
+      "Progress: ████████░░ 83% · Step 10/12 Merge Gate + Merge PR · Attempt 2",
     );
   });
 
@@ -294,29 +294,151 @@ describe("bkit status resume", () => {
     });
   });
 
-  it.each([
-    ["PASS", { step: "ship-failure-remediate", number: 12, after: "ship-failure-remediate" }],
-    ["FAIL", { step: "ship-merge-pr", number: 10, after: "ship-failure-remediate" }],
-  ])("a ship failure-remediate %s row resumes at %o", async (verdict, expected) => {
+  it("bkit status resume ignores ship rows for the removed failure steps", async () => {
     const file = log([
       ...setUp("ship"),
       done("ship", "ship-merge-pr"),
       done("ship", "ship-failure-diagnose"),
-      done("ship", "ship-failure-remediate", { verdict }),
+      done("ship", "ship-failure-remediate", { verdict: "PASS" }),
     ]);
-    expect((await resume("ship", file)).json).toMatchObject(expected);
+    expect((await resume("ship", file)).json).toMatchObject({
+      step: "ship-merge-pr",
+      number: 10,
+      after: "ship-merge-pr",
+    });
   });
 
   it("a retry decision with no loop row before it places no resume point", async () => {
     const file = log([
       ...setUp("build"),
-      done("build", "build-plan-verify-holistic"),
+      done("build", "build-plan-current"),
       done("build", "build-decision", { route: "retry" }),
     ]);
     expect((await resume("build", file)).json).toMatchObject({
-      step: "build-challenge",
-      after: "build-plan-verify-holistic",
+      step: "build-install-skills",
+      after: "build-plan-current",
     });
+  });
+
+  // The holistic gate runs after every verify verdict, so no verify row resumes past it.
+  it.each(["PASS", "CONCERNS", "FAIL"])(
+    "a holistic verify %s row with no gate row resumes at Plan Verify Holistic",
+    async (verdict) => {
+      const file = log([
+        ...setUp("build"),
+        done("build", "build-plan-verify-holistic", { verdict }),
+      ]);
+      expect((await resume("build", file)).json).toMatchObject({
+        step: "build-plan-verify-holistic",
+        number: 10,
+        after: "build-plan-verify-holistic",
+      });
+    },
+  );
+
+  it("a holistic gaps fix resumes at Plan Execute, which runs a takeover group the fix added", async () => {
+    const file = log([
+      ...setUp("build"),
+      done("build", "build-plan-verify-holistic", { verdict: "FAIL" }),
+      done("build", "build-plan-gaps-remediate-holistic", { strategy: "STANDARD" }),
+    ]);
+    expect((await resume("build", file)).json).toMatchObject({
+      step: "build-plan-tasks",
+      number: 7,
+      after: "build-plan-gaps-remediate-holistic",
+      group: null,
+    });
+  });
+
+  it.each([
+    ["build-plan-verify-holistic", "retry", "build-plan-gaps-remediate-holistic"],
+    ["build-plan-gaps-remediate-holistic", "retry", "build-plan-gaps-remediate-holistic"],
+    ["build-plan-verify-holistic", "holistic", "build-plan-verify-holistic"],
+  ])("a decision after %s with route %s resumes at %s", async (prior, route, step) => {
+    const file = log([
+      ...setUp("build"),
+      done("build", prior, { verdict: "FAIL" }),
+      done("build", "build-decision", { route }),
+    ]);
+    expect((await resume("build", file)).json).toMatchObject({
+      step,
+      number: 10,
+      after: "build-decision",
+    });
+  });
+
+  it("a continue decision after a holistic round resumes at Build Challenge", async () => {
+    for (const prior of ["build-plan-verify-holistic", "build-plan-gaps-remediate-holistic"]) {
+      const file = log([
+        ...setUp("build"),
+        done("build", prior, { verdict: "FAIL" }),
+        done("build", "build-decision", { route: "continue" }),
+      ]);
+      expect((await resume("build", file)).json).toMatchObject({
+        step: "build-challenge",
+        number: 11,
+        after: "build-decision",
+      });
+    }
+  });
+
+  it("a run stopped after a build-holistic-gate row resumes at Plan Verify Holistic", async () => {
+    for (const verdict of ["PASS", "FAIL"]) {
+      const file = log([
+        ...setUp("build"),
+        done("build", "build-plan-verify-holistic", { verdict: "PASS" }),
+        done("build", "build-holistic-gate", { verdict }),
+      ]);
+      expect((await resume("build", file)).json, verdict).toMatchObject({
+        step: "build-plan-verify-holistic",
+        number: 10,
+        title: "Plan Verify Holistic",
+        after: "build-holistic-gate",
+      });
+    }
+  });
+
+  it("retry after a holistic gate pause goes to the holistic fix round", async () => {
+    const file = log([
+      ...setUp("build"),
+      done("build", "build-plan-verify-holistic", { verdict: "PASS" }),
+      done("build", "build-holistic-gate", { verdict: "FAIL" }),
+      done("build", "build-decision", { route: "retry" }),
+    ]);
+    expect((await resume("build", file)).json).toMatchObject({
+      step: "build-plan-gaps-remediate-holistic",
+      number: 10,
+      after: "build-decision",
+    });
+  });
+
+  it("continue after a holistic gate pause goes to Build Challenge", async () => {
+    const file = log([
+      ...setUp("build"),
+      done("build", "build-plan-verify-holistic", { verdict: "PASS" }),
+      done("build", "build-holistic-gate", { verdict: "FAIL" }),
+      done("build", "build-decision", { route: "continue" }),
+    ]);
+    expect((await resume("build", file)).json).toMatchObject({
+      step: "build-challenge",
+      number: 11,
+      after: "build-decision",
+    });
+  });
+
+  it("a continue decision after a group verify resumes at Plan Execute", async () => {
+    for (const prior of ["build-plan-verify", "build-group-gate", "build-plan-gaps-remediate"]) {
+      const file = log([
+        ...setUp("build"),
+        done("build", prior, { verdict: "FAIL", group: 1 }),
+        done("build", "build-decision", { route: "continue" }),
+      ]);
+      expect((await resume("build", file)).json).toMatchObject({
+        step: "build-plan-tasks",
+        number: 7,
+        after: "build-decision",
+      });
+    }
   });
 
   it("challengeDone is true once a round-2 challenge has merged", async () => {
@@ -385,6 +507,34 @@ describe("bkit status resume", () => {
     expect((await resume("build", file)).json).toMatchObject({
       number: 8,
       after: "build-plan-tasks",
+      group: 2,
+    });
+  });
+
+  it("a run stopped right after a build-takeover row resumes where the row before it places", async () => {
+    const takeover = done("build", "build-takeover", { task: 3, from: 1 });
+    // Refused code finish: the takeover row follows the tests step, so Step 7 runs again.
+    const refused = log([
+      ...setUp("build"),
+      done("build", "build-plan-tests", { group: 2 }),
+      takeover,
+    ]);
+    expect((await resume("build", refused)).json).toMatchObject({
+      step: "build-plan-tests",
+      number: 7,
+      after: "build-plan-tests",
+      group: 2,
+    });
+    // A Step 9 fix refused after verify: Step 8 again, whose start runs § Pending takeovers.
+    const remediate = log([
+      ...setUp("build"),
+      done("build", "build-plan-verify", { group: 2, verdict: "FAIL" }),
+      takeover,
+    ]);
+    expect((await resume("build", remediate)).json).toMatchObject({
+      step: "build-plan-verify",
+      number: 8,
+      after: "build-plan-verify",
       group: 2,
     });
   });

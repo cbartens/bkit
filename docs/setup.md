@@ -1,7 +1,3 @@
-<!-- bkit:start -->
-
-<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
-
 # Setup
 
 > [!CAUTION]
@@ -49,8 +45,6 @@ Set it up as follows:
 - Browser / app pairing: `opencode pair --url https://<host>.<tailnet>.ts.net` returns a one-time link with a 5-minute expiry.
 - Pin the port. The service port is dynamic, but `serve` targets a fixed port, so pin it or the proxy breaks on restart.
 
-<!-- bkit:end -->
-
 > Consumer first-time install / upgrade → `.bkit/install.md`. Upgrade paste + ongoing CLI → `.bkit/README.md`. Cloud-agent setup (Claude on the web, Codex Cloud, Cursor Cloud Agents) → `.bkit/cloud.md`; paste-ready values → generated `.claude/bkit-cloud.md` / `.codex/bkit-cloud.md` / `.cursor/bkit-cloud.md`.
 
 ## Required tools
@@ -63,7 +57,7 @@ Set it up as follows:
 | `git` | `>=2.5` | Worktree operations. |
 | `gh` | latest, authenticated (`gh auth login`) | PR create / view / merge, CI run log fetch. |
 | `jq` | latest | Reads the JSON that `bkit` commands print, inside workflows. |
-| `vale` | `3.24.0` | Prose lint (`pnpm bkit:lint:prose`). Tarball from `errata-ai/vale` releases; cloud agents install via setup script / Dockerfile. |
+| `vale` | `3.26.0` | Prose lint (`pnpm bkit:lint:prose`). Tarball from `errata-ai/vale` releases; cloud agents install via setup script / Dockerfile. |
 
 ## Local environment variables
 
@@ -81,6 +75,8 @@ direnv allow                            # trust .envrc; auto-loads on subsequent
 # Verify
 echo "len=${#BKIT_GH_TOKEN}"                 # non-zero → MCP token loaded; gh CLI uses `gh auth login` keyring
 ```
+
+The pre-push hook loads `.envrc` itself, so a push from a shell that never loaded it still gets the repo's variables. Run `direnv allow .` once in every folder you push from, linked worktrees included, or the push blocks in seconds with that fix. `bkit worktrees setup` allows a worktree's `.envrc` for you when it matches the main checkout's byte for byte.
 
 `LINEAR_ISSUE_ID` — per-session cloud injection; never in `.bkit/.env`. Cloud sessions set the same variable names in their dashboards, not this file.
 
@@ -112,5 +108,5 @@ pnpm exec bkit doctor        # token + advisory sweep (rewrites .bkit/advisories
 
 - **`bkit check` reports `.bkit/version` drift** — `pnpm add -D @cbartens/bkit@<new>` without `pnpm exec bkit install`. Re-run install; commit resync.
 - **Linear preflight blocks session** — issue missing `bkit:auto` or in `Done` / `Cancelled`. Add `bkit:auto`, set non-terminal state. (All labels use `bkit:` prefix.)
-- **Lockfile merge conflict in a workflow** — `bkit branches sync --merge` takes the integration branch's lockfile and regenerates it with the project's package manager. Other unresolved files stay conflicted for the ship conflict resolver; see `.bkit/workflows.md` § `/bkit-ship` — 14 steps.
+- **Lockfile merge conflict in a workflow** — `bkit branches sync --merge` takes the integration branch's lockfile and regenerates it with the project's package manager. Other unresolved files stay conflicted for the ship conflict resolver; see `.bkit/workflows.md` § `/bkit-ship` — 12 steps.
 - **Cloud snapshot stuck on stale vale (Claude)** — run `pnpm bkit install`, which re-stamps the `# cache-bust` line, then paste the new setup script to force a rebuild.

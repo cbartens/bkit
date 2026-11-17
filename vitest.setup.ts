@@ -1,17 +1,24 @@
 // vitest.setup.ts — runs in every test worker before its test files load.
 //
-// Four jobs: strip inherited git environment variables (below), fail any test that
+// Five jobs: strip inherited git environment variables (below), fail any test that
 // changes the git identity or core.bare of the repo the suite runs from, point the bkit
-// config and cache folders at an empty temp folder, and re-read the load-scaled test
-// budget as each test file starts (bottom, via vitest.timeout-budget.ts).
+// config and cache folders at an empty temp folder, and set the fixed CI / local test
+// limits as each test file starts (bottom, via vitest.timeout-budget.ts), and give every
+// synchronous child call that sets no `timeout` the running test's remaining time, so a hung
+// child fails the test instead of blocking the worker (vitest.child-deadline.ts).
 //
 // `globals` is not enabled in vitest.config.ts, so these are imported, not free.
+import childProcess from "node:child_process";
+import * as fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterAll, afterEach, expect, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, expect, type Task, vi } from "vitest";
 
+import { withChildDeadline } from "./vitest.child-deadline.ts";
 import { guardRepoConfig, repoConfigFile } from "./vitest.repo-config-guard.ts";
 import { tierTimeouts } from "./vitest.timeout-budget.ts";
+import { LIMIT_FACTOR_ENV, ciLimitFactor } from "./vitest.timeout-budget.ts";
 
 // Strip inherited git environment variables so no test can accidentally operate
 // on the real bkit repo.
@@ -78,36 +85,101 @@ const xdg = path.join(os.tmpdir(), `bkit-test-xdg-${process.pid}`);
 process.env.XDG_CONFIG_HOME = path.join(xdg, "config");
 process.env.XDG_CACHE_HOME = path.join(xdg, "cache");
 
-// Budget: re-read once per test file from `vitest.timeout-budget.ts`, scaled by how
-// contended the machine is RIGHT NOW.
+// The GateGuard hooks keep per-session state in `os.tmpdir()/bkit-gateguard-<uid>` and scan
+// that whole folder on every call to drop old session files. The hook suites leave tens of
+// thousands of files there, which makes each hook call cost hundreds of milliseconds and a
+// many-call test time out under load. A hook suite gets a private temp folder of its own, so
+// it only ever scans the session files it wrote; the folder is removed with the file.
+if (testPath.includes(`${path.sep}audits${path.sep}hooks${path.sep}`)) {
+  const savedTmp = process.env.TMPDIR;
+  process.env.TMPDIR = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-hooks-tmp-"));
+  const privateTmp = process.env.TMPDIR;
+  afterAll(() => {
+    if (savedTmp === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = savedTmp;
+    fs.rmSync(privateTmp, { recursive: true, force: true });
+  });
+}
+
+// Budget: pick the tier's limits once per test file from `vitest.timeout-budget.ts`.
 //
-// WHY: both tiers spawn real subprocesses — `git`, `tsx`, the bkit CLI, fake
-// binaries — so a budget fixed when the run starts goes stale. The box ramps under
-// the run (a parallel agent session, a build), and a file that starts late runs
-// several times slower against a number read minutes earlier. That reads as a flaky
-// product but is only ever a starved subprocess: `Error: Test timed out in 5000ms`
-// on a DIFFERENT test each run, all green in isolation. Both tiers are pre-push gates
-// (.husky/pre-push -> bkit:gate:static-unit-integration), so that starvation blocks pushes
-// on a green tree, and `--no-verify` is prohibited (.agents/rules.md). See
-// docs/failures.jsonl `subprocess-integration-tests-time-out-at-5000ms-under-high-load`.
-//
-// setupFiles run once per test FILE, so `testPath` here is that file, and the
-// re-read lands as each file starts. The config's own `...unitTimeouts()` sampled
-// the same budget once at load; this overrides it per file. CI pins the factor to 1
-// (in `loadFactor`), so the gate stays strict there.
+// setupFiles run once per test FILE, so `testPath` here is that file: integration files get the
+// integration base, every other file the unit base. The config's own `...unitTimeouts()` sets
+// the unit default; this overrides it per file. The factor is fixed (1 under CI, else
+// LOCAL_HANG_FACTOR), so no load is read.
 vi.setConfig(tierTimeouts(testPath.endsWith(".integration.test.ts")));
+const { hookTimeout } = tierTimeouts(testPath.endsWith(".integration.test.ts"));
+
+// Child limit: a synchronous child call blocks the worker, so Vitest's test timeout cannot fire
+// during it. Each call without its own `timeout` gets a limit from where it runs, read from the
+// hook state Vitest records on the running test (`task.result.hooks`, set to "run" while a
+// `beforeEach` / `afterEach` hook runs, and kept across an `await`):
+//   - in an each-hook (the file's own `beforeEach` / `afterEach`): the test's remaining time, never
+//     less than the file's hook timeout, because an `afterEach` runs after the body has used its time;
+//   - in the test body: the test's timeout counted from when the body starts (the moment Vitest marks
+//     the `beforeEach` hooks "pass"), so time spent in `beforeEach` hooks is not taken off the body and
+//     time spent in the body before the call is (Vitest's own test timeout starts at the body);
+//   - outside a test (file-level code): the hook timeout.
+// Clock taken when the setup file loads, before a test can mock `Date`: the child limit counts real time.
+const realNow = Date.now.bind(Date);
+let currentTask: Task | undefined;
+let testDeadline: number | undefined;
+let bodyStart: number | undefined;
+beforeEach((ctx) => {
+  currentTask = ctx.task;
+  const limit = ctx.task.timeout;
+  testDeadline = realNow() + (limit > 0 ? limit : hookTimeout);
+  bodyStart = undefined;
+  // Vitest sets `hooks.beforeEach = "pass"` right before it runs the test body. Observe that write
+  // with an accessor on the hook-state object, so the body's start is known without a child call.
+  const result = ctx.task.result;
+  if (result === undefined) return;
+  let state = result.hooks?.beforeEach;
+  const hooks = { ...result.hooks };
+  Object.defineProperty(hooks, "beforeEach", {
+    enumerable: true,
+    configurable: true,
+    get: () => state,
+    set: (next: typeof state) => {
+      state = next;
+      if (next === "pass") bodyStart = realNow();
+    },
+  });
+  result.hooks = hooks;
+});
+afterEach(() => {
+  currentTask = undefined;
+  testDeadline = undefined;
+  bodyStart = undefined;
+});
+
+function inEachHook(): boolean {
+  const hooks = currentTask?.result?.hooks;
+  return hooks?.beforeEach === "run" || hooks?.afterEach === "run";
+}
+withChildDeadline(childProcess, () => {
+  if (currentTask === undefined || testDeadline === undefined) return hookTimeout;
+  if (inEachHook()) return Math.max(hookTimeout, testDeadline - realNow());
+  const limit = currentTask.timeout > 0 ? currentTask.timeout : hookTimeout;
+  bodyStart ??= realNow();
+  return bodyStart + limit - realNow();
+});
+syncBuiltinESMExports();
 
 // Every test runs as on a laptop: GitHub Actions sets `GITHUB_ACTIONS` and `CI`, and the
 // engine reads those (and the cloud markers) as "headless, nobody to ask"
 // (`commands/workflow/runtime.ts`, `checks/before/env.ts`). Left set, a test passes on the
 // laptop and fails in CI. Cleared after the budget above has read `CI`. A test of another
-// runtime sets its own with `vi.stubEnv`.
+// runtime sets its own with `vi.stubEnv`. The factor is recorded first, so a test file's own
+// `localLimit(N)` still reads 1 under CI.
+process.env[LIMIT_FACTOR_ENV] = String(ciLimitFactor());
 for (const key of [
   "BKIT_RUNTIME",
   "CLAUDE_CODE_REMOTE",
   "CURSOR_REMOTE_AGENT",
   "GITHUB_ACTIONS",
   "CI",
+  "BKIT_PRE_PUSH_LOGGED",
 ]) {
   delete process.env[key];
 }

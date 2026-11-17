@@ -159,7 +159,8 @@ function touch(key, ...names) {
             fs.rmSync(file, { force: true });
     }
 }
-function pidAlive(pid) {
+/** True while a process with this id exists, including one this user may not signal. */
+export function pidAlive(pid) {
     try {
         process.kill(pid, 0);
         return true;

@@ -15,7 +15,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseJson } from "../shared/json.js";
-import { appendLine, statusTimestamp } from "./status.js";
+import { appendLine, appendLocked, statusTimestamp } from "./status.js";
 import { APPEND_LEDGERS, SCHEMA, compareTs, mintTs, resolveRepoSlug, validate, writerProblem, } from "./telemetry.js";
 /** The kill switch: `BKIT_ENGINE_JOURNAL=off` keeps the seam from writing any row. */
 export function journalEnabled(env = process.env) {
@@ -171,7 +171,7 @@ export function appendJournalRow(file, row) {
  * `recurrenceCount` raised by one and `lastConfirmed` = that `ts`. No line is
  * ever rewritten, so a row another writer appends meanwhile is kept.
  */
-export function appendFrictionRow(bookRoot, row) {
+export function appendFrictionRow(bookRoot, row, options = {}) {
     const checked = validate(row);
     if (!checked.ok)
         return { ok: false, error: checked.reason ?? "invalid friction row" };
@@ -180,12 +180,14 @@ export function appendFrictionRow(bookRoot, row) {
         return { ok: false, error: who };
     const file = path.join(bookRoot, APPEND_LEDGERS.friction.file);
     try {
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        const text = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
-        const prior = latestSameKey(text, row["key"]);
-        const next = prior === undefined ? { ...row, recurrenceCount: 1 } : recurrence(prior, row);
-        fs.appendFileSync(file, `${text !== "" && !text.endsWith("\n") ? "\n" : ""}${JSON.stringify(next)}\n`);
-        return { ok: true };
+        // The recurrence is computed from the text read under the target lock, so a
+        // competing writer can never invalidate the prepared offset or count.
+        const landed = appendLocked(file, (text) => {
+            const prior = latestSameKey(text, row["key"]);
+            const next = prior === undefined ? { ...row, recurrenceCount: 1 } : recurrence(prior, row);
+            return `${JSON.stringify(next)}\n`;
+        }, { checkpoint: options.checkpoint });
+        return { ok: true, receipt: { offset: landed.offset, bytes: landed.bytes } };
     }
     catch (err) {
         return { ok: false, error: err.message };

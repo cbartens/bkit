@@ -1,0 +1,44 @@
+== cheap tier ==
+$ git rev-list --left-right --count origin/dev...dev
+2	9
+$ git cherry -v origin/dev dev
++ 80a664b75079d23a572c5020f56a8dcbe63c2298 L1 copy
++ 3eb89d6f131f05d9aaff8448fb896735bfa028b7 L2 squash part 1
++ 06fc3b8460d71ea126768b7ec317f8ef3daad5ad L3 squash part 2
++ 35ea4909d410ef7cec7a5fd795660b353a6fc2d8 L4 empty retrigger
++ 5945b218432cbe4432a2208b8e2a534656ab42be L5 delete e (published)
++ 3225a2af7065a7299f30dc3ace09f4c11ed3946f L6 delete f (unpublished)
++ cee1151eef6e91eae93d36babaaf4253906c1033 L7 edit d (later reverted upstream)
++ 84f969c77162a8fee76bec2bae5b5ce995353e1d L8 new file
+[exit 0]
+copies=0
+$ git cherry -v origin/dev L7   (local dev as it was before the pull merge)
+- 80a664b75079d23a572c5020f56a8dcbe63c2298 L1 copy
++ 3eb89d6f131f05d9aaff8448fb896735bfa028b7 L2 squash part 1
++ 06fc3b8460d71ea126768b7ec317f8ef3daad5ad L3 squash part 2
+- 35ea4909d410ef7cec7a5fd795660b353a6fc2d8 L4 empty retrigger
++ 5945b218432cbe4432a2208b8e2a534656ab42be L5 delete e (published)
++ 3225a2af7065a7299f30dc3ace09f4c11ed3946f L6 delete f (unpublished)
++ cee1151eef6e91eae93d36babaaf4253906c1033 L7 edit d (later reverted upstream)
+[exit 0]
+== merge commit paths ==
+$ git diff-tree -r --no-commit-id --name-only M
+[exit 0, lines=0]
+$ git diff-tree -r -m --no-commit-id --name-only M
+f.txt 
+$ git diff-tree -r --no-commit-id --name-only L4
+[lines=0]
+$ git diff-tree -r --diff-filter=d --no-commit-id --name-only L6
+[lines=0]
+fork point=U3 empty retrigger
+== full tier vs truth ==
+commit                                 | truth       | rule, notOnDev filter=d  | rule, all paths          | contested paths
+L1 copy                                | published   | content-match            | content-match            | 
+L2 squash part 1                       | published   | content-match            | content-match            | 
+L3 squash part 2                       | published   | unpublished              | unpublished              | c.txt 
+L4 empty retrigger                     | empty       | content-match            | content-match            | 
+L5 delete e (published)                | published   | content-match            | content-match            | 
+L6 delete f (unpublished)              | unpublished | content-match            | unpublished              | 
+L7 edit d (later reverted upstream)    | unpublished | unpublished              | unpublished              | d.txt 
+Merge branch 'dev' of /Users/christian/Documents/GitHub/bkit/.worktrees/849-keep-local-dev/docs/plans/202611/logs/849-keep-local-dev/spike/_work/c3/origin into dev | merge       | content-match            | content-match            | 
+L8 new file                            | unpublished | unpublished              | unpublished              | 

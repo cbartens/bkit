@@ -1,8 +1,8 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.2.0 — do not edit; run `bkit upgrade` to refresh -->
 
-<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. -->
+<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. When you edit this template, follow `.bkit/authoring.md` § Doc Templates. -->
 
 # Config Audit
 
@@ -35,7 +35,8 @@ Code is reviewed, but dashboards are not. A dashboard change (hosting, database,
 - TLS certificate validity schedule (e.g., CA/Browser Forum Baseline Requirements, Ballot SC-081v3).
 - DNS CAA (RFC 8659); MTA-STS (RFC 8461) and TLS reporting (RFC 8460).
 - Mailbox-provider sender requirements (e.g., Gmail, Yahoo) and one-click unsubscribe (RFC 8058).
-- bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Autonomous phase-close prerequisites; § Post-merge dev CI auto-routing; § Promotion-lag warning (`Check Default Branch Lags Dev`)
+- bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Promotion-lag warning (`Check Default Branch Lags Dev`)
+- `.bkit/workflows.md` § Test and release mechanics (Autonomous phase-close prerequisites; Post-merge dev CI auto-routing)
 
 ### Scope
 

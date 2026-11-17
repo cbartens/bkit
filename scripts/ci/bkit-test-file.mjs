@@ -13,6 +13,8 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
+import { batsTestTimeoutSeconds, nodeTestLimitArgs } from "./bkit-test-limits.mjs";
+
 const ROOT = path.resolve(import.meta.dirname, "..", "..");
 const bin = (name) => path.join(ROOT, "node_modules", ".bin", name);
 
@@ -32,8 +34,8 @@ if (kinds.length !== 1) {
 
 const report = process.env.BKIT_TEST_REPORT || "";
 
-function run(cmd, args) {
-  const res = spawnSync(cmd, args, { stdio: "inherit" });
+function run(cmd, args, env = process.env) {
+  const res = spawnSync(cmd, args, { stdio: "inherit", env });
   if (res.error) {
     console.error(`bkit:test:file: ${cmd} could not run — ${res.error.message}`);
     return 127;
@@ -42,10 +44,14 @@ function run(cmd, args) {
 }
 
 function runBats() {
-  if (!report) return run(bin("bats"), files);
+  const env = {
+    ...process.env,
+    BATS_TEST_TIMEOUT: process.env.BATS_TEST_TIMEOUT || String(batsTestTimeoutSeconds()),
+  };
+  if (!report) return run(bin("bats"), files, env);
   fs.mkdirSync(path.dirname(report), { recursive: true });
   const out = fs.mkdtempSync(path.join(path.dirname(report), "bats-"));
-  const code = run(bin("bats"), ["--report-formatter", "junit", "--output", out, ...files]);
+  const code = run(bin("bats"), ["--report-formatter", "junit", "--output", out, ...files], env);
   const xml = path.join(out, "report.xml");
   if (fs.existsSync(xml)) fs.renameSync(xml, report);
   fs.rmSync(out, { recursive: true, force: true });
@@ -55,6 +61,7 @@ function runBats() {
 const runNode = () =>
   run(process.execPath, [
     "--test",
+    ...nodeTestLimitArgs(),
     "--test-reporter=spec",
     "--test-reporter-destination=stdout",
     ...(report ? ["--test-reporter=junit", `--test-reporter-destination=${report}`] : []),

@@ -7,10 +7,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { useGateRunner } from "../../../../../vitest.gate-fixture";
 
 import { runCommand } from "../lib";
+import { COMMANDS } from "../registry";
 import {
   checkNamespace,
   ciDispatchGate,
   mirrorPushRun,
+  parseCiReference,
   pollOnce,
   repoScopedGh,
   runsCommand,
@@ -29,6 +31,7 @@ import {
   readRecord,
   writeRecord,
 } from "./ledgers";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 const FIXTURES = path.join(REPO_ROOT, "tests", "fixtures", "gh");
@@ -38,6 +41,34 @@ useGateRunner();
 
 const dirs: string[] = [];
 const restoreEnv: Array<() => void> = [];
+describe("Markdown CI references", () => {
+  it.each([
+    ["actions/runs/123", { kind: "run", repo: "example/repo", id: "123" }],
+    ["actions/runs/123/attempts/2", { kind: "run", repo: "example/repo", id: "123", attempt: 2 }],
+    ["pull/456", { kind: "pr", repo: "example/repo", id: "456" }],
+  ])("preserves the identity of %s", (suffix, expected) => {
+    const url = `https://github.com/example/repo/${suffix}`;
+    for (const input of [url, `[run](${url})`, `[${url}](${url})`, `<${url}>`]) {
+      expect(parseCiReference(input)).toEqual(expected);
+    }
+  });
+
+  it("still rejects distinct run references in Markdown", () => {
+    const first = "https://github.com/example/repo/actions/runs/123";
+    const second = "https://github.com/example/repo/actions/runs/124";
+    expect(() => parseCiReference(`[${first}](${first}) [${second}](${second})`)).toThrow(
+      "multiple run references were supplied",
+    );
+  });
+
+  it("still rejects malformed IDs and attempts inside links", () => {
+    for (const suffix of ["abc", "123/attempts/nope"]) {
+      const url = `https://github.com/example/repo/actions/runs/${suffix}`;
+      expect(() => parseCiReference(`[${url}](${url})`)).toThrow(/invalid run/);
+    }
+  });
+});
+
 afterEach(() => {
   for (const r of restoreEnv.splice(0).reverse()) r();
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
@@ -542,6 +573,90 @@ describe("bkit runs locate", () => {
     expect(issue.selected()).toMatchObject({ runId: "101" });
   });
 
+  it("saves the failed job count without the capstone job", async () => {
+    const f = locateFixture();
+    f.data.jobs = [
+      { id: 1, name: "bkit-tests-integration", status: "completed", conclusion: "failure" },
+      { id: 2, name: "bkit-tests-unit", status: "completed", conclusion: "failure" },
+      { id: 3, name: "bkit-tests-static", status: "completed", conclusion: "success" },
+      { id: 4, name: "bkit-tests-check", status: "completed", conclusion: "failure" },
+    ];
+    expect((await f.locate()).code).toBe(0);
+    expect(f.selected()).toMatchObject({ mode: "ci", failedJobCount: 2 });
+  });
+
+  it("a CI selection keeps the failed job names, capstone left out", async () => {
+    const f = locateFixture();
+    f.data.jobs = [
+      { id: 1, name: "bkit-tests-unit", status: "completed", conclusion: "failure" },
+      { id: 2, name: "consumer-e2e", status: "completed", conclusion: "timed_out" },
+      { id: 3, name: "bkit-tests-static", status: "completed", conclusion: "success" },
+      { id: 4, name: "bkit-tests-check", status: "completed", conclusion: "failure" },
+    ];
+    expect((await f.locate()).code).toBe(0);
+    expect(f.selected()).toMatchObject({
+      mode: "ci",
+      failedJobCount: 2,
+      failedJobs: ["bkit-tests-unit", "consumer-e2e"],
+    });
+    const only = locateFixture();
+    only.data.jobs = [
+      { id: 1, name: "bkit-tests-unit", status: "completed", conclusion: "success" },
+      { id: 2, name: "bkit-tests-check", status: "completed", conclusion: "failure" },
+    ];
+    expect((await only.locate()).code).toBe(0);
+    expect(only.selected()).toMatchObject({ failedJobCount: 1, failedJobs: [] });
+  });
+
+  it("counts the capstone job when it is the only failed job", async () => {
+    const f = locateFixture();
+    f.data.jobs = [
+      { id: 1, name: "bkit-tests-integration", status: "completed", conclusion: "success" },
+      { id: 2, name: "bkit-tests-check", status: "completed", conclusion: "failure" },
+    ];
+    expect((await f.locate()).code).toBe(0);
+    expect(f.selected()).toMatchObject({ mode: "ci", failedJobCount: 1 });
+  });
+
+  it("saves no failed job count when no job failed", async () => {
+    const f = locateFixture();
+    f.data.jobs = [
+      { id: 1, name: "bkit-tests-integration", status: "completed", conclusion: "success" },
+      { id: 2, name: "bkit-tests-check", status: "completed", conclusion: "success" },
+    ];
+    expect((await f.locate()).code).toBe(0);
+    const selected = f.selected() as Record<string, unknown>;
+    expect(selected.mode).toBe("ci");
+    expect("failedJobCount" in selected).toBe(false);
+  });
+
+  it("counts fallback evidence jobs without the capstone job", async () => {
+    const f = locateFixture();
+    fs.writeFileSync(f.prompt, "https://github.com/example/example/actions/runs/101/attempts/2");
+    const evidence = path.join(f.cwd, "evidence.json");
+    fs.writeFileSync(
+      evidence,
+      JSON.stringify({
+        request: {
+          repo: "example/example",
+          branch: "fix/ci",
+          kind: "run",
+          runId: "101",
+          runAttempt: 2,
+        },
+        run: f.data.runs[0],
+        jobs: [
+          { id: 1, name: "bkit-tests-integration", status: "completed", conclusion: "failure" },
+          { id: 2, name: "bkit-tests-check", status: "completed", conclusion: "failure" },
+        ],
+        complete: true,
+      }),
+    );
+    f.data.error = true;
+    expect((await f.locate(`--evidence-file=${evidence}`)).code).toBe(0);
+    expect(f.selected()).toMatchObject({ mode: "ci", failedJobCount: 1 });
+  });
+
   it("rejects ambiguous cross-repository and malformed attempt references", async () => {
     const f = locateFixture();
     fs.writeFileSync(
@@ -865,6 +980,316 @@ describe("bkit runs gate", () => {
     conclusion,
   });
   const deployFailed: Job = { name: "deploy", status: "completed", conclusion: "failure" };
+
+  function freshBaseFixture() {
+    const origin = tmp("bkit-fresh-base-origin-");
+    gitIn(origin, "init", "-q", "--bare", "-b", "dev");
+    const cwd = tmp("bkit-fresh-base-local-");
+    gitIn(cwd, "init", "-q", "-b", "dev");
+    fs.mkdirSync(path.join(cwd, "docs"));
+    fs.writeFileSync(path.join(cwd, "docs/architecture.md"), "base docs\n");
+    gitIn(cwd, "add", "docs/architecture.md");
+    gitIn(cwd, "commit", "-qm", "base");
+    gitIn(cwd, "remote", "add", "origin", origin);
+    gitIn(cwd, "push", "-q", "origin", "dev");
+    gitIn(cwd, "switch", "-q", "-c", "feat/842-gate");
+    fs.writeFileSync(path.join(cwd, "feature.ts"), "export const feature = true;\n");
+    gitIn(cwd, "add", "feature.ts");
+    gitIn(cwd, "commit", "-qm", "feat: validated code");
+    const head = gitIn(cwd, "rev-parse", "HEAD");
+    const seed = tmp("bkit-fresh-base-seed-");
+    gitIn(seed, "clone", "-q", "-b", "dev", origin, ".");
+    fixtureRun(head, { status: "completed", conclusion: "success" }, [
+      capstone("completed", "success"),
+    ]);
+    const fixtureRoot = String(process.env.BKIT_FAKE_GH_FIXTURE_ROOT);
+    const pr = (ownerRepo: string, tip = head) => ({
+      number: 7,
+      url: `https://github.com/${ownerRepo}/pull/7`,
+      state: "OPEN",
+      baseRefName: "dev",
+      headRefName: "feat/842-gate",
+      headRefOid: tip,
+      title: "feat: validated feature",
+      mergeCommit: { oid: head },
+      mergeable: "MERGEABLE",
+    });
+    const configurePr = (ownerRepo = "example/example", tip = head) => {
+      fs.writeFileSync(
+        path.join(fixtureRoot, "prs", `${ownerRepo.replaceAll("/", "_")}__7.json`),
+        JSON.stringify(pr(ownerRepo, tip)),
+      );
+    };
+    configurePr();
+    configurePr("foreign/repo");
+    const bin = tmp("bkit-fresh-base-gh-");
+    fs.symlinkSync(FIXTURE_GH, path.join(bin, "gh"));
+    const calls = path.join(bin, "calls");
+    const body = path.join(bin, "body.sh");
+    fs.writeFileSync(
+      body,
+      [
+        `printf '%s\\n' "$*" >> '${calls}'`,
+        `[ ! -f '${bin}/unavailable' ] || exit 127`,
+        `case "$1 $2" in`,
+        `  'repo view') echo example/example; exit 0 ;;`,
+        `esac`,
+        `case "$2" in`,
+        `  *'/commits/dev') [ ! -f '${bin}/missing-base' ] || exit 1; cat '${bin}/dev-sha'; exit 0 ;;`,
+        `  *'/compare/'*) [ ! -f '${bin}/missing-base' ] || exit 1; cat '${bin}/comparison'; exit 0 ;;`,
+        `esac`,
+        `exec '${FIXTURE_GH}' "$@"`,
+      ].join("\n"),
+    );
+    env({ PATH: `${bin}${path.delimiter}${process.env.PATH}`, BKIT_FAKE_TOOL_SCRIPT: body });
+    const record = path.join(cwd, "gate-status.jsonl");
+    const snapshot = path.join(cwd, "snapshot.jsonl");
+    fs.writeFileSync(record, "");
+    const advance = (file = "dev.ts") => {
+      fs.writeFileSync(path.join(seed, file), "new dev work\n");
+      gitIn(seed, "add", file);
+      gitIn(seed, "commit", "-qm", "feat: dev advanced");
+      gitIn(seed, "push", "-q", "origin", "dev");
+      const tip = gitIn(seed, "rev-parse", "HEAD");
+      fs.writeFileSync(path.join(bin, "dev-sha"), tip);
+      fs.writeFileSync(path.join(bin, "comparison"), "diverged\n");
+      return tip;
+    };
+    fs.writeFileSync(path.join(bin, "dev-sha"), gitIn(cwd, "rev-parse", "origin/dev"));
+    fs.writeFileSync(path.join(bin, "comparison"), "ahead\n");
+    const run = (...extra: string[]) =>
+      gate(cwd, "--pr=7", `--validated=${head}`, "--month=202610", "--fid=842-gate", ...extra);
+    return {
+      cwd,
+      origin,
+      seed,
+      head,
+      bin,
+      fixtureRoot,
+      pr,
+      configurePr,
+      calls,
+      record,
+      snapshot,
+      advance,
+      run,
+    };
+  }
+
+  it("refuses green CI when dev advanced beyond the validated code head", async () => {
+    const f = freshBaseFixture();
+    expect((await f.run()).code).toBe(0);
+    const oldDev = gitIn(f.cwd, "rev-parse", "origin/dev");
+    const dev = f.advance();
+    expect(gitIn(f.cwd, "rev-parse", "origin/dev")).toBe(oldDev);
+    const result = await f.run("--fresh-base", `--record=${f.record}`, `--snapshot=${f.snapshot}`);
+    expect(result.code, result.err).toBe(19);
+    expect(result.json).toMatchObject({ code: 19, passed: false, overridden: false });
+    expect(result.json.reason).toMatch(/dev|base/i);
+    expect(gitIn(f.cwd, "rev-parse", "origin/dev")).toBe(dev);
+    const snapshot = fs
+      .readFileSync(f.snapshot, "utf-8")
+      .trim()
+      .split("\n")
+      .map((row) => JSON.parse(row));
+    expect(snapshot.at(-1)).toMatchObject({
+      gateHead: f.head,
+      validatedHead: f.head,
+      devSha: dev,
+      ancestor: "false",
+    });
+    const rows = fs
+      .readFileSync(f.record, "utf-8")
+      .trim()
+      .split("\n")
+      .map((row) => JSON.parse(row));
+    expect(rows.at(-1)).toMatchObject({ type: "ship-gate-refusal", exitCode: 19 });
+  });
+
+  it("does not let bookkeeping or a CI override waive stale dev ancestry", async () => {
+    const f = freshBaseFixture();
+    const dev = f.advance("docs/architecture.md");
+    gitIn(f.cwd, "fetch", "-q", "origin", "dev");
+    gitIn(f.cwd, "merge", "--no-edit", "-m", "docs: integrate documentation", "origin/dev");
+    const bookkeepingHead = gitIn(f.cwd, "rev-parse", "HEAD");
+    f.configurePr("example/example", bookkeepingHead);
+    const carried = await f.run();
+    expect(carried.code, carried.err).toBe(0);
+    expect(carried.json).toMatchObject({ head: f.head, mergeHead: bookkeepingHead });
+    env({ BKIT_SHIP_GATE_OVERRIDE: f.head });
+    const result = await f.run("--fresh-base");
+    expect(result.code, result.err).toBe(19);
+    expect(result.json).toMatchObject({ passed: false, overridden: false });
+    expect(result.json.reason).toMatch(/dev|base/i);
+    expect(gitIn(f.cwd, "merge-base", dev, bookkeepingHead)).toBe(dev);
+    env({ BKIT_SHIP_GATE_OVERRIDE: bookkeepingHead });
+    expect((await f.run("--fresh-base")).code).toBe(19);
+  });
+
+  it("checks the named repository base and fails closed on missing evidence", async () => {
+    const f = freshBaseFixture();
+    const foreignDev = "d".repeat(40);
+    fs.writeFileSync(path.join(f.bin, "dev-sha"), foreignDev);
+    fs.writeFileSync(path.join(f.bin, "comparison"), "diverged\n");
+    const result = await cli(f.cwd, [
+      "gate",
+      "--pr=7",
+      "--repo=foreign/repo",
+      "--fresh-base",
+      `--snapshot=${f.snapshot}`,
+    ]);
+    expect(result.code, result.err).toBe(19);
+    expect(result.json).toMatchObject({ passed: false, repo: "foreign/repo" });
+    const calls = fs.readFileSync(f.calls, "utf-8");
+    expect(calls).toMatch(/(?:\/)?repos\/foreign\/repo\/commits\/dev/);
+    expect(calls).toMatch(/(?:\/)?repos\/foreign\/repo\/compare\//);
+    expect(calls).not.toMatch(/repos\/example\/example\/(?:commits|compare)/);
+    fs.writeFileSync(path.join(f.bin, "missing-base"), "");
+    const missing = await cli(f.cwd, ["gate", "--pr=7", "--repo=foreign/repo", "--fresh-base"]);
+    expect(missing.code, missing.err).toBe(20);
+    expect(missing.json.passed).toBe(false);
+    expect(missing.json.reason).toMatch(/base|dev|evidence/i);
+  });
+
+  it("refuses stale or missing MCP base evidence despite green CI without gh", async () => {
+    const f = freshBaseFixture();
+    const dev = f.advance();
+    const facts = path.join(f.bin, "gate-facts.json");
+    const ci = {
+      workflowRuns: JSON.parse(
+        fs.readFileSync(path.join(f.fixtureRoot, "runs", `${f.head}.json`), "utf-8"),
+      ),
+      jobs: JSON.parse(fs.readFileSync(path.join(f.fixtureRoot, "jobs", "1900.json"), "utf-8")),
+    };
+    const scope = {
+      ownerRepo: "example/example",
+      prNumber: 7,
+      headRefName: "feat/842-gate",
+      baseRefName: "dev",
+      pr: f.pr("example/example"),
+      ci,
+    };
+    fs.writeFileSync(
+      facts,
+      JSON.stringify({
+        ...scope,
+        base: { ref: "dev", sha: dev, comparedHead: f.head, status: "diverged" },
+      }),
+    );
+    fs.writeFileSync(path.join(f.bin, "unavailable"), "");
+    const stale = await f.run("--fresh-base", `--facts-file=${facts}`);
+    expect(stale.code, stale.err).toBe(19);
+    expect(stale.json).toMatchObject({ passed: false, overridden: false, repo: "example/example" });
+    fs.writeFileSync(facts, JSON.stringify(scope));
+    const missing = await f.run("--fresh-base", `--facts-file=${facts}`);
+    expect(missing.code, missing.err).toBe(20);
+    expect(missing.json.passed).toBe(false);
+    fs.writeFileSync(
+      facts,
+      JSON.stringify({
+        ...scope,
+        ownerRepo: "foreign/repo",
+        base: { ref: "dev", sha: dev, comparedHead: f.head, status: "ahead" },
+      }),
+    );
+    const foreign = await f.run("--fresh-base", `--facts-file=${facts}`);
+    expect(foreign.code).not.toBe(0);
+    expect(foreign.json?.passed).not.toBe(true);
+    expect(foreign.err).toMatch(/scope|repository|ownerRepo/i);
+  });
+
+  function scopedMcpCiFixture() {
+    const f = freshBaseFixture();
+    const run = {
+      id: 1900,
+      workflow_id: 456,
+      path: ".github/workflows/bkit-ci.yml",
+      repository: { full_name: "example/example" },
+      head_repository: { full_name: "example/example" },
+      head_sha: f.head,
+      head_branch: "feat/842-gate",
+      event: "push",
+      status: "completed",
+      conclusion: "success",
+      html_url: "https://github.com/example/example/actions/runs/1900",
+    };
+    const job = {
+      id: 19001,
+      name: "bkit-tests-check",
+      status: "completed",
+      conclusion: "success",
+      run_id: run.id,
+      run_url: "https://api.github.com/repos/example/example/actions/runs/1900",
+      head_sha: f.head,
+    };
+    const facts = path.join(f.bin, "ci-provenance-facts.json");
+    const write = (runs: unknown[], jobs: unknown) =>
+      fs.writeFileSync(
+        facts,
+        JSON.stringify({
+          ownerRepo: "example/example",
+          prNumber: 7,
+          headRefName: "feat/842-gate",
+          baseRefName: "dev",
+          pr: f.pr("example/example"),
+          ci: { workflowRuns: { total_count: runs.length, workflow_runs: runs }, jobs },
+          base: {
+            ref: "dev",
+            sha: gitIn(f.cwd, "rev-parse", "origin/dev"),
+            comparedHead: f.head,
+            status: "ahead",
+          },
+        }),
+      );
+    fs.writeFileSync(path.join(f.bin, "unavailable"), "");
+    return { run, job, write, gate: () => f.run("--fresh-base", `--facts-file=${facts}`) };
+  }
+
+  it("rejects MCP green runs from another repository or workflow at the same head", async () => {
+    const f = scopedMcpCiFixture();
+    f.write([f.run], { total_count: 1, jobs: [f.job] });
+    const control = await f.gate();
+    expect(control.code, control.err).toBe(0);
+    expect(control.json.passed).toBe(true);
+    for (const run of [
+      { ...f.run, repository: { full_name: "foreign/repo" } },
+      { ...f.run, path: ".github/workflows/unrelated.yml" },
+      { ...f.run, repository: undefined },
+      { ...f.run, path: undefined, workflow_id: undefined },
+    ]) {
+      f.write([run], { total_count: 1, jobs: [f.job] });
+      const refused = await f.gate();
+      expect(refused.code, JSON.stringify(run)).not.toBe(0);
+      expect(refused.json).toMatchObject({ passed: false });
+    }
+  });
+
+  it("rejects MCP capstone jobs belonging to another run", async () => {
+    const f = scopedMcpCiFixture();
+    // Actions --paginate --slurp yields page objects; the capstone can be on page two.
+    const pages = (job: unknown) => [
+      { total_count: 2, jobs: [{ ...f.job, id: 19002, name: "bkit-tests-unit" }] },
+      { total_count: 2, jobs: [job] },
+    ];
+    f.write([f.run], pages(f.job));
+    const control = await f.gate();
+    expect(control.code, control.err).toBe(0);
+    expect(control.json).toMatchObject({ passed: true, runId: 1900 });
+    for (const job of [
+      { ...f.job, run_id: 9999 },
+      { ...f.job, run_url: "https://api.github.com/repos/example/example/actions/runs/9999" },
+      { ...f.job, head_sha: "a".repeat(40) },
+      { ...f.job, run_url: "https://api.github.com/repos/foreign/repo/actions/runs/1900" },
+      { ...f.job, run_id: undefined },
+      { ...f.job, run_url: undefined },
+      { ...f.job, head_sha: undefined },
+    ]) {
+      f.write([f.run], pages(job));
+      const refused = await f.gate();
+      expect(refused.code, JSON.stringify(job)).not.toBe(0);
+      expect(refused.json).toMatchObject({ passed: false });
+    }
+  });
 
   it("accepts a green capstone at the head (exit 0) and says so", async () => {
     fixtureGh();
@@ -1436,7 +1861,7 @@ describe("bkit runs gate", () => {
     });
   });
 
-  describe("--validated carry-forward (17)", { timeout: 20_000 }, () => {
+  describe("--validated carry-forward (17)", { timeout: localLimit(20_000) }, () => {
     /** Tags double as fixture SHAs: green-capstone / failed are the validated commit. */
     function carryRepo() {
       const repo = tmp();
@@ -1764,6 +2189,48 @@ function fakeGhBin(replies: Record<string, string>) {
 const instant = async (ms: number) => ms;
 const noLog = () => undefined;
 
+/** Where a run's status log lives: the only place `status invocation` binds a run to. */
+const RUN_STATUS = "docs/plans/202611/logs/1-x/status.jsonl";
+
+/** Seed a build run's status log in `cwd` and issue an engine invocation bound to it. */
+async function issueInvocation(cwd: string) {
+  const status = path.join(cwd, RUN_STATUS);
+  fs.mkdirSync(path.dirname(status), { recursive: true });
+  fs.writeFileSync(
+    status,
+    `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-11-01T00:00:00Z" })}\n`,
+  );
+  const out: string[] = [];
+  const code = await runCommand(
+    [
+      "status",
+      "invocation",
+      "--workflow=build",
+      "--step=build-close-workflow",
+      `--file=${RUN_STATUS}`,
+      "--host=claude",
+      "--configured-model=sonnet",
+      "--json",
+    ],
+    COMMANDS,
+    {
+      classicVerbs: new Set(["status"]),
+      cwd,
+      io: { stdout: (t) => out.push(t), stderr: () => {} },
+    },
+  );
+  expect(code).toBe(0);
+  const id = (JSON.parse(out.join("")) as { invocation: string }).invocation;
+  return { status, id };
+}
+
+/** The saved-state options a dispatch gate resumes from. */
+const handoffAt = (status: string) => ({
+  statusPath: status,
+  operation: "ci-retrigger:test",
+  workflow: "build",
+});
+
 /** A fake sleep: the first `onTime` calls return on time, every later one overshoots by 6 s. */
 function sleepBlockedAfter(onTime: number) {
   let sleeps = 0;
@@ -1952,7 +2419,7 @@ describe("bkit runs wait", () => {
 // CI-Dispatch Gate: bkit runs dispatch
 // ---------------------------------------------------------------------------
 
-describe("bkit runs dispatch", { timeout: 20_000 }, () => {
+describe("bkit runs dispatch", { timeout: localLimit(20_000) }, () => {
   /** A feature branch pushed to a bare remote, its head the close-workflow commit. */
   function closeRepo(opts: { headMessage?: string; ciFile?: boolean; capstone?: string } = {}) {
     const root = tmp();
@@ -1996,15 +2463,40 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
     });
   }
 
-  const base = (cwd: string) => ({
+  /** The gate's options; its saved state lives beside the checkout, one file per repo. */
+  const base = (cwd: string, status = path.join(path.dirname(cwd), "status.jsonl")) => ({
     cwd,
     pr: "7",
     fid: "1-x",
     autoRouteSuffix: "",
     budgetS: 60,
     intervalS: 10,
-    retriggered: false,
+    handoff: handoffAt(status),
   });
+  /** The owner/repo the gate saved its target under (here derived from the local origin path). */
+  const savedRepo = (status: string) =>
+    fs
+      .readFileSync(status, "utf-8")
+      .split("\n")
+      .filter((l) => l.includes('"ci-handoff"'))
+      .map((l) => JSON.parse(l) as { target: { repo: string } })[0]?.target.repo;
+  /** What a turn loop records after a hand-off, through the real `runs handoff` command. */
+  const turnLoop = (
+    r: { cwd: string; status: string; id: string },
+    head: string,
+    result: string,
+    polls: number,
+  ) =>
+    cli(r.cwd, [
+      "handoff",
+      `--invocation=${r.id}`,
+      `--repo=${savedRepo(r.status)}`,
+      "--pr=7",
+      `--head=${head}`,
+      "--branch=feat/1-x",
+      `--result=${result}`,
+      `--polls=${polls}`,
+    ]);
   const quiet = { sleep: instant, log: noLog };
   const NONE = rollup("vercel");
   const FOUND = rollup("bkit-tests-unit");
@@ -2048,19 +2540,24 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
     expect(logs.join("\n")).toContain("pre-push gate refused");
   });
 
-  it("a failed re-trigger push leaves no orphan commit behind", async () => {
+  it("a failed re-trigger push never piles up commits: the re-run pushes the same re-trigger commit", async () => {
     const { cwd, remoteHead } = closeRepo();
     failingPushHook(cwd);
-    const before = gitIn(cwd, "rev-parse", "HEAD");
+    const before = gitIn(cwd, "rev-list", "--count", "HEAD");
     const tip = remoteHead();
     const r = await ciDispatchGate(base(cwd), {
       gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh,
       ...quiet,
     });
     expect(r).toMatchObject({ phase: "repoll", handoff: 6, ciDispatch: null });
-    // The commit never reached the remote: it is dropped, not left to pile up on a re-run.
-    expect(gitIn(cwd, "rev-parse", "HEAD")).toBe(before);
     expect(remoteHead()).toBe(tip);
+    const made = gitIn(cwd, "rev-parse", "HEAD");
+    // The saved checkpoint names the commit already made: the re-run pushes it, it makes no other.
+    fs.rmSync(path.join(cwd, ".git", "hooks", "pre-push"));
+    const again = await ciDispatchGate(base(cwd), { gh: sequenceGh([FOUND]).gh, ...quiet });
+    expect(again.ciDispatch).toMatchObject({ outcome: "self-healed", head: made, retrigger: true });
+    expect(Number(gitIn(cwd, "rev-list", "--count", "HEAD"))).toBe(Number(before) + 1);
+    expect(remoteHead()).toBe(made);
   });
 
   it("no-ci only when no CI workflow is declared; a declared one's silence is ci-declared-no-run", async () => {
@@ -2121,32 +2618,44 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
     });
   });
 
-  it("a blocked sleep hands the poll to the agent (81); re-entry with the turn loop's result resumes", async () => {
+  /** A blocked first poll: the gate hands the poll to the agent (81) after one attempt. */
+  async function blockedFirstPoll() {
     const { cwd } = closeRepo();
-    const blocked = await ciDispatchGate(base(cwd), {
+    const { status, id } = await issueInvocation(cwd);
+    const blocked = await ciDispatchGate(base(cwd, status), {
       gh: sequenceGh([NONE]).gh,
       sleep: async (ms) => ms + 6000,
       log: noLog,
     });
     expect(blocked).toMatchObject({ phase: "poll", handoff: 81, ciDispatch: null, attempts: 1 });
+    return { cwd, status, id, head: blocked.head };
+  }
 
-    const found = await ciDispatchGate(
-      { ...base(cwd), supplied: { pollResult: "found", attempts: 4, allErrored: false } },
-      { gh: sequenceGh([fail]).gh, ...quiet },
-    );
-    expect(found.ciDispatch).toMatchObject({ outcome: "dispatched", attempts: 4 });
-
-    // A turn loop that saw no run goes on to the same self-heal, not straight to unresolved.
-    const none = await ciDispatchGate(
-      { ...base(cwd), supplied: { pollResult: "none", attempts: 6, allErrored: false } },
-      { gh: sequenceGh([FOUND]).gh, ...quiet },
-    );
-    expect(none.ciDispatch).toMatchObject({ outcome: "self-healed", retrigger: true });
+  it("a blocked sleep hands the poll to the agent (81); the turn loop's recorded find resumes as dispatched", async () => {
+    const { cwd, status, id, head } = await blockedFirstPoll();
+    expect((await turnLoop({ cwd, status, id }, head, "pending", 1)).json).toMatchObject({
+      nextAction: "verdict",
+      outcome: "dispatched",
+    });
+    // gh only errors now: the verdict comes from the saved find, not from a new poll.
+    const found = await ciDispatchGate(base(cwd, status), { gh: sequenceGh([fail]).gh, ...quiet });
+    expect(found.ciDispatch).toMatchObject({ outcome: "dispatched", attempts: 2 });
   });
 
-  it("a hand-off in the re-poll resumes with --retriggered and no second re-trigger commit", async () => {
+  it("a turn loop that saw no run goes on to the same self-heal, not straight to unresolved", async () => {
+    const { cwd, status, id, head } = await blockedFirstPoll();
+    expect((await turnLoop({ cwd, status, id }, head, "none", 5)).json).toMatchObject({
+      attempts: 6,
+      nextAction: "retrigger",
+    });
+    const none = await ciDispatchGate(base(cwd, status), { gh: sequenceGh([FOUND]).gh, ...quiet });
+    expect(none.ciDispatch).toMatchObject({ outcome: "self-healed", retrigger: true, attempts: 7 });
+  });
+
+  it("a hand-off in the re-poll resumes from the saved receipt with no second re-trigger commit", async () => {
     const { cwd } = closeRepo();
-    const r = await ciDispatchGate(base(cwd), {
+    const { status, id } = await issueInvocation(cwd);
+    const r = await ciDispatchGate(base(cwd, status), {
       gh: sequenceGh([NONE]).gh,
       // The first poll's five sleeps return on time; the re-poll's first sleep is blocked.
       sleep: sleepBlockedAfter(5),
@@ -2154,17 +2663,14 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
     });
     expect(r).toMatchObject({ phase: "repoll", handoff: 81, retrigger: true, attempts: 7 });
     const count = gitIn(cwd, "rev-list", "--count", "HEAD");
-    const again = await ciDispatchGate(
-      {
-        ...base(cwd),
-        retriggered: true,
-        supplied: { pollResult: "found", attempts: 9, allErrored: false },
-      },
-      { gh: sequenceGh([fail]).gh, ...quiet },
-    );
+    expect((await turnLoop({ cwd, status, id }, r.head, "pending", 1)).json).toMatchObject({
+      phase: "repoll",
+      outcome: "self-healed",
+    });
+    const again = await ciDispatchGate(base(cwd, status), { gh: sequenceGh([fail]).gh, ...quiet });
     expect(again.ciDispatch).toMatchObject({
       outcome: "self-healed",
-      attempts: 9,
+      attempts: 8,
       retrigger: true,
     });
     expect(gitIn(cwd, "rev-list", "--count", "HEAD")).toBe(count);
@@ -2181,8 +2687,9 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
 
   it("CLI: verdict JSON, body scan, exit codes", async () => {
     const { cwd } = closeRepo();
+    const { id } = await issueInvocation(cwd);
     fakeGhBin({ "pr-view": ROLLUP_FOUND, "pr-list": '[{"number":7}]' });
-    const r = await cli(cwd, ["dispatch", "--fid=1-x"]);
+    const r = await cli(cwd, ["dispatch", "--fid=1-x", `--invocation=${id}`]);
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({
       ciDispatch: { outcome: "dispatched", attempts: 1, retrigger: false },
@@ -2192,15 +2699,23 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
     });
 
     gitIn(cwd, "commit", "-q", "--allow-empty", "-m", "squash subject\n\n* wip bkit [skip ci]");
-    const dirty = await cli(cwd, ["dispatch", "--fid=1-x", "--pr=7"]);
+    const dirty = await cli(cwd, ["dispatch", "--fid=1-x", "--pr=7", `--invocation=${id}`]);
     expect(dirty.code).toBe(4);
     expect(dirty.json.scanResult).toBe("skip-token-found");
   });
 
   it("CLI: unresolved exits 1 with the verdict still on stdout; gh absent exits 80", async () => {
     const { cwd } = closeRepo();
+    const { id } = await issueInvocation(cwd);
     fakeGhBin({ "pr-view": "EXIT:1" });
-    const r = await cli(cwd, ["dispatch", "--fid=1-x", "--pr=7", "--budget-s=1", "--interval-s=1"]);
+    const r = await cli(cwd, [
+      "dispatch",
+      "--fid=1-x",
+      "--pr=7",
+      "--budget-s=1",
+      "--interval-s=1",
+      `--invocation=${id}`,
+    ]);
     expect(r.code).toBe(1);
     expect(r.json.ciDispatch).toMatchObject({ outcome: "unresolved", reason: "gh-error" });
     expect(r.json.scanResult).toBeNull();
@@ -2209,185 +2724,213 @@ describe("bkit runs dispatch", { timeout: 20_000 }, () => {
     const realGit = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf-8" }).stdout.trim();
     fs.symlinkSync(realGit, path.join(bin, "git"));
     env({ PATH: bin });
-    expect((await cli(cwd, ["dispatch", "--fid=1-x"])).code).toBe(80);
+    expect((await cli(cwd, ["dispatch", "--fid=1-x", `--invocation=${id}`])).code).toBe(80);
   });
 
-  it("CLI: --poll-result is validated, --attempts needs it", async () => {
+  it("CLI: dispatch without a run's invocation is refused, and nothing is polled or committed", async () => {
     const { cwd } = closeRepo();
-    expect((await cli(cwd, ["dispatch", "--fid=1-x", "--pr=7", "--poll-result=maybe"])).code).toBe(
-      2,
-    );
-    expect((await cli(cwd, ["dispatch", "--fid=1-x", "--pr=7", "--attempts=3"])).code).toBe(2);
-  });
-});
-
-describe("bkit runs dispatch on dev (a debug run in place)", { timeout: 30_000 }, () => {
-  const FID = "1-x";
-
-  /**
-   * A clone on `dev` of a bare origin: one pushed base commit, a foreign local commit,
-   * then (with `record`) a shared-checkout record and one commit the run made.
-   */
-  function devRepo(o: { record: boolean }) {
-    const root = tmp();
-    const remote = path.join(root, "remote.git");
-    const cwd = path.join(root, "work");
-    gitIn(root, "init", "-q", "--bare", "-b", "dev", remote);
-    gitIn(root, "init", "-q", "-b", "dev", cwd);
-    gitIn(cwd, "config", "user.email", "t@t");
-    gitIn(cwd, "config", "user.name", "t");
-    fs.writeFileSync(
-      path.join(cwd, "package.json"),
-      JSON.stringify({
-        private: true,
-        scripts: {
-          "bkit:gate:min":
-            "node -e \"process.exit(process.env.BKIT_TEST_GATE_RUNNER === '1' ? 0 : 9)\"",
-        },
-        bkit: { workflows: { worktree: { install: false } } },
-      }),
-    );
-    gitIn(cwd, "add", "package.json");
-    gitIn(cwd, "commit", "-q", "--allow-empty", "-m", "base");
-    gitIn(cwd, "remote", "add", "origin", remote);
-    gitIn(cwd, "push", "-q", "-u", "origin", "dev");
-    gitIn(cwd, "commit", "-q", "--allow-empty", "-m", "foreign local commit");
-    if (o.record) writeRecord(cwd, newRecord(cwd, FID, "dev"));
-    gitIn(cwd, "commit", "-q", "--allow-empty", "-m", `chore(${FID}): run commit`);
-    if (o.record) appendRecordCommit(cwd, FID, gitIn(cwd, "rev-parse", "HEAD"));
-    const remoteTip = () => gitIn(remote, "rev-parse", "dev");
-    const remoteLog = () => gitIn(remote, "log", "--format=%s", "dev").split("\n");
-    return { root, remote, cwd, remoteTip, remoteLog };
-  }
-
-  const gateBase = (cwd: string) => ({
-    cwd,
-    pr: "7",
-    fid: FID,
-    autoRouteSuffix: "",
-    budgetS: 60,
-    intervalS: 10,
-    retriggered: false,
-  });
-  const quiet = { sleep: instant, log: noLog };
-  const NONE = rollup("vercel");
-  const FOUND = rollup("bkit-tests-unit");
-
-  /** A gh whose `run list` is empty for `emptyFor` calls, then shows a run at origin's dev tip. */
-  const runAtRemoteTip = (remote: string, emptyFor: number): Gh => {
-    let n = 0;
-    return (args) => {
-      if (args[0] !== "run" || args[1] !== "list") return fail;
-      if (++n <= emptyFor) return ok("[]");
-      const headSha = gitIn(remote, "rev-parse", "dev");
-      return ok(JSON.stringify([{ status: "queued", conclusion: "", headSha }]));
-    };
-  };
-
-  it("dispatch on dev with a pushed sha and no pr proves the run started", async () => {
-    const { cwd, root, remote } = devRepo({ record: true });
-    // The pushed sha is a copy the push made on origin; the clone does not have it yet.
-    const other = path.join(root, "other");
-    gitIn(root, "clone", "-q", "-b", "dev", remote, other);
-    gitIn(other, "commit", "-q", "--allow-empty", "-m", `chore(${FID}): landed copy`);
-    gitIn(other, "push", "-q", "origin", "dev");
-    const sha = gitIn(other, "rev-parse", "HEAD");
-    fakeGhBin({
-      "pr-list": "[]",
-      "run-list": JSON.stringify([{ status: "queued", conclusion: "", headSha: sha }]),
-    });
-    const r = await cli(cwd, ["dispatch", `--fid=${FID}`, `--sha=${sha}`]);
-    expect(r.code).toBe(0);
-    expect(r.json).toMatchObject({
-      ciDispatch: { outcome: "dispatched", head: sha, retrigger: false },
-      phase: "done",
-      pr: null,
-      head: sha,
-      scanResult: "clean",
-    });
+    const fake = fakeGhBin({ "pr-view": ROLLUP_FOUND });
+    const head = gitIn(cwd, "rev-parse", "HEAD");
+    const r = await cli(cwd, ["dispatch", "--fid=1-x", "--pr=7"]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("--invocation");
+    // No gh call at all: the calls log is never created.
+    expect(() => fake.calls()).toThrow();
+    expect(gitIn(cwd, "rev-parse", "HEAD")).toBe(head);
   });
 
-  it("re-trigger on dev with a record pushes through the own-commit push", async () => {
-    const { cwd, remote, remoteTip, remoteLog } = devRepo({ record: true });
-    const r = await ciDispatchGate(gateBase(cwd), {
-      gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh,
-      ...quiet,
-    });
-    // The foreign local commit never reaches origin; the run's commits do.
-    expect(remoteLog()).not.toContain("foreign local commit");
-    expect(remoteLog()).toContain(`chore(${FID}): run commit`);
-    expect(remoteLog()[0]).toBe(`chore(${FID}): re-trigger`);
-    // The gate follows the landed copy, not the local commit it was made as.
-    expect(r.ciDispatch).toMatchObject({ outcome: "self-healed", head: remoteTip() });
-    expect(r.head).toBe(remoteTip());
-    expect(gitIn(remote, "rev-list", "--count", "dev")).toBe("3");
-    expect(readRecord(cwd, FID)?.commits).toHaveLength(2);
-  });
-
-  it("re-trigger on dev with a record never commits a foreign staged path", async () => {
-    const { cwd, remoteLog } = devRepo({ record: true });
-    fs.writeFileSync(path.join(cwd, "foreign.txt"), "user work\n");
-    gitIn(cwd, "add", "foreign.txt");
-    await ciDispatchGate(gateBase(cwd), {
-      gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh,
-      ...quiet,
-    });
-    const retrigger = gitIn(cwd, "log", "-1", "--format=%H", "--grep=re-trigger");
-    expect(gitIn(cwd, "show", "--name-only", "--format=", retrigger)).toBe("");
-    expect(gitIn(cwd, "diff", "--cached", "--name-only")).toBe("foreign.txt");
-    expect(remoteLog()).not.toContain("foreign local commit");
-  });
-
-  it("dispatch on dev with no pr and a record follows the landed sha through the re-trigger", async () => {
-    const { cwd, remote, remoteTip } = devRepo({ record: true });
-    const r = await ciDispatchGate(
-      { ...gateBase(cwd), pr: null },
-      { gh: runAtRemoteTip(remote, 6), ...quiet },
-    );
-    expect(r.ciDispatch).toMatchObject({
-      outcome: "self-healed",
-      retrigger: true,
-      head: remoteTip(),
-    });
-    expect(gitIn(remote, "log", "-1", "--format=%s", "dev")).toBe(`chore(${FID}): re-trigger`);
-  });
-
-  it("re-trigger on dev without a record commits and pushes nothing, and hands off to the Failure Path", async () => {
-    const { cwd, remoteTip, remoteLog } = devRepo({ record: false });
-    const headBefore = gitIn(cwd, "rev-parse", "HEAD");
-    const tipBefore = remoteTip();
-    const r = await ciDispatchGate(gateBase(cwd), {
-      gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh,
-      ...quiet,
-    });
-    expect(r).toMatchObject({ phase: "repoll", handoff: 6 });
-    expect(r.ciDispatch).not.toMatchObject({ outcome: "self-healed" });
-    expect(gitIn(cwd, "rev-parse", "HEAD")).toBe(headBefore);
-    expect(remoteTip()).toBe(tipBefore);
-    expect(remoteLog()).not.toContain("foreign local commit");
-  });
-
-  it("re-trigger on dev only uses the record of its own FID", async () => {
-    const { cwd, remoteTip, remoteLog } = devRepo({ record: true });
-    const tipBefore = remoteTip();
-    const r = await ciDispatchGate(
-      { ...gateBase(cwd), fid: "some-other-run" },
-      { gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh, ...quiet },
-    );
-    expect(r).toMatchObject({ handoff: 6 });
-    expect(remoteTip()).toBe(tipBefore);
-    expect(remoteLog()).not.toContain("some-other-run");
-  });
-
-  it.each(["abc1234", "0123456789abcdef0123456789abcdef0123456"])(
-    "dispatch --sha=%s is refused: the CI run is matched on the full 40-hex sha",
-    async (sha) => {
-      const { cwd } = devRepo({ record: true });
-      const r = await cli(cwd, ["dispatch", `--fid=${FID}`, `--sha=${sha}`]);
+  it.each(["--poll-result=found", "--attempts=3", "--all-errored", "--retriggered"])(
+    "CLI: %s is not a dispatch flag: a turn loop records what it saw with runs handoff",
+    async (flag) => {
+      const { cwd } = closeRepo();
+      const { status, id } = await issueInvocation(cwd);
+      const before = fs.readFileSync(status, "utf-8");
+      const r = await cli(cwd, ["dispatch", "--fid=1-x", "--pr=7", `--invocation=${id}`, flag]);
       expect(r.code).toBe(2);
+      expect(fs.readFileSync(status, "utf-8")).toBe(before);
     },
   );
 });
+
+describe(
+  "bkit runs dispatch on dev (a debug run in place)",
+  { timeout: localLimit(30_000) },
+  () => {
+    const FID = "1-x";
+
+    /**
+     * A clone on `dev` of a bare origin: one pushed base commit, a foreign local commit,
+     * then (with `record`) a shared-checkout record and one commit the run made.
+     */
+    function devRepo(o: { record: boolean }) {
+      const root = tmp();
+      const remote = path.join(root, "remote.git");
+      const cwd = path.join(root, "work");
+      gitIn(root, "init", "-q", "--bare", "-b", "dev", remote);
+      gitIn(root, "init", "-q", "-b", "dev", cwd);
+      gitIn(cwd, "config", "user.email", "t@t");
+      gitIn(cwd, "config", "user.name", "t");
+      fs.writeFileSync(
+        path.join(cwd, "package.json"),
+        JSON.stringify({
+          private: true,
+          scripts: {
+            "bkit:gate:min":
+              "node -e \"process.exit(process.env.BKIT_TEST_GATE_RUNNER === '1' ? 0 : 9)\"",
+          },
+          bkit: { workflows: { worktree: { install: false } } },
+        }),
+      );
+      gitIn(cwd, "add", "package.json");
+      gitIn(cwd, "commit", "-q", "--allow-empty", "-m", "base");
+      gitIn(cwd, "remote", "add", "origin", remote);
+      gitIn(cwd, "push", "-q", "-u", "origin", "dev");
+      gitIn(cwd, "commit", "-q", "--allow-empty", "-m", "foreign local commit");
+      if (o.record) writeRecord(cwd, newRecord(cwd, FID, "dev"));
+      gitIn(cwd, "commit", "-q", "--allow-empty", "-m", `chore(${FID}): run commit`);
+      if (o.record) appendRecordCommit(cwd, FID, gitIn(cwd, "rev-parse", "HEAD"));
+      const remoteTip = () => gitIn(remote, "rev-parse", "dev");
+      const remoteLog = () => gitIn(remote, "log", "--format=%s", "dev").split("\n");
+      return { root, remote, cwd, remoteTip, remoteLog };
+    }
+
+    const gateBase = (cwd: string) => ({
+      cwd,
+      pr: "7",
+      fid: FID,
+      autoRouteSuffix: "",
+      budgetS: 60,
+      intervalS: 10,
+      handoff: handoffAt(path.join(path.dirname(cwd), "status.jsonl")),
+    });
+    const quiet = { sleep: instant, log: noLog };
+    const NONE = rollup("vercel");
+    const FOUND = rollup("bkit-tests-unit");
+
+    /** A gh whose `run list` is empty for `emptyFor` calls, then shows a run at origin's dev tip. */
+    const runAtRemoteTip = (remote: string, emptyFor: number): Gh => {
+      let n = 0;
+      return (args) => {
+        if (args[0] !== "run" || args[1] !== "list") return fail;
+        if (++n <= emptyFor) return ok("[]");
+        const headSha = gitIn(remote, "rev-parse", "dev");
+        return ok(JSON.stringify([{ status: "queued", conclusion: "", headSha }]));
+      };
+    };
+
+    it("dispatch on dev with a pushed sha and no pr proves the run started", async () => {
+      const { cwd, root, remote } = devRepo({ record: true });
+      // The pushed sha is a copy the push made on origin; the clone does not have it yet.
+      const other = path.join(root, "other");
+      gitIn(root, "clone", "-q", "-b", "dev", remote, other);
+      gitIn(other, "commit", "-q", "--allow-empty", "-m", `chore(${FID}): landed copy`);
+      gitIn(other, "push", "-q", "origin", "dev");
+      const sha = gitIn(other, "rev-parse", "HEAD");
+      fakeGhBin({
+        "pr-list": "[]",
+        "run-list": JSON.stringify([{ status: "queued", conclusion: "", headSha: sha }]),
+      });
+      const { id } = await issueInvocation(cwd);
+      const r = await cli(cwd, ["dispatch", `--fid=${FID}`, `--sha=${sha}`, `--invocation=${id}`]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({
+        ciDispatch: { outcome: "dispatched", head: sha, retrigger: false },
+        phase: "done",
+        pr: null,
+        head: sha,
+        scanResult: "clean",
+      });
+    });
+
+    it("re-trigger on dev with a record pushes through the own-commit push", async () => {
+      const { cwd, remote, remoteTip, remoteLog } = devRepo({ record: true });
+      const r = await ciDispatchGate(gateBase(cwd), {
+        gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh,
+        ...quiet,
+      });
+      // The foreign local commit never reaches origin; the run's commits do.
+      expect(remoteLog()).not.toContain("foreign local commit");
+      expect(remoteLog()).toContain(`chore(${FID}): run commit`);
+      expect(remoteLog()[0]).toBe(`chore(${FID}): re-trigger`);
+      // The gate follows the landed copy, not the local commit it was made as.
+      expect(r.ciDispatch).toMatchObject({ outcome: "self-healed", head: remoteTip() });
+      expect(r.head).toBe(remoteTip());
+      expect(gitIn(remote, "rev-list", "--count", "dev")).toBe("3");
+      expect(readRecord(cwd, FID)?.commits).toHaveLength(2);
+    });
+
+    it("re-trigger on dev with a record never commits a foreign staged path", async () => {
+      const { cwd, remoteLog } = devRepo({ record: true });
+      fs.writeFileSync(path.join(cwd, "foreign.txt"), "user work\n");
+      gitIn(cwd, "add", "foreign.txt");
+      await ciDispatchGate(gateBase(cwd), {
+        gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh,
+        ...quiet,
+      });
+      const retrigger = gitIn(cwd, "log", "-1", "--format=%H", "--grep=re-trigger");
+      expect(gitIn(cwd, "show", "--name-only", "--format=", retrigger)).toBe("");
+      expect(gitIn(cwd, "diff", "--cached", "--name-only")).toBe("foreign.txt");
+      expect(remoteLog()).not.toContain("foreign local commit");
+    });
+
+    it("dispatch on dev with no pr and a record follows the landed sha through the re-trigger", async () => {
+      const { cwd, remote, remoteTip } = devRepo({ record: true });
+      const r = await ciDispatchGate(
+        { ...gateBase(cwd), pr: null },
+        { gh: runAtRemoteTip(remote, 6), ...quiet },
+      );
+      expect(r.ciDispatch).toMatchObject({
+        outcome: "self-healed",
+        retrigger: true,
+        head: remoteTip(),
+      });
+      expect(gitIn(remote, "log", "-1", "--format=%s", "dev")).toBe(`chore(${FID}): re-trigger`);
+    });
+
+    it("re-trigger on dev without a record commits and pushes nothing, and hands off to the Failure Path", async () => {
+      const { cwd, remoteTip, remoteLog } = devRepo({ record: false });
+      const headBefore = gitIn(cwd, "rev-parse", "HEAD");
+      const tipBefore = remoteTip();
+      const r = await ciDispatchGate(gateBase(cwd), {
+        gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh,
+        ...quiet,
+      });
+      expect(r).toMatchObject({ phase: "repoll", handoff: 6 });
+      expect(r.ciDispatch).not.toMatchObject({ outcome: "self-healed" });
+      expect(gitIn(cwd, "rev-parse", "HEAD")).toBe(headBefore);
+      expect(remoteTip()).toBe(tipBefore);
+      expect(remoteLog()).not.toContain("foreign local commit");
+    });
+
+    it("re-trigger on dev only uses the record of its own FID", async () => {
+      const { cwd, remoteTip, remoteLog } = devRepo({ record: true });
+      const tipBefore = remoteTip();
+      const r = await ciDispatchGate(
+        { ...gateBase(cwd), fid: "some-other-run" },
+        { gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh, ...quiet },
+      );
+      expect(r).toMatchObject({ handoff: 6 });
+      expect(remoteTip()).toBe(tipBefore);
+      expect(remoteLog()).not.toContain("some-other-run");
+    });
+
+    it.each(["abc1234", "0123456789abcdef0123456789abcdef0123456"])(
+      "dispatch --sha=%s is refused: the CI run is matched on the full 40-hex sha",
+      async (sha) => {
+        const { cwd } = devRepo({ record: true });
+        const { id } = await issueInvocation(cwd);
+        const r = await cli(cwd, [
+          "dispatch",
+          `--fid=${FID}`,
+          `--sha=${sha}`,
+          `--invocation=${id}`,
+        ]);
+        expect(r.code).toBe(2);
+        expect(r.err).toContain("--sha must be the full 40-hex-digit commit sha");
+      },
+    );
+  },
+);
 
 const ROLLUP_FOUND = JSON.stringify({
   statusCheckRollup: [{ name: "bkit-tests-unit", status: "QUEUED" }],
@@ -2611,6 +3154,113 @@ describe("bkit runs gate — PR heads, snapshot and audit rows", () => {
     expect(String(row.reason)).not.toBe("");
   });
 
+  it.each([
+    ["CI still running", "in-progress", 11],
+    ["no run yet", "no-run-at-this-head", 10],
+  ])(
+    "--capstone-only --record writes no ship-merge-ci row while %s: exit %s is not a verdict",
+    async (_why, sha, code) => {
+      prThenFixtureGh(openPr({ state: "MERGED", mergeCommit: { oid: sha } }));
+      const file = statusFile();
+      const r = await gate(tmp(), "--squash-of=7", "--capstone-only", `--record=${file}`);
+      expect(r.code).toBe(code);
+      expect(fs.readFileSync(file, "utf-8")).toBe("");
+    },
+  );
+
+  describe("--wait", () => {
+    /**
+     * `pr view` answers the merged PR; `gh run list` answers `listings[n]` on its nth call (the
+     * last one repeats), and records each call; every other call goes to the fixture stub.
+     */
+    function waitingGh(sha: string, listings: string[]) {
+      const dir = tmp("bkit-wait-gh-");
+      const pr = openPr({ state: "MERGED", mergeCommit: { oid: sha } });
+      fs.writeFileSync(path.join(dir, "pr.json"), JSON.stringify(pr));
+      listings.forEach((status, i) =>
+        fs.writeFileSync(
+          path.join(dir, `list.${i}.json`),
+          JSON.stringify([
+            { status, conclusion: status === "completed" ? "success" : "", headSha: sha },
+          ]),
+        ),
+      );
+      const last = listings.length - 1;
+      const script = path.join(dir, "response.sh");
+      fs.writeFileSync(
+        script,
+        [
+          "#!/bin/sh",
+          'if [ "$1 $2" = "pr view" ]; then',
+          `  cat "${dir}/pr.json"; exit 0`,
+          "fi",
+          'if [ "$1 $2" = "run list" ]; then',
+          `  echo "$*" >> "${dir}/calls"`,
+          `  n=$(wc -l < "${dir}/calls" | tr -d ' ')`,
+          "  i=$((n - 1))",
+          `  [ "$i" -le ${last} ] || i=${last}`,
+          `  cat "${dir}/list.$i.json"; exit 0`,
+          "fi",
+          `exec "${FIXTURE_GH}" "$@"`,
+        ].join("\n"),
+      );
+      fs.symlinkSync(FIXTURE_GH, path.join(dir, "gh"));
+      env({ PATH: `${dir}:${process.env.PATH}`, BKIT_FAKE_TOOL_SCRIPT: script });
+      return () => fs.readFileSync(path.join(dir, "calls"), "utf-8").trim().split("\n");
+    }
+
+    it("waits for a run still going at the squash commit, then judges and records it", async () => {
+      const calls = waitingGh("green-capstone", ["in_progress", "completed"]);
+      const file = statusFile();
+      const r = await gate(
+        tmp(),
+        "--squash-of=7",
+        "--capstone-only",
+        `--record=${file}`,
+        "--wait",
+        "--budget-s=2",
+        "--interval-s=1",
+      );
+      expect(r.code).toBe(0);
+      expect(r.json.head).toBe("green-capstone");
+      expect(calls()).toHaveLength(2);
+      expect(calls()[0]).toContain("--branch dev");
+      expect(rowsOf(file)).toEqual([
+        expect.objectContaining({ type: "ship-merge-ci", sha: "green-capstone", verdict: "PASS" }),
+      ]);
+    });
+
+    it("a wait that runs out exits 11 and writes no ship-merge-ci row", async () => {
+      const calls = waitingGh("in-progress", ["in_progress"]);
+      const file = statusFile();
+      const r = await gate(
+        tmp(),
+        "--squash-of=7",
+        "--capstone-only",
+        `--record=${file}`,
+        "--wait",
+        "--budget-s=1",
+        "--interval-s=1",
+      );
+      expect(r.code).toBe(11);
+      expect(calls()).toHaveLength(1);
+      expect(fs.readFileSync(file, "utf-8")).toBe("");
+    });
+
+    it("an unreadable squash commit is an API error (20) before any wait", async () => {
+      prThenFixtureGh(openPr({ state: "MERGED", mergeCommit: null }));
+      const file = statusFile();
+      const r = await gate(tmp(), "--squash-of=7", "--capstone-only", `--record=${file}`, "--wait");
+      expect(r.code).toBe(20);
+      expect(r.json).toMatchObject({ passed: false, head: null, reason: "PR unreadable" });
+      expect(fs.readFileSync(file, "utf-8")).toBe("");
+    });
+
+    it("needs --squash-of", async () => {
+      expect((await gate(tmp(), "--head=x", "--wait")).code).toBe(2);
+    });
+  });
+
   it("an unreadable PR is an API error (20) with no head", async () => {
     prThenFixtureGh(null);
     const r = await gate(tmp(), "--pr=7");
@@ -2724,6 +3374,85 @@ describe("bkit runs revalidate", () => {
         ["api", "repos/other/repo/rules/branches/dev"],
         ["workflow", "run", "ci.yml"],
       ]);
+    });
+  });
+
+  it("requires reconciliation for remote code first observed during revalidation while retaining bookkeeping reuse", async () => {
+    const { cwd, code, file } = shipRepo();
+    const origin = tmp("bkit-revalidate-origin-");
+    gitIn(origin, "init", "-q", "--bare");
+    gitIn(cwd, "remote", "add", "origin", origin);
+    fs.mkdirSync(path.join(cwd, "docs"));
+    fs.writeFileSync(path.join(cwd, "docs/architecture.md"), "ship bookkeeping\n");
+    gitIn(cwd, "add", "docs/architecture.md");
+    gitIn(cwd, "commit", "-qm", "docs: ship bookkeeping");
+    const bookkeeping = gitIn(cwd, "rev-parse", "HEAD");
+    gitIn(cwd, "push", "-qu", "origin", "feat/7-x");
+    const collaborator = tmp("bkit-revalidate-collaborator-");
+    gitIn(collaborator, "clone", "-q", "-b", "feat/7-x", origin, ".");
+    fs.writeFileSync(
+      path.join(collaborator, "late-feature.ts"),
+      "export const lateFeature = true;\n",
+    );
+    gitIn(collaborator, "add", "late-feature.ts");
+    gitIn(collaborator, "commit", "-qm", "feat: late remote feature");
+    gitIn(collaborator, "push", "-q", "origin", "feat/7-x");
+    const remote = gitIn(collaborator, "rev-parse", "HEAD");
+    expect(gitIn(cwd, "rev-parse", "origin/feat/7-x")).toBe(bookkeeping);
+    const replies = {
+      "repo-view": "example/example",
+      "pr-view": JSON.stringify(openPr({ headRefOid: remote })),
+      "run-list": JSON.stringify([{ status: "completed", conclusion: "success", headSha: remote }]),
+    };
+    fakeGhBin(replies);
+    const generic = await revalidate(
+      cwd,
+      `--entry-head=${code}`,
+      `--code-head=${code}`,
+      `--file=${file}`,
+    );
+    expect(generic.code, generic.err).toBe(0);
+    expect(generic.json).toMatchObject({ validatedHead: remote, revalidated: true });
+    const fake = fakeGhBin(replies);
+    const late = await revalidate(
+      cwd,
+      `--entry-head=${code}`,
+      `--code-head=${code}`,
+      `--file=${file}`,
+      "--require-reconciled",
+    );
+    expect(late.code, late.err).toBe(21);
+    expect(late.json).toMatchObject({
+      reconcileRequired: true,
+      currentHead: remote,
+      validatedHead: null,
+      revalidated: false,
+      dispatched: false,
+      probe: null,
+      wait: null,
+    });
+    expect(gitIn(cwd, "rev-parse", "origin/feat/7-x")).toBe(remote);
+    expect(gitIn(cwd, "rev-parse", "HEAD")).toBe(bookkeeping);
+    expect(fake.calls()).not.toMatch(/run list|workflow run/);
+
+    fakeGhBin({
+      "repo-view": "example/example",
+      "pr-view": JSON.stringify(openPr({ headRefOid: bookkeeping })),
+    });
+    const control = await revalidate(
+      cwd,
+      `--entry-head=${code}`,
+      `--code-head=${code}`,
+      `--file=${file}`,
+      "--require-reconciled",
+    );
+    expect(control.code, control.err).toBe(0);
+    expect(control.json).toMatchObject({
+      validatedHead: code,
+      currentHead: bookkeeping,
+      reconcileRequired: false,
+      revalidated: false,
+      dispatched: false,
     });
   });
 
@@ -2900,6 +3629,162 @@ describe("bkit runs context", () => {
     expect((await context(cwd, "ship", "42")).code).toBe(8);
   });
 
+  type FakeRun = {
+    databaseId: number;
+    headSha: string;
+    status: string;
+    conclusion: string;
+    workflowName: string;
+    workflowFile: string;
+  };
+  const fakeRun = (over: Partial<FakeRun> & { databaseId: number }): FakeRun => ({
+    headSha: "sha12",
+    status: "completed",
+    conclusion: "success",
+    workflowName: "Tests",
+    workflowFile: "bkit-ci.yml",
+    ...over,
+  });
+
+  /**
+   * A `gh` whose `run list` applies the filters the real one applies (--branch, --commit,
+   * --workflow by file name or display name, --limit) and prints only the --json fields asked for.
+   */
+  function fakeCiGh(runs: FakeRun[]) {
+    const dir = tmp("bkit-fake-ci-gh-");
+    fs.writeFileSync(path.join(dir, "runs.json"), JSON.stringify(runs));
+    fs.writeFileSync(path.join(dir, "pr.json"), prJson());
+    fs.writeFileSync(
+      path.join(dir, "filter.js"),
+      [
+        'const fs = require("node:fs");',
+        "const argv = process.argv.slice(2);",
+        "const flag = (name) => { const i = argv.indexOf(name); return i < 0 ? undefined : argv[i + 1]; };",
+        `let runs = JSON.parse(fs.readFileSync(${JSON.stringify(path.join(dir, "runs.json"))}, "utf8"));`,
+        'const commit = flag("--commit");',
+        'const workflow = flag("--workflow");',
+        "if (commit) runs = runs.filter((r) => r.headSha === commit);",
+        "if (workflow) runs = runs.filter((r) => r.workflowFile === workflow || r.workflowName === workflow);",
+        'const limit = Number(flag("--limit") ?? 20);',
+        'const fields = (flag("--json") ?? "").split(",");',
+        "const out = runs.slice(0, limit).map((r) => Object.fromEntries(fields.map((f) => [f, r[f]])));",
+        "process.stdout.write(JSON.stringify(out));",
+      ].join("\n"),
+    );
+    fs.writeFileSync(
+      path.join(dir, "gh"),
+      [
+        "#!/bin/sh",
+        `printf '%s\\n' "$*" >> "${dir}/calls"`,
+        `case "$1 $2" in`,
+        `  "pr view") cat "${dir}/pr.json" ;;`,
+        `  "run list") exec node "${dir}/filter.js" "$@" ;;`,
+        "  *) exit 1 ;;",
+        "esac",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    env({ PATH: `${dir}:${process.env.PATH}`, BKIT_FAKE_TOOL_SCRIPT: undefined });
+    return {
+      runListArgs: () =>
+        fs
+          .readFileSync(path.join(dir, "calls"), "utf-8")
+          .split("\n")
+          .filter((l) => l.startsWith("run list")),
+    };
+  }
+  const declareCi = (cwd: string, file = "bkit-ci.yml") => {
+    fs.mkdirSync(path.join(cwd, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(cwd, ".github", "workflows", file), "name: Tests\n");
+  };
+  const scan = fakeRun({
+    databaseId: 300,
+    conclusion: "failure",
+    workflowName: "Security scan",
+    workflowFile: "scan.yml",
+  });
+
+  it("debug: a green test run beside a failed run of another workflow yields no run (8)", async () => {
+    const cwd = autoRepo();
+    declareCi(cwd);
+    fakeCiGh([scan, fakeRun({ databaseId: 200, conclusion: "success" })]);
+    const r = await context(cwd, "failure", "42");
+    expect(r.code).toBe(8);
+    expect(r.json.runId).toBeNull();
+    expect(r.err).toContain("bkit-ci.yml");
+    expect(r.err).toContain("sha12");
+  });
+
+  it("debug: the failed test run behind a newer run of another workflow is returned", async () => {
+    const cwd = autoRepo();
+    declareCi(cwd);
+    const gh = fakeCiGh([
+      fakeRun({
+        databaseId: 400,
+        conclusion: "success",
+        workflowName: "Docs",
+        workflowFile: "docs.yml",
+      }),
+      fakeRun({ databaseId: 200, conclusion: "failure" }),
+      fakeRun({ databaseId: 100, conclusion: "success" }),
+    ]);
+    const r = await context(cwd, "failure", "42");
+    expect(r.code).toBe(0);
+    expect(r.json.runId).toBe("200");
+    expect(gh.runListArgs()[0]).toContain("--workflow bkit-ci.yml");
+  });
+
+  it.each(["failure", "timed_out", "startup_failure"])(
+    "debug: a %s test run is a failed run",
+    async (conclusion) => {
+      const cwd = autoRepo();
+      declareCi(cwd);
+      fakeCiGh([fakeRun({ databaseId: 7, conclusion })]);
+      expect((await context(cwd, "debug", "42")).json.runId).toBe("7");
+    },
+  );
+
+  it("debug: a test run still in progress or cancelled is not returned", async () => {
+    const cwd = autoRepo();
+    declareCi(cwd);
+    fakeCiGh([
+      fakeRun({ databaseId: 9, status: "in_progress", conclusion: "" }),
+      fakeRun({ databaseId: 8, conclusion: "cancelled" }),
+    ]);
+    expect((await context(cwd, "debug", "42")).code).toBe(8);
+  });
+
+  it("ship: the test workflow's run is returned, not an unrelated workflow's run listed first", async () => {
+    const cwd = autoRepo();
+    declareCi(cwd);
+    const gh = fakeCiGh([scan, fakeRun({ databaseId: 200, conclusion: "success" })]);
+    const r = await context(cwd, "success", "42");
+    expect(r.code).toBe(0);
+    expect(r.json.runId).toBe("200");
+    expect(gh.runListArgs()[0]).toContain("--workflow bkit-ci.yml");
+    expect(gh.runListArgs()[0]).toContain("--commit sha12");
+  });
+
+  it("ship: no run of the test workflow at the head exits 8 and names the workflow and commit", async () => {
+    const cwd = autoRepo();
+    declareCi(cwd);
+    fakeCiGh([scan]);
+    const r = await context(cwd, "ship", "42");
+    expect(r.code).toBe(8);
+    expect(r.err).toContain("bkit-ci.yml");
+    expect(r.err).toContain("sha12");
+  });
+
+  it("debug with no declared test workflow: a green run is not returned, a failed one is", async () => {
+    const cwd = autoRepo();
+    fakeCiGh([fakeRun({ databaseId: 200, conclusion: "success" })]);
+    expect((await context(cwd, "failure", "42")).code).toBe(8);
+    fakeCiGh([scan, fakeRun({ databaseId: 200, conclusion: "success" })]);
+    const r = await context(cwd, "failure", "42");
+    expect(r.code).toBe(0);
+    expect(r.json.runId).toBe("300");
+  });
+
   it("an unknown phase exits 3; gh needing auth exits 80", async () => {
     const cwd = autoRepo();
     expect((await context(cwd, "deploy", "1")).code).toBe(3);
@@ -2930,9 +3815,10 @@ describe("bkit runs context", () => {
 
 describe(
   "bkit runs dispatch — the verdict row and the close transport",
-  { timeout: 20_000 },
+  { timeout: localLimit(20_000) },
   () => {
-    function pushedRepo() {
+    /** A pushed feature branch whose run's status log holds the run's invocation. */
+    async function pushedRepo() {
       const root = tmp();
       const remote = path.join(root, "remote.git");
       const cwd = path.join(root, "work");
@@ -2943,9 +3829,8 @@ describe(
       gitIn(cwd, "commit", "-q", "--allow-empty", "-m", "chore(1-x): close-workflow");
       gitIn(cwd, "remote", "add", "origin", remote);
       gitIn(cwd, "push", "-q", "-u", "origin", "feat/1-x");
-      const file = path.join(cwd, "status.jsonl");
-      fs.writeFileSync(file, "");
-      return { cwd, file };
+      const { status: file, id } = await issueInvocation(cwd);
+      return { cwd, file, id };
     }
     const rowsOf = (file: string) =>
       fs
@@ -2954,9 +3839,12 @@ describe(
         .split("\n")
         .filter(Boolean)
         .map((l) => JSON.parse(l) as Record<string, unknown>);
+    /** The run's own rows, without the poll checkpoints the gate saves beside them. */
+    const stepRowsOf = (file: string) =>
+      rowsOf(file).filter((row) => ["step-done", "close-transport"].includes(String(row["type"])));
 
     it("writes the step's row with its ciDispatch verdict, then the close-transport row", async () => {
-      const { cwd, file } = pushedRepo();
+      const { cwd, file, id } = await pushedRepo();
       fakeGhBin({ "pr-view": ROLLUP_FOUND, "pr-list": '[{"number":7}]' });
       const r = await cli(cwd, [
         "dispatch",
@@ -2966,9 +3854,11 @@ describe(
         "--workflow=build",
         "--step=build-close-workflow",
         "--label=bkit:auto",
+        `--invocation=${id}`,
       ]);
       expect(r.code).toBe(0);
-      const rows = rowsOf(file);
+      const rows = stepRowsOf(file);
+      expect(rows).toHaveLength(2);
       expect(rows[0]).toMatchObject({
         type: "step-done",
         workflow: "build",
@@ -2986,7 +3876,7 @@ describe(
     /** The close's workflow-done row and its outcome row, as `bkit workflows close` leaves them. */
     function closedRun(cwd: string, file: string) {
       const sha = gitIn(cwd, "rev-parse", "HEAD");
-      fs.writeFileSync(
+      fs.appendFileSync(
         file,
         `${JSON.stringify({ type: "workflow-done", workflow: "build", at: new Date().toISOString(), parentSha: sha })}\n`,
       );
@@ -3002,22 +3892,23 @@ describe(
       ]);
       return { sha, stats: path.join(cwd, ".bkit", "stats.jsonl") };
     }
-    const dispatchClose = (cwd: string, file: string, ...extra: string[]) =>
-      cli(cwd, [
+    const dispatchClose = (repo: { cwd: string; file: string; id: string }, ...extra: string[]) =>
+      cli(repo.cwd, [
         "dispatch",
         "--fid=1-x",
         "--pr=7",
-        `--file=${file}`,
+        `--file=${repo.file}`,
         "--workflow=build",
         "--step=build-close-workflow",
+        `--invocation=${repo.id}`,
         ...extra,
       ]);
 
     it("--step=build-close-workflow appends a newer outcome row with the dispatch added to ci", async () => {
-      const { cwd, file } = pushedRepo();
-      const { sha, stats } = closedRun(cwd, file);
+      const repo = await pushedRepo();
+      const { sha, stats } = closedRun(repo.cwd, repo.file);
       fakeGhBin({ "pr-view": ROLLUP_FOUND, "pr-list": '[{"number":7}]' });
-      expect((await dispatchClose(cwd, file)).code).toBe(0);
+      expect((await dispatchClose(repo)).code).toBe(0);
       const [close, restated] = rowsOf(stats);
       expect(restated).toMatchObject({
         kind: "outcome",
@@ -3031,10 +3922,10 @@ describe(
     });
 
     it("--step=build-close-workflow with an unresolved dispatch restates the outcome as close-failed", async () => {
-      const { cwd, file } = pushedRepo();
-      const { stats } = closedRun(cwd, file);
+      const repo = await pushedRepo();
+      const { stats } = closedRun(repo.cwd, repo.file);
       fakeGhBin({ "pr-view": "EXIT:1" });
-      expect((await dispatchClose(cwd, file, "--budget-s=1", "--interval-s=1")).code).toBe(1);
+      expect((await dispatchClose(repo, "--budget-s=1", "--interval-s=1")).code).toBe(1);
       expect(rowsOf(stats).at(-1)).toMatchObject({
         ending: "close-failed",
         ci: [{ status: "unresolved", reason: "gh-error" }],
@@ -3042,9 +3933,361 @@ describe(
     });
 
     it("--file and --step go together", async () => {
-      const { cwd, file } = pushedRepo();
+      const { cwd, file, id } = await pushedRepo();
       fakeGhBin({ "pr-view": ROLLUP_FOUND });
-      expect((await cli(cwd, ["dispatch", "--fid=1-x", "--pr=7", `--file=${file}`])).code).toBe(2);
+      const r = await cli(cwd, [
+        "dispatch",
+        "--fid=1-x",
+        "--pr=7",
+        `--file=${file}`,
+        `--invocation=${id}`,
+      ]);
+      expect(r.code).toBe(2);
+      expect(r.err).toContain("--file and --step go together");
     });
   },
 );
+
+describe("bkit runs handoff", { timeout: localLimit(30_000) }, () => {
+  const HEAD = "a".repeat(40);
+  const OTHER_HEAD = "c".repeat(40);
+  const NEW_HEAD = "b".repeat(40);
+  const TARGET = {
+    provider: "github",
+    repo: "example/example",
+    pr: "7",
+    head: HEAD,
+    branch: "feat/1-x",
+  };
+
+  /** A real repo with a run's status log and an engine-issued invocation bound to it. */
+  async function handoffRepo(o: { ciFile?: boolean } = {}) {
+    const cwd = tmp("bkit-handoff-");
+    gitIn(cwd, "init", "-q", "-b", "feat/1-x");
+    if (o.ciFile) {
+      fs.mkdirSync(path.join(cwd, ".github/workflows"), { recursive: true });
+      fs.writeFileSync(path.join(cwd, ".github/workflows/bkit-ci.yml"), "name: bkit-ci\n");
+    }
+    gitIn(cwd, "add", "-A");
+    gitIn(cwd, "commit", "-q", "--allow-empty", "-m", "init");
+    const { status, id } = await issueInvocation(cwd);
+    return { cwd, status, id };
+  }
+
+  type Repo = Awaited<ReturnType<typeof handoffRepo>>;
+  const observe = (r: Repo, flags: string[], target: Record<string, string> = {}) =>
+    cli(r.cwd, [
+      "handoff",
+      `--invocation=${r.id}`,
+      `--repo=${target.repo ?? TARGET.repo}`,
+      `--pr=${target.pr ?? TARGET.pr}`,
+      `--head=${target.head ?? TARGET.head}`,
+      `--branch=${TARGET.branch}`,
+      "--budget-s=60",
+      "--interval-s=10",
+      ...flags,
+    ]);
+  const handoffRows = (r: Repo) =>
+    fs
+      .readFileSync(r.status, "utf-8")
+      .split("\n")
+      .filter((l) => l !== "")
+      .map((l) => JSON.parse(l) as Record<string, any>)
+      .filter((row) => row["type"] === "ci-handoff");
+  /** What a dispatcher already persisted before this process started. */
+  const persist = (r: Repo, rows: Array<Record<string, unknown>>) =>
+    fs.appendFileSync(r.status, rows.map((row) => `${JSON.stringify(row)}\n`).join(""));
+  const persisted = (at: string, over: Record<string, unknown>) => ({
+    type: "ci-handoff",
+    workflow: "build",
+    at,
+    phase: "poll",
+    target: TARGET,
+    observation: { result: "none", attempts: 6, errors: 0 },
+    ...over,
+  });
+  const RETRIGGER = { original: HEAD, commit: NEW_HEAD, ref: "refs/heads/feat/1-x" };
+
+  it("derives handoff decisions from persisted poll observations and target identity", async () => {
+    // Fresh polls accumulate: engine-derived totals, the next action, one persisted row per observation.
+    const fresh = await handoffRepo();
+    const first = await observe(fresh, ["--result=none", "--polls=3"]);
+    expect(first.code).toBe(0);
+    expect(first.json).toMatchObject({
+      phase: "poll",
+      attempts: 3,
+      errors: 0,
+      nextAction: "poll-again",
+      stale: 0,
+    });
+    const second = await observe(fresh, ["--result=none", "--polls=3"]);
+    expect(second.json).toMatchObject({ phase: "poll", attempts: 6, nextAction: "retrigger" });
+    expect(handoffRows(fresh)).toHaveLength(2);
+    expect(handoffRows(fresh).at(-1)).toMatchObject({
+      phase: "poll",
+      target: TARGET,
+      observation: { result: "none", attempts: 6, errors: 0 },
+    });
+
+    // Every kind of observation that proves a run exists ends the poll with a dispatched verdict.
+    for (const result of ["pending", "success", "failure"]) {
+      const repo = await handoffRepo();
+      const found = await observe(repo, [`--result=${result}`, "--polls=1"]);
+      expect(found.json).toMatchObject({
+        nextAction: "verdict",
+        outcome: "dispatched",
+        attempts: 1,
+        ciResult: result,
+      });
+    }
+
+    // A provider that only errors is unresolved, never a clean absence of CI.
+    const broken = await handoffRepo();
+    const errored = await observe(broken, ["--result=provider-error", "--polls=6"]);
+    expect(errored.json).toMatchObject({
+      attempts: 6,
+      errors: 6,
+      nextAction: "verdict",
+      outcome: "unresolved",
+      reason: "gh-error",
+    });
+
+    // Supplied counters and a supplied success are not evidence: the flags do not exist.
+    const forged = await handoffRepo();
+    const before = fs.readFileSync(forged.status, "utf-8");
+    for (const flag of ["--attempts=99", "--errors=0", "--success", "--poll-result=found"]) {
+      expect((await observe(forged, ["--result=none", "--polls=1", flag])).code).toBe(2);
+    }
+    expect((await observe(forged, ["--result=maybe", "--polls=1"])).code).toBe(2);
+    expect((await observe(forged, ["--polls=1"])).code).toBe(2);
+    expect(fs.readFileSync(forged.status, "utf-8")).toBe(before);
+
+    // Without an engine-issued invocation there is no run to persist into: refused, nothing written.
+    const bare = await handoffRepo();
+    const noInvocation = await cli(bare.cwd, [
+      "handoff",
+      "--repo=example/example",
+      "--pr=7",
+      `--head=${HEAD}`,
+      "--result=none",
+      "--polls=1",
+    ]);
+    expect(noInvocation.code).toBe(2);
+    expect(handoffRows(bare)).toEqual([]);
+
+    // An unresolved retrigger intent is not a completed retrigger: the poll cannot reach a verdict.
+    for (const retrigger of [
+      { state: "intended", original: HEAD },
+      { state: "commit-created", ...RETRIGGER },
+    ]) {
+      const pending = await handoffRepo();
+      persist(pending, [persisted("2026-11-01T00:01:00Z", { retrigger })]);
+      const silent = await observe(pending, ["--result=none", "--polls=6"]);
+      expect(silent.json).toMatchObject({ nextAction: "reconcile-retrigger", attempts: 12 });
+      expect(silent.json).not.toHaveProperty("outcome");
+      expect(handoffRows(pending).at(-1)).toMatchObject({ retrigger: { state: retrigger.state } });
+    }
+
+    // After a completed retrigger the second poll carries the running total and decides.
+    const completed = {
+      state: "receipt-completed",
+      ...RETRIGGER,
+      remote: NEW_HEAD,
+      receipt: "retrigger-1",
+    };
+    const afterRetrigger = (over: Record<string, unknown>) =>
+      persisted("2026-11-01T00:02:00Z", { phase: "repoll", retrigger: completed, ...over });
+    const quietNoCi = await handoffRepo();
+    persist(quietNoCi, [afterRetrigger({})]);
+    expect(await observe(quietNoCi, ["--result=none", "--polls=6"])).toMatchObject({
+      json: { phase: "repoll", attempts: 12, nextAction: "verdict", outcome: "no-ci" },
+    });
+    const declared = await handoffRepo({ ciFile: true });
+    persist(declared, [afterRetrigger({})]);
+    expect((await observe(declared, ["--result=none", "--polls=6"])).json).toMatchObject({
+      outcome: "unresolved",
+      reason: "ci-declared-no-run",
+    });
+    const healed = await handoffRepo();
+    persist(healed, [afterRetrigger({})]);
+    expect((await observe(healed, ["--result=pending", "--polls=1"])).json).toMatchObject({
+      phase: "repoll",
+      nextAction: "verdict",
+      outcome: "self-healed",
+      attempts: 7,
+    });
+
+    // Evidence for another head, PR or repository is stale: it adds nothing and decides nothing.
+    const moved = await handoffRepo();
+    persist(moved, [
+      persisted("2026-11-01T00:03:00Z", {
+        target: { ...TARGET, head: OTHER_HEAD },
+        observation: { result: "success", attempts: 9, errors: 0 },
+      }),
+      persisted("2026-11-01T00:03:30Z", {
+        target: { ...TARGET, pr: "8" },
+        observation: { result: "failure", attempts: 9, errors: 0 },
+      }),
+      persisted("2026-11-01T00:04:00Z", {
+        target: { ...TARGET, repo: "other/example" },
+        observation: { result: "success", attempts: 9, errors: 0 },
+      }),
+    ]);
+    const current = await observe(moved, ["--result=none", "--polls=1"]);
+    expect(current.json).toMatchObject({
+      phase: "poll",
+      attempts: 1,
+      nextAction: "poll-again",
+      stale: 3,
+    });
+    expect(current.json).not.toHaveProperty("outcome");
+    // The same state asked for the other head answers from that head's own evidence only.
+    const other = await observe(moved, ["--result=pending", "--polls=1"], { head: OTHER_HEAD });
+    expect(other.json).toMatchObject({ attempts: 10, outcome: "dispatched", stale: 3 });
+
+    // A target that does not name its head, PR and repository cannot ask for a decision.
+    for (const missing of ["--head=", "--repo=", "--pr="]) {
+      const bad = await cli(moved.cwd, [
+        "handoff",
+        `--invocation=${moved.id}`,
+        "--repo=example/example",
+        "--pr=7",
+        `--head=${HEAD}`,
+        `--branch=${TARGET.branch}`,
+        missing,
+        "--result=none",
+        "--polls=1",
+      ]);
+      expect(bad.code).toBe(2);
+    }
+  });
+
+  /**
+   * One poll per phase on both sides, so the gate and the turn loop see the same evidence.
+   * `repoll` puts HEAD on a re-trigger commit whose receipt is already persisted.
+   */
+  async function parityRepo(o: { phase: "poll" | "repoll"; message: string; ciFile?: boolean }) {
+    const repo = await handoffRepo({ ciFile: o.ciFile });
+    const firstMessage = { poll: o.message, repoll: "chore(1-x): close-workflow" }[o.phase];
+    gitIn(repo.cwd, "commit", "-q", "--allow-empty", "-m", firstMessage);
+    const original = gitIn(repo.cwd, "rev-parse", "HEAD");
+    const extra = { poll: [], repoll: [o.message] }[o.phase];
+    for (const m of extra) gitIn(repo.cwd, "commit", "-q", "--allow-empty", "-m", m);
+    const head = gitIn(repo.cwd, "rev-parse", "HEAD");
+    const target = { ...TARGET, repo: "local/origin", head: original };
+    const receipt = {
+      state: "receipt-completed",
+      original,
+      commit: head,
+      ref: "refs/heads/feat/1-x",
+      remote: head,
+      receipt: "retrigger-1",
+    };
+    const seed = {
+      poll: [],
+      repoll: [
+        persisted("2026-11-01T00:01:00Z", {
+          phase: "repoll",
+          target,
+          observation: { result: "none", attempts: 1, errors: 0 },
+          retrigger: receipt,
+        }),
+      ],
+    }[o.phase];
+    persist(repo, seed);
+    return { ...repo, head };
+  }
+  const verdictOf = (v: { outcome?: unknown; reason?: unknown } | null | undefined) => ({
+    outcome: v?.outcome,
+    reason: v?.reason,
+  });
+
+  const CLEAN_RETRIGGER = "chore(1-x): re-trigger";
+  const SUPPRESSED_RETRIGGER = "chore(1-x): re-trigger [skip ci]";
+  it.each([
+    ["poll", "a run found", "chore(1-x): close-workflow", false, "found", "dispatched", undefined],
+    [
+      "poll",
+      "every poll errored",
+      "chore(1-x): close-workflow",
+      false,
+      "err",
+      "unresolved",
+      "gh-error",
+    ],
+    [
+      "poll",
+      "no run on a suppressed head",
+      "chore(1-x): close-workflow bkit [skip ci]",
+      false,
+      "none",
+      "unresolved",
+      "timeout-dirty",
+    ],
+    ["repoll", "a run found", CLEAN_RETRIGGER, false, "found", "self-healed", undefined],
+    ["repoll", "every re-poll errored", CLEAN_RETRIGGER, false, "err", "unresolved", "gh-error"],
+    ["repoll", "no run and no CI declared", CLEAN_RETRIGGER, false, "none", "no-ci", undefined],
+    [
+      "repoll",
+      "no run and CI declared",
+      CLEAN_RETRIGGER,
+      true,
+      "none",
+      "unresolved",
+      "ci-declared-no-run",
+    ],
+    [
+      "repoll",
+      "no run on a suppressed re-trigger",
+      SUPPRESSED_RETRIGGER,
+      false,
+      "none",
+      "unresolved",
+      "retrigger-suppressed",
+    ],
+    [
+      "repoll",
+      "a run found on a suppressed re-trigger",
+      SUPPRESSED_RETRIGGER,
+      false,
+      "found",
+      "unresolved",
+      "retrigger-suppressed",
+    ],
+  ] as const)(
+    "the gate and runs handoff reach the same verdict: %s, %s",
+    async (phase, _why, message, ciFile, seen, outcome, reason) => {
+      const replies = { found: rollup("bkit-tests-unit"), none: rollup("vercel"), err: fail };
+      const results = { found: "pending", none: "none", err: "provider-error" } as const;
+      const gateRepo = await parityRepo({ phase, message, ciFile });
+      const gate = await ciDispatchGate(
+        {
+          cwd: gateRepo.cwd,
+          pr: "7",
+          fid: "1-x",
+          autoRouteSuffix: "",
+          budgetS: 10,
+          intervalS: 10,
+          handoff: handoffAt(gateRepo.status),
+        },
+        { gh: sequenceGh([replies[seen]]).gh, sleep: instant, log: noLog },
+      );
+      const loopRepo = await parityRepo({ phase, message, ciFile });
+      const loop = await cli(loopRepo.cwd, [
+        "handoff",
+        `--invocation=${loopRepo.id}`,
+        "--repo=local/origin",
+        "--pr=7",
+        `--head=${loopRepo.head}`,
+        `--branch=${TARGET.branch}`,
+        "--budget-s=10",
+        "--interval-s=10",
+        `--result=${results[seen]}`,
+        "--polls=1",
+      ]);
+      expect(loop.code).toBe(0);
+      expect(verdictOf(gate.ciDispatch)).toEqual({ outcome, reason });
+      expect(verdictOf(loop.json)).toEqual({ outcome, reason });
+    },
+  );
+});

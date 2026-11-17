@@ -10,11 +10,15 @@
 //            0 is a legal answer (that step simply has not run).
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { activeDoneSteps, allRunsDoneSteps, appendLine, lastDoneStepAllRuns, nextStrategy, runNumber, statusTimestamp, } from "../../ledgers/status.js";
+import { activeDoneSteps, activeDoneStepsSinceClean, allRunsDoneSteps, appendLine, cleanRound, CORRECTION_CANDIDATE_ROW, lastDoneStepAllRuns, repeatStrategy, runNumber, statusTimestamp, } from "../../ledgers/status.js";
 import { ASK_POINTS, readBkitConfig, } from "../../shared/settings.js";
+import { oneLine } from "../../shared/text.js";
+import { fixTestStep, gatedCheckStep } from "./loops.js";
 import { headlessRun } from "./runtime.js";
-import { CommandError, EXIT, git, runGit, } from "../lib.js";
+import { CommandError, EXIT, git, runGit, wholeNumber, } from "../lib.js";
 import { EXIT_NO_STATUS, FILE_FLAG, GROUP_FLAG, STEP_FLAG, WORKFLOW_FLAG, positiveInt, readRuns, readStatusRows, statusFile, str, } from "./status.js";
+/** A round's free-text scope for the owner's loop question: one line, so it cannot add lines to it. */
+const scopeText = (scope) => typeof scope === "string" && oneLine(scope) !== "" ? oneLine(scope, 120) : "unscoped";
 /** An ask point by name (`build.verify`); an unknown name is a usage error. */
 export function askPoint(name) {
     if (!ASK_POINTS.includes(name))
@@ -105,6 +109,55 @@ function typedRowCount(file, workflow, type) {
         .slice(start + 1)
         .filter((r) => r.type === type && (r.workflow === undefined || r.workflow === workflow)).length;
 }
+/** Corrected retries a rejected sub-step gets unless its route names a stricter limit. */
+export const CORRECTION_LIMIT = 2;
+/**
+ * Spend one corrected retry of `scope` for `operation` in `workflow`'s active run. The budget is
+ * per scope and survives tools, helpers, resumes and any other counter call; a new operation id
+ * gains nothing, and asking again for a counted one spends nothing. `extra` joins the row.
+ */
+export function spendCorrection(file, workflow, scope, operation, limit, extra = {}) {
+    const rows = readStatusRows(file);
+    let start = -1;
+    rows.forEach((r, i) => {
+        if (r.type === "workflow-started" && r.workflow === workflow)
+            start = i;
+    });
+    const counted = rows
+        .slice(start + 1)
+        .filter((r) => r.type === CORRECTION_CANDIDATE_ROW && r.workflow === workflow && r.scope === scope);
+    const spent = new Set(counted.map((r) => String(r.operation)));
+    const asked = typeof extra.requestHash === "string" ? extra.requestHash : undefined;
+    const verdict = (allowed, replayed) => ({
+        allowed,
+        used: spent.size,
+        limit,
+        remaining: Math.max(0, limit - spent.size),
+        replayed,
+    });
+    if (spent.has(operation)) {
+        // A known id is a free replay only for the request it was counted for.
+        const hashes = counted
+            .filter((r) => String(r.operation) === operation)
+            .map((r) => r.requestHash)
+            .filter((h) => typeof h === "string");
+        if (asked !== undefined && hashes.length > 0 && !hashes.includes(asked))
+            return { ...verdict(false, false), conflict: true };
+        return verdict(true, true);
+    }
+    if (spent.size >= limit)
+        return verdict(false, false);
+    fs.appendFileSync(file, appendLine({
+        type: CORRECTION_CANDIDATE_ROW,
+        workflow,
+        at: statusTimestamp(),
+        scope,
+        operation,
+        ...extra,
+    }));
+    spent.add(operation);
+    return verdict(true, false);
+}
 /** The row `counters grant` writes: the owner gave one loop one more full allowance. */
 export const ALLOWANCE_ROW = "allowance-granted";
 /**
@@ -152,7 +205,8 @@ function checkoutOf(file, cwd) {
 }
 /**
  * The loop's direction from its check rounds: `worse` when the problem count rose,
- * `closing` when it fell and the rounds changed code, `stuck` otherwise.
+ * `closing` when it fell and the rounds changed code, `stuck` otherwise, and `unknown` when
+ * the first or last round recorded no count.
  */
 export function loopTrend(rounds, codeChanged) {
     if (rounds.length < 2)
@@ -160,20 +214,69 @@ export function loopTrend(rounds, codeChanged) {
     const first = rounds[0]?.failures;
     const last = rounds.at(-1)?.failures;
     if (first === undefined || last === undefined)
-        return "stuck";
+        return "unknown";
     if (last > first)
         return "worse";
     if (last < first && codeChanged !== false)
         return "closing";
     return "stuck";
 }
-/** A fix loop's progress in the active run: `check` counts problems, `fix` fixes them. */
-export function loopProgress(file, cwd, workflow, check, fix, group) {
+/**
+ * The failing tests of the latest `test-run` row for `step` and `attempt` in `workflow`'s
+ * active run: 0 with no row, null when unknown (no count, or red with 0 counted failures).
+ */
+function gateFailuresOf(file, workflow, step, attempt) {
+    const rows = readStatusRows(file);
+    let start = -1;
+    rows.forEach((r, i) => {
+        if (r.type === "workflow-started" && r.workflow === workflow)
+            start = i;
+    });
+    const row = rows
+        .slice(start + 1)
+        .filter((r) => r.type === "test-run" &&
+        (r.workflow === undefined || r.workflow === workflow) &&
+        r.step === step &&
+        r.attempt === attempt)
+        .at(-1);
+    if (row === undefined)
+        return 0;
+    const failures = row.failures;
+    if (typeof failures !== "number")
+        return null;
+    if (row.verdict === "FAIL" && failures === 0)
+        return null;
+    return failures;
+}
+/**
+ * A fix loop's progress in the active run: `check` counts problems, `fix` fixes them. With
+ * `sinceClean`, only the rounds after `check`'s last clean round: a loop that reopens. With
+ * `gate` (a step prefix, e.g. `build-group-gate`), each round also counts the failing tests
+ * of the latest same-attempt test-run row of `{gate}-{group}`, or of `{gate}` with no group:
+ * 0 with no row, and unknown (null) when that row's count is null or the row is red with 0
+ * counted failures. A round is clean only when its gate also counted 0.
+ */
+export function loopProgress(file, cwd, workflow, check, fix, group, sinceClean = false, gate) {
     const runs = readRuns(file);
-    const rounds = activeDoneSteps(runs, workflow, { step: check, group });
-    const fixes = activeDoneSteps(runs, workflow, { step: fix, group });
-    const first = rounds[0];
+    const gateStep = gate === undefined || group === undefined ? gate : `${gate}-${group}`;
+    const gateOf = (r) => gateStep === undefined ? undefined : gateFailuresOf(file, workflow, gateStep, r.attempt);
+    const clean = (r) => cleanRound(r) && (gateStep === undefined || gateOf(r) === 0);
+    const done = (step) => sinceClean
+        ? activeDoneStepsSinceClean(runs, workflow, { step, group }, check, clean)
+        : activeDoneSteps(runs, workflow, { step, group });
+    const checked = done(check);
+    const gateFailures = checked.map(gateOf);
+    const rounds = checked.map((r, i) => {
+        const g = gateFailures[i];
+        if (g === undefined)
+            return r;
+        const failures = g === null || r.failures === undefined ? undefined : r.failures + g;
+        return { ...r, failures };
+    });
+    const fixes = done(fix);
     const last = rounds.at(-1);
+    // Only rounds that ran the same tests are compared: the earliest round with the last round's scope.
+    const first = last === undefined ? undefined : rounds.find((r) => r.scope === last.scope);
     let codeChanged = null;
     if (first && last && first !== last && first.parentSha && last.parentSha) {
         const diff = runGit(checkoutOf(file, cwd), [
@@ -190,25 +293,75 @@ export function loopProgress(file, cwd, workflow, check, fix, group) {
         else if (diff.stderr === "")
             codeChanged = true;
     }
-    const ladder = lastDoneStepAllRuns(runs, workflow, { step: fix, group })?.strategy;
-    const trend = loopTrend(rounds, codeChanged);
-    const span = first && last && rounds.length > 1
-        ? (Date.parse(last.at) - Date.parse(first.at)) / 60000 / (rounds.length - 1)
+    const prior = lastDoneStepAllRuns(runs, workflow, { step: fix, group })?.strategy;
+    // The same label `status route` gives the fix step: from the tests failing now.
+    const testStep = fixTestStep(fix, group);
+    const gated = gatedCheckStep(fix);
+    const current = gated === undefined
+        ? undefined
+        : activeDoneSteps(runs, workflow, { step: gated, group }).length;
+    const next = testStep === undefined
+        ? "STANDARD"
+        : repeatStrategy(readStatusRows(file), workflow, testStep, current).strategy;
+    const sameScope = first !== undefined && last !== undefined && first !== last;
+    const differentScopes = rounds.length >= 2 && !sameScope;
+    const trend = rounds.length < 2
+        ? "first-round"
+        : differentScopes
+            ? "unknown"
+            : loopTrend([first, last], codeChanged);
+    const countOf = (r) => (r?.failures === undefined ? "?" : String(r.failures));
+    const pairCounts = `${countOf(first)} → ${countOf(last)}`;
+    const firstFailures = first?.failures;
+    const lastFailures = last?.failures;
+    let trendLine;
+    if (trend === "first-round")
+        trendLine = "This was the first round, so there is no trend yet.";
+    else if (differentScopes)
+        trendLine = `The rounds ran different tests (${scopeText(rounds[0]?.scope)}, then ${scopeText(last?.scope)}), so their counts cannot be compared.`;
+    else if (trend === "unknown")
+        trendLine = `A round recorded no count (${rounds.map(countOf).join(" → ")}), so progress cannot be judged.`;
+    else if (trend === "closing")
+        trendLine = `The count fell between the first and the last round (${pairCounts}), and the code changed.`;
+    else if (trend === "worse")
+        trendLine = `The count rose between the first and the last round (${pairCounts}).`;
+    else if (firstFailures !== undefined &&
+        lastFailures !== undefined &&
+        lastFailures < firstFailures)
+        trendLine = `The count fell (${pairCounts}), but no source code changed between the rounds.`;
+    else
+        trendLine = `The count did not fall between the first and the last round (${pairCounts}).`;
+    const span = rounds[0] && last && rounds.length > 1
+        ? (Date.parse(last.at) - Date.parse(rounds[0].at)) / 60000 / (rounds.length - 1)
         : null;
     return {
-        rounds: rounds.map((r) => ({
+        rounds: rounds.map((r, i) => ({
             attempt: r.attempt ?? null,
             failures: r.failures ?? null,
+            ...(gateFailures[i] === undefined ? {} : { gateFailures: gateFailures[i] }),
+            scope: r.scope ?? null,
             at: r.at,
         })),
         counts: rounds.map((r) => (r.failures === undefined ? "?" : String(r.failures))).join(" → "),
+        ...(gateStep === undefined
+            ? {}
+            : {
+                gateCounts: gateFailures
+                    .map((g) => (g === null || g === undefined ? "?" : String(g)))
+                    .join(" → "),
+            }),
         codeChanged,
         lastStrategy: fixes.at(-1)?.strategy ?? null,
-        nextStrategy: nextStrategy(ladder),
-        finalSpent: fixes.some((r) => r.strategy === "FINAL") || ladder === "FINAL",
+        nextStrategy: next,
+        finalSpent: fixes.some((r) => r.strategy === "FINAL") || prior === "FINAL",
         minutesPerRound: span === null || Number.isNaN(span) ? null : Math.round(span),
         trend,
-        recommend: trend === "first-round" ? null : trend === "closing" ? "try-again" : "stop",
+        trendLine,
+        recommend: trend === "first-round" || trend === "unknown"
+            ? null
+            : trend === "closing"
+                ? "try-again"
+                : "stop",
     };
 }
 /**
@@ -431,6 +584,54 @@ export const countersCommand = {
                 return EXIT.OK;
             },
         },
+        correction: {
+            summary: "Spend one corrected retry of a rejected sub-step: exit 0 allowed (or a replay of a counted operation), exit 1 the scope's budget is used up. The budget is two per scope in the active run unless a stricter --limit names one.",
+            use: "workflow",
+            flags: [
+                FILE_FLAG,
+                WORKFLOW_FLAG,
+                {
+                    name: "scope",
+                    type: "string",
+                    required: true,
+                    help: "the engine-derived correction scope",
+                },
+                {
+                    name: "operation",
+                    type: "string",
+                    required: true,
+                    help: "the corrected candidate's fresh operation id",
+                },
+                {
+                    name: "request-hash",
+                    type: "string",
+                    help: "the candidate's canonical request hash: a known operation replays free only for the same hash, and a different one is refused",
+                },
+                {
+                    name: "limit",
+                    type: "string",
+                    help: `corrected retries this route allows (default ${CORRECTION_LIMIT}); a smaller one wins`,
+                },
+            ],
+            output: {
+                allowed: "true when the correction may run",
+                used: "operations counted in this scope",
+                limit: "retries this route allows",
+                remaining: "retries left",
+                replayed: "true when the operation was already counted: nothing was spent",
+            },
+            exitCodes: { [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON" },
+            run: (ctx) => {
+                const file = statusFile(ctx);
+                if (!fs.existsSync(file))
+                    throw new CommandError(EXIT_NO_STATUS, `${file} does not exist`);
+                const spend = spendCorrection(file, String(ctx.flags.workflow), String(ctx.flags.scope), String(ctx.flags.operation), wholeNumber(ctx.flags.limit, "limit", CORRECTION_LIMIT), str(ctx.flags.requestHash) === undefined
+                    ? {}
+                    : { requestHash: str(ctx.flags.requestHash) });
+                ctx.emit({ ...spend });
+                return spend.allowed ? EXIT.OK : EXIT.NO;
+            },
+        },
         max: {
             summary: "The ask points' limits and ask settings: one by --point, or all.",
             use: "workflow",
@@ -482,22 +683,29 @@ export const countersCommand = {
                     help: "the step that fixes them, e.g. build-plan-gaps-remediate",
                 },
                 GROUP_FLAG,
+                {
+                    name: "since-clean",
+                    type: "boolean",
+                    help: "only the rounds after --check's last clean round (PASS, or CONCERNS with 0 failures)",
+                },
             ],
             output: {
-                rounds: "the check rounds counted: attempt, failures, at",
-                counts: "problem count after each round, e.g. 5 → 2",
-                codeChanged: "source changed between the first and last check round (null when git cannot tell)",
+                rounds: "the check rounds counted: attempt, failures, gateFailures, scope (what the round ran), at",
+                counts: "problem count after each round, e.g. 5 → 2 (with a gate, the gate's failing tests are added)",
+                gateCounts: "the group gate's failing tests after each round, e.g. 3 → 3 (absent without a gate)",
+                codeChanged: "source changed between the compared rounds, the earliest and the last that ran the same tests (same scope) (null when git cannot tell)",
                 lastStrategy: "strategy of the last fix round (null when none ran)",
                 nextStrategy: "strategy the next fix round would use",
                 finalSpent: "true when a fix round already ran FINAL",
                 minutesPerRound: "average minutes between check rounds (null under two rounds)",
-                trend: "first-round | closing | stuck | worse",
-                recommend: "try-again when closing, else stop (null on the first round)",
+                trend: "first-round | closing | stuck | worse | unknown (a missing count, or rounds of different scopes)",
+                trendLine: "one plain sentence on what the counts show, with the counts and the reason",
+                recommend: "try-again when closing, stop when stuck or worse (null on the first round or an unknown trend)",
             },
             exitCodes: { [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON" },
             run: (ctx) => {
                 ctx.emit({
-                    ...loopProgress(statusFile(ctx), ctx.cwd, String(ctx.flags.workflow), String(ctx.flags.check), String(ctx.flags.fix), positiveInt(ctx.flags.group, "group")),
+                    ...loopProgress(statusFile(ctx), ctx.cwd, String(ctx.flags.workflow), String(ctx.flags.check), String(ctx.flags.fix), positiveInt(ctx.flags.group, "group"), ctx.flags.sinceClean === true),
                 });
                 return EXIT.OK;
             },

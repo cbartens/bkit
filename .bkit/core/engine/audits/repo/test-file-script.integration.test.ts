@@ -10,13 +10,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  isNamedCase,
-  judgeGreen,
-  judgeRed,
-  parseJunit,
-  REPORT_ENV,
-} from "../../commands/workflow/tests.js";
+import { isNamedCase, judgeGreen, judgeRed } from "../../commands/workflow/tests.js";
+import { parseJunit, REPORT_ENV } from "../../commands/workflow/junit.js";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 const ROOT = process.cwd();
 
@@ -26,8 +22,11 @@ it("protects every declared local test and gate entry point", () => {
     /^(?:test(?::|$)|bkit:test:|bkit:gate:)/.test(name),
   );
   expect(scripts.length).toBeGreaterThan(10);
+  // A tests-lock `run` starts its command under bkit-test-awake.mjs itself.
+  const protectedStart =
+    /^(?:node scripts\/ci\/bkit-test-awake\.mjs |bash scripts\/ci\/bkit-machine-lock\.sh run --lock tests -- )/;
   for (const [name, command] of scripts) {
-    expect(command, name).toMatch(/^node scripts\/ci\/bkit-test-awake\.mjs /);
+    expect(command, name).toMatch(protectedStart);
   }
   expect(fs.readFileSync(path.join(ROOT, "scripts/ci/bkit-test-awake.mjs"), "utf-8")).toBe(
     fs.readFileSync(path.join(ROOT, ".bkit/templates/scripts/ci/bkit-test-awake.mjs"), "utf-8"),
@@ -82,7 +81,7 @@ const FILES = [
 describe("bkit:test:file runs every test file kind into a JUnit report", () => {
   it.each(FILES)(
     "$kind — $file reports its named test passed",
-    { timeout: 120_000 },
+    { timeout: localLimit(120_000) },
     ({ file, test }) => {
       const report = path.join(tempDir(), "junit.xml");
       const res = pnpm({ [REPORT_ENV]: report }, "bkit:test:file", file);
@@ -93,7 +92,7 @@ describe("bkit:test:file runs every test file kind into a JUnit report", () => {
 
   it.each(FILES)(
     "$kind — with no report path the test file is left as it was",
-    { timeout: 120_000 },
+    { timeout: localLimit(120_000) },
     ({ file }) => {
       const before = fs.readFileSync(path.join(ROOT, file), "utf-8");
       const res = pnpm({ [REPORT_ENV]: "" }, "bkit:test:file", file);
@@ -141,7 +140,7 @@ const FAILING = [
 describe("bkit:test:file reports a failing test file kind as a red", () => {
   it.each(FAILING)(
     "$kind — a failing $name exits non-zero with a <failure> for its named test",
-    { timeout: 120_000 },
+    { timeout: localLimit(120_000) },
     ({ name, test, body }) => {
       const dir = tempDir();
       const file = path.join(dir, name);
@@ -159,8 +158,46 @@ describe("bkit:test:file reports a failing test file kind as a red", () => {
 });
 
 describe("bkit:lint:file passes a test file its linter does not cover", () => {
-  it.each(FILES)("$kind — $file lints clean", { timeout: 120_000 }, ({ file }) => {
+  it.each(FILES)("$kind — $file lints clean", { timeout: localLimit(120_000) }, ({ file }) => {
     const res = pnpm({}, "bkit:lint:file", file);
     expect(res.status, `${res.stdout}\n${res.stderr}`).toBe(0);
   });
+});
+
+describe("bkit:test:file ends a node --test file whose test awaits a child that never exits", () => {
+  it(
+    "node — a test awaiting a child that never exits fails within the limit",
+    { timeout: localLimit(100_000) },
+    () => {
+      const dir = tempDir();
+      const file = path.join(dir, "hang.test.mjs");
+      // The child quits by itself after 90s so a failed limit never leaves it behind.
+      fs.writeFileSync(
+        file,
+        'import { spawn } from "node:child_process";\n' +
+          'import { once } from "node:events";\n' +
+          'import { test } from "node:test";\n\n' +
+          'test("hang probe awaits a child", async () => {\n' +
+          '  const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 90000)"], { stdio: "ignore" });\n' +
+          '  await once(child, "exit");\n' +
+          "});\n",
+      );
+      const report = path.join(dir, "junit.xml");
+      const started = Date.now();
+      const res = spawnSync("pnpm", ["-s", "bkit:test:file", file], {
+        cwd: ROOT,
+        encoding: "utf-8",
+        timeout: 85_000,
+        env: { ...process.env, CI: "true", [REPORT_ENV]: report },
+      });
+      const elapsed = Date.now() - started;
+      expect(res.error, `${res.stdout}\n${res.stderr}`).toBeUndefined();
+      expect(res.status, `${res.stdout}\n${res.stderr}`).toBe(1);
+      expect(elapsed).toBeLessThan(80_000);
+      const cases = parseJunit(fs.readFileSync(report, "utf-8"));
+      expect(
+        cases.filter((c) => isNamedCase(c.name, "hang probe awaits a child")).map((c) => c.state),
+      ).toEqual(["failure"]);
+    },
+  );
 });

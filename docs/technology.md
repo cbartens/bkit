@@ -1,7 +1,3 @@
-<!-- bkit:start -->
-
-<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
-
 # Technology
 
 > [!CAUTION]
@@ -11,8 +7,6 @@
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
 > - List each technology and how it is used. Put the reason for a choice in `decisions.jsonl`.
-
-<!-- bkit:end -->
 
 ## Runtime & Language
 
@@ -66,7 +60,7 @@ OpenAI-compatible providers: npm `@ai-sdk/openai-compatible`. `opencode-zen` / `
 | Vitest | `5.x` | Unit (`*.test.ts`) and integration (`*.integration.test.ts`) test runner; mocks are cleared before every test (the v5 `clearMocks` default) |
 | `@vitest/coverage-v8` | `5.x` | Per-tier coverage; branch-threshold gate on the unit run (`test:coverage:unit`) |
 | `yaml` | `2.x` | Test-only YAML parsing (template workflows parsed in-process; no python / ruby) |
-| bats | `1.x` (devDependency; `pnpm exec bats`) | Shell tier — `tests/shell/*.bats`, for logic that lives in shell (the bkit-cloud-bootstrap hook's `gh` preflight, the `gh` stub harness) |
+| bats | `1.13.0` (devDependency, patched by `patches/bats@1.13.0.patch` through `pnpm.patchedDependencies`, so a version bump needs the patch remade; `pnpm exec bats`) | Shell tier — `tests/shell/*.bats`, for logic that lives in shell (the bkit-cloud-bootstrap hook's `gh` preflight, the `gh` stub harness) |
 | Real-filesystem fixtures | `os.tmpdir()` scratch dirs | Integration tests spawn `bkit` against temporary consumer directories — no mock `fs` |
 
 See `docs/testing.md` for tier boundaries, CI execution order, and spawning patterns.
@@ -77,7 +71,7 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 | Technology | Config | Usage |
 | --- | --- | --- |
 | Prettier | `3.x`, `.prettierrc.json` | Code and markdown formatting (`pnpm format:check` in CI) |
-| Vale | `3.24.0`, system-installed locally; CI installs a sha256-verified pinned tarball | Prose linting of `.agents/`, `.bkit/`, `docs/` and root markdown (`pnpm bkit:lint:prose` → `bkit ci prose --glob=…`). Fails when the vale binary is absent; a missing `.vale/styles/write-good` (gitignored, so absent in fresh checkouts and worktrees) self-heals by copying from the main worktree, else `vale sync`, and fails if neither works. CI installs both |
+| Vale | `3.26.0`, system-installed locally; CI installs a sha256-verified pinned tarball | Prose linting of `.agents/`, `.bkit/`, `docs/` and root markdown (`pnpm bkit:lint:prose` → `bkit ci prose --glob=…`). Fails when the vale binary is absent; a missing `.vale/styles/write-good` (gitignored, so absent in fresh checkouts and worktrees) self-heals by copying from the main worktree, else `vale sync`, and fails if neither works. CI installs both |
 | actionlint | `1.7.12`, downloaded in-lane on the static and unit lanes (SHA-pinned script) | GitHub-Actions-aware lint of `.github/workflows/*` — expression syntax + shellcheck on `run:` bodies. `pnpm bkit:lint:workflows` guard-skips locally when absent |
 | Oxlint + oxlint-tsgolint | `1.89.0` + `7.0.2004` (exact), `.oxlintrc.json` | Test-file linter; adopted copy of `.bkit/templates/.oxlintrc.json` (bkit-only edits: `*.test.ts` glob, `expectExit`); only these rules enabled (`pnpm lint` → `oxlint --type-aware --tsconfig tsconfig.test.json --deny-warnings .bkit/core/engine`; part of `bkit:gate:static` and the CI static lane). Scope: `**/*.test.ts` (covers `*.integration.test.ts`). Rules, all `error`: `vitest/expect-expect`, `vitest/no-conditional-in-test`, `vitest/no-conditional-expect`, `vitest/valid-expect` (`maxArgs: 2`), `typescript/no-floating-promises` (type-aware via oxlint-tsgolint, built on TypeScript 7; typescript-eslint supports only TypeScript `<6.1`) |
 | slop-scan | `0.3.x`, `slop-scan.config.json` | Detects code-shaped slop in source — empty catches, over-fragmentation, pass-through wrappers. `pnpm lint:slop` reports (never fails); `pnpm bkit:slop:delta` is the gate that fails on net-new findings vs the base |
@@ -88,7 +82,7 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 | Technology | Config | Usage |
 | --- | --- | --- |
 | husky | `9.x`, `.husky/` | Pre-commit and pre-push hooks |
-| Pre-push hook | `.husky/pre-push` | Runs `pnpm bkit check`, then `bkit ci push-gate` with the selected script: `bkit:gate:min` for an eligible bookkeeping push, `bkit:gate:static` for a revert, else `bkit:gate:static-unit-integration` when declared or `bkit:gate:static-unit`. A successful full gate records local evidence for later bookkeeping increments. Source-repo full pushes also run `pnpm bkit:check:dist` and `pnpm bkit:lint:workflows`; the consumer template does not. Gate selection and release skips are in `docs/deployments.md` § Pre-push checklist and § Release test runs. |
+| Pre-push hook | `.husky/pre-push` | Loads `.envrc` through `direnv exec .` when the repo has one, `direnv` is on `PATH` and `CI` is unset, and blocks in seconds on an untrusted `.envrc`. Runs `pnpm bkit check`, then `bkit ci push-gate` with the selected script: `bkit:gate:min` for an eligible bookkeeping push, `bkit:gate:static` for a revert, else `bkit:gate:static-unit-integration` when declared or `bkit:gate:static-unit`. A successful full gate records local evidence for later bookkeeping increments. Source-repo full pushes also run `pnpm bkit:check:dist` and `pnpm bkit:lint:workflows`; the consumer template does not. Gate selection and release skips are in `docs/deployments.md` § Pre-push checklist and § Release test runs. |
 
 ## CI/CD
 

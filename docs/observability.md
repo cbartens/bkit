@@ -1,7 +1,3 @@
-<!-- bkit:start -->
-
-<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
-
 # Observability
 
 > [!CAUTION]
@@ -19,11 +15,21 @@ Configure failure-evidence fetching for `/bkit-debug` (`context-fetch:*` blocks 
 
 The workflow commits every captured payload inside an untrusted fence (`===== BEGIN UNTRUSTED =====` … `===== END UNTRUSTED =====`, with the data-only instruction above it), because fetched web / log / diff text is data, never instructions. A block emits no fence of its own, because two wraps read as one nested payload.
 
-<!-- bkit:end -->
-
 ## Scope
 
 No server-side telemetry pipeline, log drains, or tracing. Observability limited to CLI stdout / stderr — `bkit install` / `bkit check` in consumer environments, and the `bkit <noun> <verb>` workflow commands during agent runs.
+
+## Tracker reporting diagnostics
+
+The tracker helper emits bounded `[bkit-tracker]` diagnostics and best-effort `tool-failure` friction for preparation, source, lock, delivery, reconciliation and receipt failures. Rows identify the workflow phase and failure stage; a known comment URL may be included. They exclude comment bodies, credentials, personal data and raw provider errors. Stable phase and stage identity groups recurrences across invocations.
+
+Unavailable fallback-source files and invalid or unreadable session associations attempt their own friction records even when the current provider write succeeds. Missing optional association arguments do not count as an association failure.
+
+Write friction in the active worktree's ledger. A failed friction write emits one bounded diagnostic without recursively attempting friction. Reporting and diagnostic failures remain nonfatal. If a provider accepts a write but its response is lost, an unprovable reconciliation can produce a duplicate new comment; diagnostics must not claim an exactly-once guarantee.
+
+## Bookkeeping effects and receipts
+
+A `bkit` command that fails before any write prints a structured error with `effects: none`, `correctable` and, for ledger appends, a `scope`; an uncertain write prints `effects: uncertain`. An append success prints a `receipt` (`operation`, `replayed`, per-row `key` and `ts`); a corrected retry adds `correction` (`scope`, `used`, `limit`, `verified`). Status rows `correction-rejected`, `correction-candidate`, `correction-succeeded` and `ci-handoff` record the recovery path in the run's status log; a runless (standalone) invocation keeps its correction events in `<outbox>/invocation-context/<id>.corrections.jsonl` next to the receipt, and its two-retry budget is per invocation. None of them stores a secret, a row body or a token. A ledger operation's intent (the prepared row bytes) and receipt live in `<git common dir>/bkit-outbox/ledger-operations/<root hash>.jsonl` (0600 file, 0700 directories), never in a committed or unioned path, so no row body reaches committed content through the operation store.
 
 ## Log Format
 
@@ -58,7 +64,7 @@ Compliance grader stderr. Canonical grep patterns:
 - `[bkit-telemetry] {kind} row {key} not written: {reason}` — harvest scan row failing its totals check, on stderr; not appended.
 - `[bkit-telemetry] {kind} row not written: {reason}` — a `completeness` row the close could not append (`{kind}` is `completeness`); the close continues.
 - `[bkit-telemetry] journal looks dead at close: no engine-call rows for this run; the completeness verdict cannot be trusted` — `bkit workflows close` found no `engine-call` row for the run; one line per close on stderr, stdout and the exit code unchanged.
-- `[bkit-telemetry] journal write failed: {message}` — the engine-call / friction journal at command dispatch could not write a row; logged once per command run, the command's exit code is unchanged.
+- `[bkit-telemetry] journal write failed: {message}` — the engine-call / friction journal at command dispatch could not write a row; logged once per command run, the command's exit code is unchanged. An invocation-bound call (`--invocation`) writes its `engine-call` row to the issuing run's own `status.jsonl`, never another worktree's, so `bkit completeness check` counts it; `bkit status invocation` records itself as the run's `invocation` event instead, and a runless audit or utility invocation writes no row.
 
 The journal seam writes `engine-call` and `friction` rows to the active run's `status.jsonl` / `.bkit/friction.jsonl`. `BKIT_ENGINE_JOURNAL=off` is its kill switch: any other value (or unset) leaves it on. A command git launched (a hook, seen by `GIT_EXEC_PATH` in its environment) writes no `engine-call` row; its friction row is still written. A command run while the run's repo has a rebase paused (its git dir holds `rebase-merge` or `rebase-apply`) writes no `engine-call` row either, so `git rebase --continue` finds no unstaged change in the tracked `status.jsonl`. Rows are evidence for `bkit completeness check`; the seam never changes an exit code.
 
@@ -129,11 +135,14 @@ Run-completeness check (`checks/status-holes.ts`, `bkit completeness check`). Ad
 | 14 | Green run exists, but at a SUPERSEDED SHA (needs `--branch`) | refuse → Step 9 (re-validate at new head) |
 | 15 | Selected run concluded `cancelled` | refuse |
 | 16 | A lane named in `bkit.testing.ciRequired` concluded `skipped` | refuse |
-| 17 | Non-bookkeeping change past `--validated`, or not its descendant | refuse → Step 9 (re-validate at head) |
-| 20 | API error / rate limit / auth | refuse |
+| 17 | Non-bookkeeping change past `--validated`, or not its descendant | refuse → Step 3 (reconcile and refresh feature coverage) |
+| 19 | Fresh `dev` is not an ancestor of the validated code head | refuse → Step 4 (integrate and revalidate) |
+| 20 | API error / rate limit / auth, or missing/mismatched fresh-base evidence | refuse |
 | 80 | `gh` not on PATH | do it via the MCP fallback |
 
 The refusal itself is signalled by the process exit code; every refusal ends with the `required head:` block. Canonical grep patterns:
+
+Ship's `runs revalidate --require-reconciled` returns 21 when newly observed feature code needs reconciliation. It emits `reconcileRequired: true` with no validated head and records one `ship-gate-refusal` row before any CI probe or dispatch. The bounded retry returns to Step 3, including inherited-dev checks and sweep/docs coverage. Bookkeeping-only descendants retain the covered head.
 
 - `[bkit-runs] capstone %s=success at head %s (run %s, %s)` — green at the checked head.
 - `[bkit-runs] head %s = validated %s + bookkeeping only — checking CI at the validated sha` — `--validated` carry-forward applied.
@@ -147,6 +156,12 @@ The refusal itself is signalled by the process exit code; every refusal ends wit
 - `[bkit-runs] override honoured for head %s (BKIT_SHIP_GATE_OVERRIDE matches refused head)` — sanctioned escape hatch; also writes a `ship-gate-override` `status.jsonl` row (`--file=`) for audit, or emits it to stderr when the file is absent or unwritable.
 
 The override is honoured ONLY when `BKIT_SHIP_GATE_OVERRIDE=<sha>` equals the exact head being refused, so a SHA mismatch is ignored and the refusal stands. Audit the override rows (`status.jsonl` `type:"ship-gate-override"`) as part of consumer rollback (see `docs/deployments.md` § Ship gate + bookkeeping).
+
+With `--fresh-base`, ancestry is checked before the override or bookkeeping carry-forward. The gate snapshot records the fetched `devSha`, `comparedHead` and `ancestor` evidence; unavailable evidence refuses rather than assuming freshness. MCP facts are scoped to `ownerRepo`, `prNumber`, `headRefName` and `baseRefName`, with the comparison in `base` (`ref`, `sha`, `comparedHead`, `status`). A mismatched envelope cannot authorize a merge.
+
+`bkit prs merge --ship-retry` distinguishes a moved head (exit 9, return to validation) from a new conflict (exit 10, return to integration). Other merge refusals remain terminal (exit 7). A successful head-pinned merge still has a residual race with a later base update because the merge API does not pin the base SHA.
+
+Cleanup reports preservation explicitly. `local {branch} changed after its cleanup proof — preserved` means the expected-tip delete refused; `carries work origin/dev does not — preserved` means landed-work evidence failed. `cleanup evidence unavailable — preserved` names an unreadable local or remote ref. `remote origin/{branch} not deleted — preserved` means origin refused the lease-guarded delete at the proved landed tip. Cleanup proves the index and working tree separately before removing either, and these diagnostics are independent of GitHub's repository-level automatic branch deletion setting.
 
 The same prefix carries the CI waits (`bkit runs wait`: one `attempt N: …` line per poll) and the CI-Dispatch Gate (`bkit runs dispatch`: `re-trigger commit or push failed — no verdict; route to the Failure Path`, `landed commit … inherited a CI-suppression token in its body`).
 
@@ -168,6 +183,21 @@ Release-PR capstone in mirror mode (`docs/deployments.md` § One CI run per dev 
 - `[bkit-runs] dev push run at %s is in progress — waiting (up to %sm).` — logged once per state change, not per poll.
 - `[bkit-runs] no dev push run exists at %s after %sm.` — exit 3.
 
+### `[bkit-cloud] gate:` annotations — router label gate
+
+`bkit-cloud.yml`'s context job reads `bkit:auto` through the consumer's own bkit (`bkit issues fetch`) on every tracker. Each run logs one GitHub annotation and writes one `$GITHUB_STEP_SUMMARY` row `tracker | issue | verdict | reason | jobs`. Every outcome other than `pass` starts no agent and leaves the run green. Brackets load-bearing — log-drain grep key.
+
+<!-- prettier-ignore -->
+| Verdict | Annotation | Reason column |
+| --- | --- | --- |
+| `pass` | `::notice::[bkit-cloud] gate: pass` | `bkit:auto present` |
+| `label-absent` | `::notice::[bkit-cloud] gate: label-absent` | `bkit:auto not on the issue` |
+| `no-issue` | `::notice::[bkit-cloud] gate: no-issue` | no issue recorded in the marker or a feature row |
+| `no-agent` | `::notice::[bkit-cloud] gate: no-agent` | label present but `bkit.cloud.agent` selected no job |
+| `unreadable` | `::warning::[bkit-cloud] gate: unreadable (…)` | `bkit-unavailable` (lockfile install failed), `reason=auth` (names `BKIT_LINEAR_API_KEY` / `BKIT_JIRA_API_KEY` / `GH_TOKEN`), `reason=network`, `reason=not-found`, `reason=exit-N`, `reason=output-unparseable` |
+
+The `jobs` column holds the `Select agent job` hand-off: the dispatched job with its `BKIT_` secret (`codex:BKIT_OPENAI_API_KEY`) and each ignored job with its reason (`claude: not bkit.cloud.agent`); a `no-agent` row names the recorded agent's missing `BKIT_` secret and the ignored secrets.
+
 ## Advisory Checklist Output
 
 Post-install findings via `formatChecklist(ctx.advisories)` (`.bkit/core/engine/checks/after/index.ts`). Each `PreflightFinding`: `{ id, severity, detect, action }`. Primary human-readable observability surface.
@@ -175,6 +205,26 @@ Post-install findings via `formatChecklist(ctx.advisories)` (`.bkit/core/engine/
 - Blockers (Phase 1) → `stderr`, exit 1 before writes.
 - Advisories (Phase 1 + Phase 3) → numbered checklist after install.
 - `bkit check` (dry-run) → Phase 1 + Phase 3 advisories (read-only); exit 1 on Tier-1 / Tier-2 drift. No writes.
+
+## Project documentation advisories
+
+`detectProjectDocs` (`checks/after/tools.ts`) runs in Phase 3 and returns advisories only; none blocks install, upgrade, check or doctor. A document an indexed row covers at another path (same basename, or a Scope cell `Equivalent to docs/{topic}.md`) counts for its topic. `docs/components.md` is checked beside the ten topics, at that path only, for the `project-docs-missing` and `project-docs-unpopulated` findings. The detector never reads a symbolic link or a path outside the repository.
+
+<!-- prettier-ignore -->
+| Finding id | Raised when |
+| --- | --- |
+| `project-docs-index-missing` | `.agents/docs.md` is absent |
+| `project-docs-missing` | A recommended topic has no document and no indexed equivalent, or `docs/components.md` is absent |
+| `project-docs-unpopulated` | A covering document is empty, still a current or legacy starter, still opens with the starter's introduction (`> Starter document.`), or is only headings |
+| `project-docs-unindexed` | A populated candidate exists but the index does not list it, or lists another document for the same topic |
+| `project-docs-cleanup` | A project document keeps a bkit ownership wrapper (`bkit:start` / `bkit:end` lines or the `bkit:managed` notice) that could not be removed safely |
+| `project-docs-ambiguous` | An index row or target is unsafe, unreadable or malformed |
+
+A document that differs from every starter is a candidate for agent assessment; the check does not claim it is complete.
+
+## Phase documentation warnings
+
+Agents that consult project documents write gaps as `jsonl` records (`topic`, `gap`, `recommendedPath`, `alternativeEvidence`, `action`) under `## Documentation Warnings`. `bkit workflows summary` (`commands/workflow/summary.ts`) reads those records only from the active run's step artifacts, skips raw `*-input-*` files, the tracker artifacts `related-(issues|failures|deferrals).md` and `context-related-*.md`, text between `===== BEGIN UNTRUSTED =====` / `===== END UNTRUSTED =====` markers, and malformed lines, merges records by topic and gap, and prints one `## Documentation Warnings` section in the summary. The section is advisory and never changes the verdict or failure count.
 
 ## Phase 3 Credential + Migration Findings
 
@@ -185,7 +235,8 @@ Phase 3 emits credential findings as advisory text. Finding ids = audit trail:
 | --- | --- | --- |
 | `detectShellGhMcpToken` | `checks/after/auth.ts` | `BKIT_GH_TOKEN` missing / empty in the shell — gated on a configured `github` MCP server |
 | `detectGhSecret` | `checks/after/auth.ts` | GitHub Actions repo secret presence (`gh secret list`) |
-| `detectCiRouterSecrets` | `checks/after/auth.ts` | `bkit-cloud.yml` installed and: no claude credential (`anthropic-api-key-secret-missing`; repo variables read via `gh variable list` — unlistable → still raised when the key is missing, naming the unchecked variables); key set alongside federation vars (`anthropic-api-key-shadows-federation`); federation vars set but adopted copy lacks the federation inputs (`anthropic-federation-template-stale`) |
+| `detectCiRouterSecrets` | `checks/after/auth.ts` | `bkit-cloud.yml` installed and: no claude credential (`anthropic-api-key-secret-missing`; repo variables read via `gh variable list` — unlistable → still raised when the key is missing, naming the unchecked variables); key set alongside federation vars (`anthropic-api-key-shadows-federation`); federation vars set but adopted copy lacks the federation inputs (`anthropic-federation-template-stale`). The Anthropic findings fire for `cloud.agent` claude only, under `BKIT_ANTHROPIC_API_KEY` (legacy `ANTHROPIC_API_KEY` for a copy that predates the `BKIT_` names). Also: Linear / Jira tracker key unset (`cloud-router-tracker-secret-missing`); codex without `BKIT_OPENAI_API_KEY` (`codex-api-key-secret-missing`); legacy secret set without its `BKIT_` twin (`cloud-router-secret-renamed`) |
+| `buildCloudSetupAdvisory` | `checks/after/github.ts` | Router setup advisory, first match wins: `cloud-claude-missing-id-token` (claude, no `id-token: write`), `cloud-router-tracker-stale` (Linear / Jira, copy serves GitHub only), `cloud-router-codex-missing` (codex, no `openai/codex-action`), `cloud-router-agent-unset` (no recorded agent), `cloud-router` (informational; for `none` / `cursor` it says the router starts nothing), `cloud-router-none` (no router, undecided) |
 | `buildCloudDashboardsAdvisory` | `checks/after/auth.ts` | Cloud-dashboard secret checklist (GitHub Actions + Claude + Cursor) |
 
 ## Runtime capability row

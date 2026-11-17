@@ -17,7 +17,8 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
-import { tasksCommand } from "./tasks";
+import { addTakeoverTasks, gappedTasks, tasksCommand } from "./tasks";
+import { checkPlanText, planTakeovers } from "./tests";
 
 const dirs: string[] = [];
 const tmp = () => {
@@ -131,6 +132,106 @@ const headOf = (text: string, n: number) =>
 const tickOf = (text: string, n: number) => /^- \[([ x])\]/.exec(headOf(text, n))![1];
 
 describe("bkit tasks tick", () => {
+  /** A verify-pause decision file: one item per `[title, answer]`, titled as `decisions compose` titles a gap. */
+  const decisionFile = (...items: Array<[string, string | null]>) =>
+    [
+      "Status: DECIDED",
+      "Question: VERIFY_GAPS",
+      "From: verify",
+      "Group: 1",
+      "",
+      ...items.flatMap(([title, answer], i) => [
+        `**Q${i + 1} — ${title}:** accept it?`,
+        "Options: A) Accept / B) Fix now",
+        "Recommended: A) Accept — minor",
+        ...(answer === null ? [] : [`Decision: ${answer}`]),
+        "",
+      ]),
+    ].join("\n");
+
+  it("tick --decision ticks the tasks of accepted verify-gap items", async () => {
+    const plan = write("plan.md", planText(group(1, task(1), task(2), task(3))));
+    const decision = write(
+      "decision.md",
+      decisionFile(["Task 1 gap", "Accept — minor"], ["Task 3 gap", "Accept (assumed) — headless"]),
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", `--decision=${decision}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([1, 3]);
+    expect([tickOf(read(plan), 1), tickOf(read(plan), 2), tickOf(read(plan), 3)]).toEqual([
+      "x",
+      " ",
+      "x",
+    ]);
+  });
+
+  it("tick --decision ticks a task whose item title reads TASK {N}", async () => {
+    const plan = write("plan.md", planText(group(1, task(1), task(2), task(3))));
+    const decision = write(
+      "decision.md",
+      decisionFile(["TASK 3", "Accept — minor"], ["TASK 2", "Fix now"]),
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", `--decision=${decision}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([3]);
+    expect([tickOf(read(plan), 1), tickOf(read(plan), 2), tickOf(read(plan), 3)]).toEqual([
+      " ",
+      " ",
+      "x",
+    ]);
+  });
+
+  it("tick --decision leaves a Fix now item's task open", async () => {
+    const plan = write("plan.md", planText(group(1, task(1), task(2), task(3))));
+    const decision = write(
+      "decision.md",
+      decisionFile(
+        ["Task 1 gap", "Accept — minor"],
+        ["Task 2 gap", "Fix now"],
+        ["Task 3 gap", null],
+      ),
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", `--decision=${decision}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([1]);
+    expect([tickOf(read(plan), 1), tickOf(read(plan), 2), tickOf(read(plan), 3)]).toEqual([
+      "x",
+      " ",
+      " ",
+    ]);
+  });
+
+  it("tick --decision reads a per-line decision file with a lettered answer", async () => {
+    const plan = write("plan.md", planText(group(1, task(1), task(2), task(3))));
+    const decision = write(
+      "decision.md",
+      [
+        "Status: DECIDED",
+        "Question: VERIFY_GAPS",
+        "From: verify",
+        "Group: 1",
+        "",
+        "**Q1 — Task 1 gap:** accept it?",
+        "A) Accept — the item is recorded as accepted and the build moves on",
+        "B) Fix now — one more fix round runs before the build moves on",
+        "Recommended: A) Accept — minor",
+        "Default if unanswered: the run waits for you; taken as A when nobody can be asked",
+        "Decision: A",
+        "",
+        "**Q2 — Task 2 gap:** accept it?",
+        "A) Accept — the item is recorded as accepted and the build moves on",
+        "B) Fix now — one more fix round runs before the build moves on",
+        "Recommended: A) Accept — minor",
+        "Default if unanswered: the run waits for you; taken as A when nobody can be asked",
+        "Decision: B",
+        "",
+      ].join("\n"),
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", `--decision=${decision}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([1]);
+  });
+
   it("tick marks only the named tasks", async () => {
     const plan = write("plan.md", planText(group(1, task(1), task(2), task(3))));
     const r = await run(["tick", `--plan=${plan}`, "--group=1", "--tasks=2"]);
@@ -181,6 +282,263 @@ describe("bkit tasks tick", () => {
     expect(r.code).toBe(0);
     expect(r.json.ticked).toEqual([1]);
     expect(tickOf(read(plan), 2)).toBe(" ");
+  });
+
+  it("ticks a task listed only under Updated tests", async () => {
+    const plan = write("updated-tests.md", planText(group(1, task(8), task(9))));
+    const green = write(
+      "green-updated.md",
+      [
+        "Enforced: true",
+        "Verdict: PASS",
+        "Gaps: 0",
+        "",
+        "<!-- verdict:end -->",
+        "",
+        "## Gaps",
+        "",
+        "None.",
+        "",
+        "## Updated tests",
+        "",
+        "- Task 9 `updated` — `.bkit/x.test.ts` `a` changed",
+        "",
+      ].join("\n"),
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", "--tasks=8,9", `--green=${green}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([8, 9]);
+    expect(tickOf(read(plan), 9)).toBe("x");
+  });
+
+  it("ticks a task listed only under Already landed and skips a Gaps task", async () => {
+    const plan = write("landed.md", planText(group(1, task(7), task(8), task(9))));
+    const green = write(
+      "green-landed.md",
+      [
+        "Enforced: true",
+        "Verdict: CONCERNS",
+        "Gaps: 1",
+        "",
+        "<!-- verdict:end -->",
+        "",
+        "## Already landed",
+        "",
+        "- Task 7 `passes` — `.bkit/x.test.ts` `a` already passes",
+        "",
+        "## Gaps",
+        "",
+        "- Task 9 `not-green` — `.bkit/x.test.ts` `b` does not exist — Fixable: true — log: TASK 9: not-green",
+        "",
+      ].join("\n"),
+    );
+    const r = await run([
+      "tick",
+      `--plan=${plan}`,
+      "--group=1",
+      "--tasks=7,8,9",
+      `--green=${green}`,
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([7, 8]);
+    expect(tickOf(read(plan), 7)).toBe("x");
+    expect(tickOf(read(plan), 9)).toBe(" ");
+  });
+
+  it("tasks tick --green refuses a report with no Gaps heading", async () => {
+    const text = planText(group(1, task(1), task(2)));
+    const plan = write("no-gaps-heading.md", text);
+    const green = write(
+      "green-no-gaps.md",
+      ["Enforced: true", "Verdict: PASS", "Gaps: 0", "", "<!-- verdict:end -->", ""].join("\n"),
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", `--green=${green}`]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("report has no Gaps section");
+    expect(read(plan)).toBe(text);
+  });
+
+  it("tasks tick --green refuses a report whose gap lines are fewer than its Gaps header", async () => {
+    const text = planText(group(1, task(1), task(2), task(3)));
+    const plan = write("short-gaps.md", text);
+    const green = write(
+      "green-short.md",
+      [
+        "Enforced: true",
+        "Verdict: CONCERNS",
+        "Gaps: 2",
+        "",
+        "<!-- verdict:end -->",
+        "",
+        "## Gaps",
+        "",
+        "- Task 1 `not-green` — not-green: expected:",
+        "## Heading",
+        "- Task 3 `not-green` — not-green: still red — Fixable: true — log: TASK 3: not-green",
+        "",
+      ].join("\n"),
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", `--green=${green}`]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("Gaps: 2");
+    expect(r.err).toContain("1 gap line");
+    expect(read(plan)).toBe(text);
+  });
+
+  it("tick --decision ticks nothing for a title that only mentions a task", async () => {
+    const text = planText(group(1, task(1), task(2)));
+    const plan = write("mention.md", text);
+    const decision = write(
+      "decision.md",
+      decisionFile(["No test covers the retry path that task 2 adds", "Accept — minor"]),
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", `--decision=${decision}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([]);
+    expect(read(plan)).toBe(text);
+  });
+
+  it("tick --decision still refuses a --tasks number from another group", async () => {
+    const text = planText(group(1, task(1)), group(2, task(9)));
+    const plan = write("decision-other-group.md", text);
+    const decision = write("decision.md", decisionFile(["Task 1 gap", "Accept — minor"]));
+    const r = await run([
+      "tick",
+      `--plan=${plan}`,
+      "--group=1",
+      "--tasks=9",
+      `--decision=${decision}`,
+    ]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("TASK 9 is in group 2, not group 1");
+    expect(read(plan)).toBe(text);
+  });
+
+  it("tick --decision still refuses an unknown --tasks number", async () => {
+    const text = planText(group(1, task(1)));
+    const plan = write("decision-unknown.md", text);
+    const decision = write("decision.md", decisionFile(["Task 1 gap", "Accept — minor"]));
+    const r = await run([
+      "tick",
+      `--plan=${plan}`,
+      "--group=1",
+      "--tasks=7",
+      `--decision=${decision}`,
+    ]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("has no TASK 7");
+    expect(read(plan)).toBe(text);
+  });
+
+  /** A decision file whose header block is `header`, with one accepted `Task 1 gap` item. */
+  const headed = (...header: string[]) =>
+    [
+      ...header,
+      "",
+      "**Q1 — Task 1 gap:** accept it?",
+      "Options: A) Accept / B) Fix now",
+      "Recommended: A) Accept — minor",
+      "Decision: Accept — minor",
+      "",
+    ].join("\n");
+
+  it.each([
+    ["no From header", ["Status: DECIDED", "Group: 1"], "no From header"],
+    [
+      "a From that is not verify or holistic",
+      ["Status: DECIDED", "From: challenge", "Group: 1"],
+      'From is "challenge", not verify or holistic',
+    ],
+    [
+      "a Gate: FAIL header",
+      ["Status: DECIDED", "From: verify", "Group: 1", "Gate: FAIL"],
+      "Gate: FAIL",
+    ],
+    [
+      "a verify Group that differs from --group",
+      ["Status: DECIDED", "From: verify", "Group: 2"],
+      'Group is "2", not group 1',
+    ],
+    ["a verify file with no Group header", ["Status: DECIDED", "From: verify"], "no Group header"],
+  ])("tick --decision refuses %s", async (_name, header, problem) => {
+    const text = planText(group(1, task(1)), group(2, task(2)));
+    const plan = write("refused.md", text);
+    const decision = write("decision.md", headed(...header));
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", `--decision=${decision}`]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain(problem);
+    expect(read(plan)).toBe(text);
+  });
+
+  it("tick --decision ticks a holistic file's accepted tasks across groups without --group", async () => {
+    const plan = write("holistic.md", planText(group(1, task(1), task(2)), group(2, task(3))));
+    const decision = write(
+      "decision.md",
+      [
+        "Status: DECIDED",
+        "Question: VERIFY_GAPS",
+        "From: holistic",
+        "Pause step: 10",
+        "",
+        "**Q1 — Task 1:** accept it?",
+        "Options: A) Accept / B) Fix now",
+        "Recommended: A) Accept — minor",
+        "Decision: Accept — minor",
+        "",
+        "**Q2 — Task 3:** accept it?",
+        "Options: A) Accept / B) Fix now",
+        "Recommended: A) Accept — minor",
+        "Decision: Accept (assumed) — headless",
+        "",
+        "**Q3 — Cross-group wiring is missing:** accept it?",
+        "Options: A) Accept / B) Fix now",
+        "Recommended: A) Accept — minor",
+        "Decision: Accept — minor",
+        "",
+      ].join("\n"),
+    );
+    const r = await run(["tick", `--plan=${plan}`, `--decision=${decision}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([1, 3]);
+    expect([tickOf(read(plan), 1), tickOf(read(plan), 2), tickOf(read(plan), 3)]).toEqual([
+      "x",
+      " ",
+      "x",
+    ]);
+    const again = await run(["tick", `--plan=${plan}`, `--decision=${decision}`]);
+    expect(again.code).toBe(0);
+    expect(again.json.ticked).toEqual([]);
+  });
+
+  it("tick --decision still needs --group for a verify file", async () => {
+    const text = planText(group(1, task(1)));
+    const plan = write("verify-no-group.md", text);
+    const decision = write("decision.md", decisionFile(["Task 1 gap", "Accept — minor"]));
+    const r = await run(["tick", `--plan=${plan}`, `--decision=${decision}`]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("--group");
+    expect(read(plan)).toBe(text);
+  });
+
+  it("gappedTasks still reads a report whose Gaps section is empty", async () => {
+    const plan = write("empty-gaps.md", planText(group(1, task(1), task(2))));
+    const green = write(
+      "green-empty-gaps.md",
+      [
+        "Enforced: true",
+        "Verdict: PASS",
+        "Gaps: 0",
+        "",
+        "<!-- verdict:end -->",
+        "",
+        "## Gaps",
+        "",
+      ].join("\n"),
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", `--green=${green}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([1, 2]);
+    expect(gappedTasks(read(green))).toEqual([]);
   });
 
   it("tick is idempotent on an already-ticked task", async () => {
@@ -389,5 +747,157 @@ describe("bkit tasks currency", () => {
     expect(r.code).toBe(0);
     expect(r.json.tasks[0].paths).toEqual(["src/dev-moved.ts"]);
     expect(r.json.tasks[0].hunks.join("\n")).not.toContain("branch-moved");
+  });
+});
+
+describe("bkit tasks takeover", () => {
+  const TEST = "src/a.test.ts";
+  const STATUS = "logs/status.jsonl";
+  /** A task naming `name` in `src/a.test.ts` on its TEST FIRST. */
+  const testTask = (n: number, name: string, tick: string) => [
+    `<!-- bkit:task ${n} start -->`,
+    `- [${tick}] **TASK ${n}:** Task ${n} title.`,
+    "  - **DONE WHEN:** passes",
+    "  - **TEST FIRST:**",
+    `    - \`${TEST}\` \`${name}\` fails on the stub`,
+    `<!-- bkit:task ${n} end -->`,
+  ];
+  /** GROUP 1 TASK 1 (ticked) owns `adds a row`, GROUP 2 TASK 2 (open) owns `counts rows`; a matrix row each. */
+  const PLAN = [
+    "# Plan",
+    "",
+    "## Derived Test Matrix",
+    "",
+    "| Test description | Type | Target file | Task |",
+    "| --- | --- | --- | --- |",
+    `| adds a row | Unit | \`${TEST}\` | 1 |`,
+    `| counts rows | Unit | \`${TEST}\` | 2 |`,
+    "",
+    "## Implementation Tasks",
+    "",
+    ...group(1, testTask(1, "adds a row", "x")),
+    "",
+    ...group(2, testTask(2, "counts rows", " ")),
+    "",
+    "## Tail",
+    "",
+    "Kept as written.",
+    "",
+  ].join("\n");
+  const setup = () => {
+    cwd = repo({ "plan.md": PLAN, [TEST]: "it('adds a row', () => {});\n" });
+    fs.mkdirSync(path.join(cwd, "logs"), { recursive: true });
+  };
+  /** The engine's write, as a code step's `steps finish` calls it on a contradiction. */
+  const takeover = (name: string, task: number | null = 2, test = TEST) =>
+    addTakeoverTasks(
+      cwd,
+      path.join(cwd, "plan.md"),
+      path.join(cwd, STATUS),
+      [{ test, name, from: 1, task, reason: "rows now start at 0" }],
+      () => {},
+    );
+  const pending = () => run(["takeover", "--pending", "--plan=plan.md", `--file=${STATUS}`]);
+  const plan = () => read(path.join(cwd, "plan.md"));
+  const rows = () =>
+    read(path.join(cwd, STATUS))
+      .trim()
+      .split("\n")
+      .filter((l) => l !== "")
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .filter((r) => r.step === "build-takeover");
+
+  it("addTakeoverTasks appends a takeover task in a new last group that plan-check accepts", () => {
+    setup();
+    expect(takeover("adds a row")).toEqual([3]);
+    const text = plan();
+    expect(text).toContain("<!-- bkit:group 3 start -->");
+    expect(text).toContain("- [ ] **TASK 3:** Take over `adds a row` from TASK 1");
+    expect(text).toContain("  - **DEPENDS ON:** 2");
+    expect(text).toContain(`    - \`${TEST}\` \`adds a row\` fails until TASK 2's code exists`);
+    expect(text).toContain(`| Take over adds a row from TASK 1 | Unit | \`${TEST}\` | 3 |`);
+    expect(text.indexOf("<!-- bkit:group 3 end -->")).toBeLessThan(text.indexOf("## Tail"));
+    expect(text.endsWith("## Tail\n\nKept as written.\n")).toBe(true);
+    expect(checkPlanText(text).problems).toEqual([]);
+    expect(planTakeovers(text)).toEqual([
+      expect.objectContaining({ task: 3, from: 1, test: TEST, name: "adds a row" }),
+    ]);
+    expect(rows()).toEqual([
+      expect.objectContaining({
+        workflow: "build",
+        status: "DONE",
+        task: 3,
+        from: 1,
+        test: TEST,
+        name: "adds a row",
+        reason: "rows now start at 0",
+      }),
+    ]);
+  });
+
+  it("addTakeoverTasks reuses the open task on a second call", () => {
+    setup();
+    expect(takeover("adds a row")).toEqual([3]);
+    const once = plan();
+    expect(takeover("adds a row")).toEqual([3]);
+    expect(plan()).toBe(once);
+    expect(rows()).toHaveLength(1);
+  });
+
+  it("addTakeoverTasks writes only the missing row when a run stopped after the plan write", () => {
+    setup();
+    takeover("adds a row");
+    const once = plan();
+    fs.writeFileSync(path.join(cwd, STATUS), "");
+    expect(takeover("adds a row")).toEqual([3]);
+    expect(plan()).toBe(once);
+    expect(rows()).toEqual([expect.objectContaining({ task: 3, name: "adds a row" })]);
+  });
+
+  it("addTakeoverTasks puts a second contradiction into the same pending group", () => {
+    setup();
+    expect(takeover("adds a row")).toEqual([3]);
+    expect(takeover("counts rows", null)).toEqual([4]);
+    const text = plan();
+    expect(text).not.toContain("<!-- bkit:group 4 start -->");
+    expect(text).toContain("- [ ] **TASK 4:** Take over `counts rows` from TASK 1");
+    expect(checkPlanText(text).problems).toEqual([]);
+  });
+
+  it("addTakeoverTasks takes the matrix tier from the test file's name", () => {
+    setup();
+    takeover("adds a row", 2, "src/a.integration.test.ts");
+    expect(plan()).toContain(
+      "| Take over adds a row from TASK 1 | Integration | `src/a.integration.test.ts` | 3 |",
+    );
+  });
+
+  it("tasks takeover refuses a call without --pending: steps finish adds the tasks", async () => {
+    setup();
+    const r = await run(["takeover", "--plan=plan.md", `--file=${STATUS}`]);
+    expect(r.code).toBe(2);
+    expect(plan()).toBe(PLAN);
+  });
+
+  it("tasks takeover --pending prints the group until its tests are recorded", async () => {
+    setup();
+    expect((await pending()).json).toEqual({ plan: "plan.md", pending: null });
+    takeover("adds a row");
+    expect((await pending()).json).toEqual({
+      plan: "plan.md",
+      pending: { group: 3, tasks: [3] },
+    });
+    fs.appendFileSync(
+      path.join(cwd, STATUS),
+      `${JSON.stringify({
+        type: "step-done",
+        workflow: "build",
+        step: "build-tests-red",
+        status: "DONE",
+        group: 3,
+        tests: [{ task: 3, test: TEST, testName: "adds a row", state: "red", blob: null }],
+      })}\n`,
+    );
+    expect((await pending()).json).toEqual({ plan: "plan.md", pending: null });
   });
 });

@@ -11,6 +11,12 @@ import { readInstallingVersion } from "../../shared/package-json.js";
 import { writeCodexCloudDoc } from "../cloud-env.js";
 import { BKIT_PREFIX, installFile, listMdFiles, removeOrphans, trackMirrorWrite } from "./core.js";
 /**
+ * Status of the Codex private-key shell-read deny. Set from the recorded real-host result
+ * (`tests/experiments/hooks/results/<date>/bkit-codex-key-deny.json`): only an outcome of
+ * `denied` allows "denied (verified on codex-cli {version}, {date})".
+ */
+const CODEX_KEY_DENY_STATUS = "configured to deny, not verified on a real Codex host";
+/**
  * Convert a workflow orchestrator (`.bkit/core/workflows/*.md`) into a Codex SKILL.md.
  *
  * Codex requires `name` and `description` in the skill frontmatter; the workflows already
@@ -184,9 +190,10 @@ export function runCodexModule(ctx) {
         id: "codex-setup",
         severity: "advisory",
         detect: "codex host installed (.codex/agents + .agents/skills/bkit-*).",
-        action: "Three things that differ from the other hosts:\n" +
+        action: "Four things that differ from the other hosts:\n" +
             "1. TRUST THE LAYER. Codex loads project-local hooks only once the `.codex/` layer is trusted. Until then GateGuard and ReadGuard are installed and never fire.\n" +
             "2. Workflows are SKILLS here, not slash commands: invoke `$bkit-design`, not `/bkit-design`.\n" +
-            "3. Per-agent `tools:` is NOT enforced. Codex has no tool allowlist, so every agent gets the full built-in tool set. See .bkit/providers.md.",
+            "3. Per-agent `tools:` is NOT enforced. Codex has no tool allowlist, so every agent gets the full built-in tool set. See .bkit/providers.md.\n" +
+            `4. SHELL READS OF SECRET FILES. Private-key shell reads are ${CODEX_KEY_DENY_STATUS}: a command that prints a private key's content or sends it off the machine (\`cat\`, \`head\`, \`grep\`, \`dd if=\`, \`git show HEAD:key.pem\`, \`openssl rsa -in\`, \`curl -d @key.pem\`, \`scp key.pem host:\`) for \`id_rsa\`, \`id_dsa\`, \`id_ecdsa\`, \`id_ed25519\`, \`*.pem\`, \`*.p12\`, \`*.pfx\` or \`*.key\`, or for a glob that can match one (\`~/.ssh/*\`). A command that only uses a key (\`ssh -i\`, \`curl --cacert\`) runs with a note. The rule goes by file name, so a renamed or copied key, a path in a variable, and \`xargs\`, \`find -exec\` or a script language are not caught. To act on it: trust the \`.codex/\` layer (item 1), keep private keys out of the repo, and check the deny on a real Codex host before relying on it: trust the \`.codex/\` layer, write a synthetic \`id_rsa\` containing no real key, ask Codex to run \`cat ./id_rsa\`, and confirm a control that the same hook denies (\`bkit tests jump\`) is also denied; if the control is not denied the hook did not run. \`.env\` shell reads stay advisory: the command runs with a note, so the protection is advisory only. Keep secrets out of reach with direnv (\`.envrc\`) and do not rely on this hook for \`.env\` files.`,
     });
 }

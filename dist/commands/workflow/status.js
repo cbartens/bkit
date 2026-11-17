@@ -1,12 +1,15 @@
 // bkit status route|resume|meta|path|row — read and annotate a workflow's `status.jsonl`.
+import { randomBytes } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { BKIT_DEBUG_GATES } from "../../install/manifest.js";
 import { appendFrictionRow, journalEnabled, pauseFrictionRow } from "../../ledgers/journal.js";
 import { resolveGitSha } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
-import { activeDoneSteps, validateCiSelection, ciSelectionIdentity, allRunsDoneSteps, appendLine, fold, lastDoneStepAllRuns, lastRun, nextStrategy, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
-import { CommandError, EXIT, git, parseJson, resolveActiveRun, statusLocation, } from "../lib.js";
+import { activeDoneSteps, validateCiSelection, ciSelectionIdentity, allRunsDoneSteps, appendLine, fold, lastDoneStepAllRuns, lastRun, repeatStrategy, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
+import { CommandError, EXIT, git, parseJson, resolveActiveRun, statusLocation, worktreeFingerprint, writeInvocation, } from "../lib.js";
+import { fixTestStep, gatedCheckStep } from "./loops.js";
+import { gateRerun, openDecision } from "./open-decision.js";
 import { WORKFLOW_STEPS, isResumable, resumePoint } from "./step-table.js";
 // ---------------------------------------------------------------------------
 // Shared with counters / steps
@@ -151,24 +154,38 @@ const ROUTE_FIELDS = [
 ];
 /** Exit code: a `--require`d field is missing or holds a value outside its set. */
 export const EXIT_ROUTE_MISSING = 4;
-function route(runs, workflow, step, group) {
+/** Debug's Step 3 test round, as `counters derive --position=current` and `status route --require=verdict` read it. */
+function debugTestRound(runs, workflow) {
+    const rows = workflow === "debug" ? activeDoneSteps(runs, workflow, { step: "debug-run-tests" }) : [];
+    const last = rows.at(-1);
+    return {
+        testVerdict: VERDICTS.includes(String(last?.verdict)) ? last.verdict : null,
+        testSource: typeof last?.source === "string" ? last.source : null,
+        normalAttempt: rows.length === 0 ? null : rows.length,
+    };
+}
+function route(runs, rows, workflow, step, group) {
     const out = {
         verdict: null,
         failures: null,
         strategy: null,
         nextStrategy: null,
+        repeatTests: [],
         debugMode: null,
         pushMode: null,
         publish: null,
         publishSource: null,
         debugAttempt: 0,
         parentSha: null,
+        source: null,
     };
     const problems = {};
     if (step !== undefined) {
         const last = activeDoneSteps(runs, workflow, { step, group }).at(-1);
         if (typeof last?.parentSha === "string")
             out.parentSha = last.parentSha;
+        if (typeof last?.source === "string")
+            out.source = last.source;
         if (!last) {
             problems.verdict = `no DONE ${step} row in the active ${workflow} run`;
             problems.failures = problems.verdict;
@@ -191,7 +208,17 @@ function route(runs, workflow, step, group) {
         const prior = lastDoneStepAllRuns(runs, workflow, { step, group })?.strategy;
         if (prior === undefined || STRATEGIES.includes(prior)) {
             out.strategy = prior ?? null;
-            out.nextStrategy = nextStrategy(prior);
+            // The next label comes from the tests failing now, not from the previous label.
+            const testStep = fixTestStep(step, group);
+            const check = gatedCheckStep(step);
+            const current = check === undefined
+                ? undefined
+                : activeDoneSteps(runs, workflow, { step: check, group }).length;
+            const next = testStep === undefined
+                ? { strategy: "STANDARD", repeatTests: [] }
+                : repeatStrategy(rows, workflow, testStep, current);
+            out.nextStrategy = next.strategy;
+            out.repeatTests = next.repeatTests;
         }
         else {
             problems.strategy = `${step} strategy "${String(prior)}" is not STANDARD|PIVOT|FINAL`;
@@ -350,7 +377,7 @@ export const statusCommand = {
             },
         },
         route: {
-            summary: "Routing state: last verdict / failures / strategy of a step, debug and push mode; with --prompt-file, debug's start decisions.",
+            summary: "Routing state: last verdict / failures / strategy of a step, debug and push mode; with --step, nextStrategy and repeatTests (the next fix round's label, from the tests failing again); with --prompt-file, debug's start decisions.",
             use: "workflow",
             flags: [
                 { ...FILE_FLAG, required: false, help: `${FILE_FLAG.help}; or --fid and --month` },
@@ -390,7 +417,8 @@ export const statusCommand = {
                 ciReproduced: "whether the active generation has DONE reproduction with YES",
                 failures: "its failures (absent on PASS|CONCERNS = 0, absent on FAIL = null: count unknown), or null",
                 strategy: "the step's last strategy across ALL runs, or null",
-                nextStrategy: "next rung: STANDARD, PIVOT, FINAL (null without --step)",
+                nextStrategy: "the next fix round's label, from the tests failing now on the fix step's test step: STANDARD when none failed in an earlier attempt, PIVOT when one did in 1, FINAL in 2 or more (null without --step)",
+                repeatTests: "the tests failing now that also failed in an earlier attempt, across every run (empty without --step)",
                 debugMode: "NORMAL|SOAK of the active run, or null; with --prompt-file, the mode this invocation runs in (SOAK on [soak] in the prompt, an open run already in SOAK, or bkit.workflows.debug.fix.maxAttempts fix rounds already run across every debug run; else NORMAL)",
                 pushMode: "PR|LOCAL of the active run, or null",
                 debugAttempt: "debugAttempt of the active run (0 when unset); with --prompt-file, this invocation's run number (a resume keeps its number)",
@@ -399,6 +427,7 @@ export const statusCommand = {
                 publish: "with --workflow=build and --prompt-file: whether the build publishes (a publish=true|false token, else publish.local on LOCAL or publish.remote elsewhere; a non-LOCAL false resolves true), else null",
                 publishSource: "with publish: token | local | remote | coerced (a non-LOCAL false forced to true), else null",
                 parentSha: "HEAD when the step's last DONE row in the active run was written — a build-group-start row's is the group's start commit, the base for `context diff` — or null",
+                source: "the `source` field of the step's last DONE row in the active run (debug-run-tests: local|ci), or null",
             },
             exitCodes: {
                 [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON",
@@ -437,8 +466,9 @@ export const statusCommand = {
                         throw new CommandError(EXIT.USAGE, `--prompt-file ${abs} does not exist`);
                     promptText = fs.readFileSync(abs, "utf-8");
                 }
-                const runs = promptFile !== undefined && !fs.existsSync(file) ? [] : readRuns(file);
-                const { out, problems } = route(runs, String(ctx.flags.workflow), step, positiveInt(ctx.flags.group, "group"));
+                const statusRows = promptFile !== undefined && !fs.existsSync(file) ? [] : readStatusRows(file);
+                const runs = fold(statusRows);
+                const { out, problems } = route(runs, statusRows, String(ctx.flags.workflow), step, positiveInt(ctx.flags.group, "group"));
                 if (promptFile !== undefined) {
                     const root = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
                     const config = readBkitConfig(root);
@@ -447,8 +477,7 @@ export const statusCommand = {
                         delete problems.debugMode;
                     }
                     else {
-                        const rows = fs.existsSync(file) ? readStatusRows(file) : [];
-                        Object.assign(out, publishRoute(rows, promptText, config.buildPublish));
+                        Object.assign(out, publishRoute(statusRows, promptText, config.buildPublish));
                         delete problems.publish;
                     }
                 }
@@ -463,8 +492,202 @@ export const statusCommand = {
                 return failed.length === 0 && differ.length === 0 ? EXIT.OK : EXIT_ROUTE_MISSING;
             },
         },
+        invocation: {
+            summary: "Issue an engine-bound invocation: a run's step (and agent), or a runless audit or utility call.",
+            use: "workflow",
+            flags: [
+                { ...WORKFLOW_FLAG, required: false, help: "workflow name, with --step and --file" },
+                { ...STEP_FLAG, required: false, help: "registered step of the workflow" },
+                { ...FILE_FLAG, required: false, help: "the run's status.jsonl, relative to the cwd" },
+                { name: "group", type: "string", help: "the task group a group-scoped step runs for" },
+                { name: "attempt", type: "string", help: "the attempt of that group or remediation round" },
+                { name: "agent", type: "string", help: "the subagent this invocation is for" },
+                { name: "host", type: "string", help: "the host running the agent" },
+                {
+                    name: "configured-model",
+                    type: "string",
+                    help: "the pin the agent was launched with; kept apart from the observed model",
+                },
+                {
+                    name: "observed-model",
+                    type: "string",
+                    help: "the model the host reported, or `unavailable`",
+                },
+                { name: "standalone", type: "string", help: "audit|utility: a call with no run" },
+                { name: "name", type: "string", help: "with --standalone: the audit or utility name" },
+            ],
+            output: {
+                invocation: "the id to pass as --invocation to later commands",
+                receipt: "the outbox file holding the issued context",
+                scope: "run (bound to a status.jsonl) or outbox (runless audit or utility)",
+                workflow: "the workflow, or null",
+                step: "the registered step, or null",
+                number: "the step's registered number, or null",
+                title: "the step's registered title, or null",
+                run: "the workflow's run number, or null without a run",
+                statusPath: "absolute path to the run's status.jsonl, or null",
+                bookRoot: "root the run's books live under, or null",
+                group: "the task group, or null",
+                attempt: "the attempt, or null",
+                declaredStep: "audit|utility:<name> for a runless call, or null",
+                allowedAgent: "the one agent a runless call may write as, or null",
+                agent: "the agent, or null",
+                host: "the host, or null",
+                configuredModel: "the launch pin, or null",
+                observedModel: "the reported model or `unavailable`, or null",
+            },
+            exitCodes: { [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON" },
+            run: (ctx) => {
+                const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]);
+                if (top === null)
+                    throw new CommandError(EXIT.USAGE, "not inside a git repository");
+                const standalone = str(ctx.flags.standalone);
+                const workflow = str(ctx.flags.workflow);
+                const step = str(ctx.flags.step);
+                const file = str(ctx.flags.file);
+                const agent = str(ctx.flags.agent) ?? null;
+                if (agent !== null && !/^[a-z0-9][a-z0-9._-]*$/.test(agent))
+                    throw new CommandError(EXIT.USAGE, `--agent "${agent}" is not an agent name`);
+                const group = str(ctx.flags.group);
+                const attempt = str(ctx.flags.attempt);
+                for (const [flag, v] of [
+                    ["group", group],
+                    ["attempt", attempt],
+                ])
+                    if (v !== undefined && !/^[A-Za-z0-9._-]+$/.test(v))
+                        throw new CommandError(EXIT.USAGE, `--${flag} "${v}" is not a ${flag} id`);
+                const base = {
+                    group: group ?? null,
+                    attempt: attempt ?? null,
+                    agent,
+                    host: str(ctx.flags.host) ?? null,
+                    configuredModel: str(ctx.flags.configuredModel) ?? null,
+                    // An agent whose host reported no model is recorded `unavailable`, so its rows stay writable.
+                    observedModel: str(ctx.flags.observedModel) ?? (agent !== null ? "unavailable" : null),
+                };
+                let inv;
+                if (standalone !== undefined) {
+                    oneOf(standalone, ["audit", "utility"], "--standalone");
+                    if ([workflow, step, file].some((v) => v !== undefined))
+                        throw new CommandError(EXIT.USAGE, "--standalone has no run: drop --workflow, --step and --file");
+                    const name = str(ctx.flags.name);
+                    if (name === undefined || name === "")
+                        throw new CommandError(EXIT.USAGE, "--standalone needs --name");
+                    if (!/^[a-z0-9][a-z0-9._-]*$/.test(name))
+                        throw new CommandError(EXIT.USAGE, `--name "${name}" is not an audit or utility name`);
+                    if (group !== undefined || attempt !== undefined)
+                        throw new CommandError(EXIT.USAGE, "--standalone has no group or attempt");
+                    inv = {
+                        scope: "outbox",
+                        workflow: null,
+                        step: null,
+                        number: null,
+                        title: null,
+                        run: null,
+                        statusPath: null,
+                        bookRoot: null,
+                        standalone,
+                        name,
+                        declaredStep: `${standalone}:${name}`,
+                        allowedAgent: agent,
+                        ...base,
+                    };
+                }
+                else {
+                    if (workflow === undefined || step === undefined || file === undefined)
+                        throw new CommandError(EXIT.USAGE, "give --workflow, --step and --file, or --standalone=audit|utility with --name");
+                    if (ctx.flags.name !== undefined)
+                        throw new CommandError(EXIT.USAGE, "--name is for --standalone");
+                    if (!isResumable(workflow))
+                        throw new CommandError(EXIT.USAGE, `--workflow must be ${Object.keys(WORKFLOW_STEPS).join("|")}, got "${workflow}"`);
+                    const registered = WORKFLOW_STEPS[workflow].find((s) => s.step === step);
+                    if (registered === undefined)
+                        throw new CommandError(EXIT.USAGE, `--step ${step} is not a registered ${workflow} step`);
+                    const statusPath = path.resolve(ctx.cwd, file);
+                    const realFile = (() => {
+                        let dir = path.dirname(statusPath);
+                        const tail = [path.basename(statusPath)];
+                        while (!fs.existsSync(dir) && path.dirname(dir) !== dir) {
+                            tail.unshift(path.basename(dir));
+                            dir = path.dirname(dir);
+                        }
+                        return path.join(fs.realpathSync(dir), ...tail);
+                    })();
+                    const realTop = fs.realpathSync(top);
+                    // A status file that is itself a symlink resolves wherever it points; the parent
+                    // directory alone says nothing about where appends land.
+                    if (fs.lstatSync(statusPath, { throwIfNoEntry: false })?.isSymbolicLink() === true)
+                        throw new CommandError(EXIT.USAGE, `--file ${file} is a symbolic link; issue the invocation for the status file itself`);
+                    // The checkout that owns the file: a worktree nested under this one has its own top
+                    // folder, so a plain path-prefix test would accept it.
+                    let ownerDir = path.dirname(realFile);
+                    while (!fs.existsSync(ownerDir) && path.dirname(ownerDir) !== ownerDir)
+                        ownerDir = path.dirname(ownerDir);
+                    const fileTop = git(ownerDir, ["rev-parse", "--show-toplevel"]);
+                    const ownerTop = fileTop === null ? null : fs.realpathSync(fileTop);
+                    if ((realFile !== realTop && !realFile.startsWith(realTop + path.sep)) ||
+                        (ownerTop !== null && ownerTop !== realTop))
+                        throw new CommandError(EXIT.USAGE, `--file ${file} is outside this checkout (${top}); issue the invocation from the checkout that owns the run`);
+                    const logs = path.dirname(path.dirname(statusPath));
+                    if (path.basename(statusPath) !== "status.jsonl" ||
+                        path.basename(logs) !== "logs" ||
+                        path.basename(path.dirname(path.dirname(logs))) !== "plans")
+                        throw new CommandError(EXIT.USAGE, `--file ${file} is not a docs/plans/<month>/logs/<fid>/status.jsonl`);
+                    inv = {
+                        scope: "run",
+                        workflow,
+                        step,
+                        number: registered.number,
+                        title: registered.title,
+                        run: runNumber(readRuns(statusPath), workflow),
+                        statusPath,
+                        bookRoot: path.dirname(path.dirname(path.dirname(path.dirname(logs)))),
+                        standalone: null,
+                        name: null,
+                        declaredStep: null,
+                        allowedAgent: null,
+                        ...base,
+                    };
+                }
+                const id = `inv-${randomBytes(16).toString("hex")}`;
+                const issued = {
+                    id,
+                    version: 1,
+                    ...inv,
+                    worktree: top,
+                    issuedAt: statusTimestamp(),
+                };
+                if (issued.scope === "run" && fs.existsSync(issued.statusPath)) {
+                    // The run's status log is the authority; the receipt is an index rebuilt from it.
+                    const event = {
+                        type: "invocation",
+                        workflow: issued.workflow,
+                        at: issued.issuedAt,
+                        id,
+                        step: issued.step,
+                        number: issued.number,
+                        title: issued.title,
+                        run: issued.run,
+                        statusPath: path.relative(top, issued.statusPath),
+                        bookRoot: path.relative(top, issued.bookRoot) || ".",
+                        group: issued.group,
+                        attempt: issued.attempt,
+                        agent: issued.agent,
+                        host: issued.host,
+                        configuredModel: issued.configuredModel,
+                        observedModel: issued.observedModel,
+                        worktree: worktreeFingerprint(top),
+                    };
+                    fs.appendFileSync(issued.statusPath, appendLine(event));
+                }
+                const receipt = writeInvocation(ctx.cwd, issued);
+                const { id: _id, version: _v, worktree: _w, issuedAt: _at, standalone: _s, name: _n, ...out } = issued;
+                ctx.emit({ invocation: id, receipt, ...out });
+                return EXIT.OK;
+            },
+        },
         resume: {
-            summary: "The step a stopped run continues at: after its last DONE step, setup steps and retired rows aside.",
+            summary: "The step a stopped run continues at: after its last DONE step, setup steps and retired rows aside; gateRerun and rerunFrom say whether an open red-gate pause re-runs its gate first, and which.",
             use: "by-hand",
             flags: [
                 { ...FILE_FLAG, help: "path to status.jsonl; a missing file is a run with no rows" },
@@ -479,8 +702,16 @@ export const statusCommand = {
                 active: "whether the latest run is this workflow, still IN_PROGRESS",
                 challengeRound: "build: the round Step 11's challenge runs as (1 up to bkit.workflows.build.challenge.maxAttempts), from the build-challenge rows' round field; null for other workflows",
                 challengeDone: "build: true once the last allowed challenge round has merged, so Step 11 goes on to Step 12; null for other workflows",
+                gateRerun: "true when the active run's open decision file (as `workflows start` prints it in openDecision) has a Gate: FAIL header, Status: OPEN, From verify, holistic or tests, and the loop question as its only undecided question: re-run that gate instead of asking again; else false",
+                rerunFrom: "verify | holistic | tests: the open decision file's From header, the check whose gate re-runs; null when gateRerun is false",
+                testVerdict: "debug: the verdict of the active run's last DONE debug-run-tests row (PASS|CONCERNS|FAIL), or null; other workflows null",
+                testSource: "debug: that row's source (local|ci), or null; other workflows null",
+                normalAttempt: "debug: the active run's DONE debug-run-tests rows (the round Steps 4-11 name their artifacts by), or null when there is none; other workflows null",
             },
-            exitCodes: { [EXIT_NO_STATUS]: "status.jsonl unreadable or not valid NDJSON" },
+            exitCodes: {
+                [EXIT_NO_STATUS]: "status.jsonl unreadable or not valid NDJSON",
+                [EXIT_ROUTE_MISSING]: "debug: the run continues after Step 3 and Step 3's test round has no DONE row or no PASS|CONCERNS|FAIL verdict",
+            },
             run: (ctx) => {
                 const workflow = String(ctx.flags.workflow);
                 if (!isResumable(workflow))
@@ -488,9 +719,24 @@ export const statusCommand = {
                 const file = statusFile(ctx);
                 const root = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
                 const challengeMax = readBkitConfig(root).asks["build.challenge"].max;
+                const runs = fs.existsSync(file) ? readRuns(file) : [];
+                const point = resumePoint(runs, workflow, challengeMax);
+                const current = point.active ? lastRun(runs, workflow) : undefined;
+                const open = current === undefined
+                    ? null
+                    : openDecision(path.dirname(file), root, workflow, runNumber(runs, workflow), current.steps
+                        .filter((s) => s.step === `${workflow}-decision`)
+                        .flatMap((s) => s.artifacts));
+                const round = debugTestRound(runs, workflow);
                 ctx.emit({
-                    ...resumePoint(fs.existsSync(file) ? readRuns(file) : [], workflow, challengeMax),
+                    ...point,
+                    ...gateRerun(open, open === null ? "" : fs.readFileSync(path.resolve(root, open.file), "utf-8")),
+                    ...round,
                 });
+                if (workflow === "debug" && point.number > 3 && round.testVerdict === null) {
+                    ctx.log("debug resumes after Step 3, but no DONE debug-run-tests row with a verdict is in the active run");
+                    return EXIT_ROUTE_MISSING;
+                }
                 return EXIT.OK;
             },
         },

@@ -30,9 +30,10 @@ import {
   stepsBlock,
   timeBlock,
 } from "./run-facts";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 // Real git repos per test; a busy machine needs more than the default 5s.
-const TIMEOUT = { timeout: 30_000 };
+const TIMEOUT = { timeout: localLimit(30_000) };
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -236,6 +237,44 @@ describe("runStatusRows / stepsBlock / ciList", () => {
     ];
     expect(stepsBlock(journaled)).toEqual(stepsBlock(plain));
   });
+
+  it("leaves a run's step minutes unchanged when a run-commits row lands between step rows", () => {
+    const plain = [started(0), step(1, "build-a"), step(4, "build-b")];
+    const stopped = [
+      started(0),
+      step(1, "build-a"),
+      journalRow({ type: "run-commits", at: at(3), startSha: "a", commits: [], pushed: [] }),
+      step(4, "build-b"),
+    ];
+    expect(stepsBlock(stopped)).toEqual(stepsBlock(plain));
+  });
+
+  it("starts a step clock at the previous step row, not at an invocation row", () => {
+    const plain = [started(0), step(1, "build-a"), step(4, "build-b")];
+    const issued = [
+      started(0),
+      step(1, "build-a"),
+      journalRow({ type: "invocation", at: at(3), id: `inv-${"0".repeat(32)}`, step: "build-b" }),
+      step(4, "build-b"),
+    ];
+    expect(stepsBlock(issued).byStep["build-b"]).toEqual({ n: 1, totalMinutes: 3 });
+    expect(stepsBlock(issued)).toEqual(stepsBlock(plain));
+  });
+
+  it.each(["ci-handoff", "correction-rejected", "correction-candidate", "correction-succeeded"])(
+    "starts a step clock at the previous step row, not at a %s row",
+    (type) => {
+      const plain = [started(0), step(1, "build-a"), step(4, "build-b")];
+      const marked = [
+        started(0),
+        step(1, "build-a"),
+        journalRow({ type, at: at(3), step: "build-b" }),
+        step(4, "build-b"),
+      ];
+      expect(stepsBlock(marked).byStep["build-b"]).toEqual({ n: 1, totalMinutes: 3 });
+      expect(stepsBlock(marked)).toEqual(stepsBlock(plain));
+    },
+  );
 
   it("is empty when the run has only its start row", () => {
     expect(stepsBlock([started(0)])).toEqual({ total: { n: 0, totalMinutes: 0 }, byStep: {} });

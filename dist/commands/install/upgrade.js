@@ -37,8 +37,9 @@ import { readBkitConfig } from "../../shared/settings.js";
 import { detectInstalledHostModules } from "../../install/hosts.js";
 import { detectInstalledModules } from "./check.js";
 import { remapTemplateDest } from "../../install/template-copies.js";
+import { syncProjectDocs } from "../../install/project-docs.js";
 import { CLAUDE_CLOUD_RELPATH, CODEX_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeClaudeCloudDoc, writeCodexCloudDoc, writeCursorCloudDoc, writeCursorCliPermissionsArtifact, } from "../../install/cloud-env.js";
-import { syncTemplateCopies, formatTemplateChanges } from "../../install/template-copies.js";
+import { syncTemplateCopies, formatTemplateChanges, warnMissingLintStagedConfig, } from "../../install/template-copies.js";
 import { formatPayloadLinkChanges, syncPayloadLinks } from "../../install/payload-links.js";
 import { renderOpencodeJson, reconcileOpencodeJson } from "../../install/modules/opencode.js";
 import { renderManagedOutputs } from "../../install/modules/index.js";
@@ -580,7 +581,7 @@ export async function runUpgradeCommand(upgradeFlags) {
         dryRun: upgradeFlags.dryRun,
         ws: { writes: [] },
     });
-    const templateReport = formatTemplateChanges(templateChanges);
+    const templateReport = formatTemplateChanges(templateChanges, process.cwd());
     if (templateReport)
         console.log(`${LOG_PREFIX} ${templateReport}`);
     // Payload view links — the same sync install runs (`.bkit/core` + `.bkit/shared`
@@ -763,6 +764,10 @@ export async function runUpgradeCommand(upgradeFlags) {
             }
         }
     }
+    // Project documents belong to the project: remove a legacy ownership wrapper and register each
+    // present document in `Project Documents` (a dry run only prints the preview). They carry no
+    // hash, so nothing here feeds `.bkit/version`.
+    syncProjectDocs(process.cwd(), { dryRun: upgradeFlags.dryRun });
     // Refresh canonicalHashes (from resulting on-disk content) AND bump pinnedVersion
     // to the version we just upgraded TO, so the next `bkit check` has nothing to write.
     // Called unconditionally (non-dry-run) so the pin bumps even when every file was a
@@ -793,6 +798,9 @@ export async function runUpgradeCommand(upgradeFlags) {
     }
     console.log(`${LOG_PREFIX} Done. updated: ${result.updated.length}, skipped: ${result.skipped.length}, conflicts: ${result.conflicts.length}, re-rendered: ${rendered.length}`);
     // `.bkit/advisories.md` describes the upgraded repo, not the last install or check.
+    // A real upgrade prints the missing-lint-staged line through the advisories; a dry run prints it here.
+    if (upgradeFlags.dryRun)
+        warnMissingLintStagedConfig(process.cwd(), LOG_PREFIX);
     if (!upgradeFlags.dryRun)
         await runUpgradeAdvisories();
     // Non-interactive mode: exit non-zero on conflicts

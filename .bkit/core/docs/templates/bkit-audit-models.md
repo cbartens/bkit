@@ -2,7 +2,7 @@
 
 {{BKIT_MANAGED_MARKER}}
 
-<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. -->
+<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. When you edit this template, follow `.bkit/authoring.md` § Doc Templates. -->
 
 # Model Audit
 
@@ -116,7 +116,7 @@ A config id looks the same on the day it is delisted as on the day it was chosen
     - (3) Import the registry, delete hardcoded lists, and apply the list and per-task config.
     - (4) Run the eval audit's check before the list is treated as mergeable; do not change model, sampling and fallback behaviour in one unmeasured step.
     - (5) Watch with a named revert (the current lists, by commit) and per-signal thresholds (format-error rate, fallback-fire count, task success). Cost per job belongs to `bkit-audit-cost`.
-  - **If** a decision is open → write one `Proposal` question with `Options: A) … / B) …` and a `Recommended: A) … — {reason}` naming the chosen letter, plus what would settle it.
+  - **If** a decision is open → write one `Proposal` question with one lettered option per line (`A) {option} — {what happens}`), then `Recommended: A) … — {reason}` naming the chosen letter and `Default if unanswered:`, plus what would settle it.
   - Route each finding:
     - a defect or filter-fail id → the proposed list
     - a missing routing param → per-task config

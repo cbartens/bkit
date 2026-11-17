@@ -12,7 +12,7 @@ import { substituteWorkflow } from "../../render/trackers";
 import { runCommand } from "../lib";
 import { tipsText } from "../tips";
 import { newRecord, writeRecord } from "./ledgers";
-import { locksCommand } from "./locks";
+import { EXIT_LOCK_BUSY, locksCommand } from "./locks";
 import { chatFingerprint } from "./run-facts";
 import { workflowsCommand } from "./workflows";
 
@@ -109,6 +109,10 @@ const rebaseInProgress = (gitDir: string) =>
   fs.existsSync(path.join(gitDir, "rebase-merge")) ||
   fs.existsSync(path.join(gitDir, "rebase-apply"));
 const statusOf = (cwd: string) => path.join(cwd, REL, "status.jsonl");
+const restoreEnvironment = (name: string, value: string | undefined) => {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+};
 /** A `package.json` whose worktree copy list also names a file outside the checkout. */
 const outsideCopy = {
   ...gatePackage,
@@ -260,6 +264,7 @@ describe("bkit workflows start", () => {
         parentSha: git(cwd, "rev-parse", "HEAD"),
         limits: {
           "build.verify": { ask: true, max: 2 },
+          "build.holistic": { ask: true, max: 2 },
           "build.challenge": { ask: true, max: 2 },
           "build.tests": { ask: true, max: 2 },
         },
@@ -425,7 +430,7 @@ describe("bkit workflows start", () => {
     write(cwd, `${REL}/status.jsonl`, log);
     write(cwd, `${REL}/.lock`, "2026-07-01T00:00:00Z design\n");
     const r = await run(cwd, wf("start", "build"));
-    expect(r.code).toBe(1);
+    expect(r.code).toBe(EXIT_LOCK_BUSY);
     expect(fs.readFileSync(statusOf(cwd), "utf-8")).toBe(log);
   });
 
@@ -498,13 +503,17 @@ describe("bkit workflows start — resume facts", () => {
         done("build-start-workflow", "2026-07-01T00:01:00Z"),
         done("build-worktree-setup", "2026-07-01T00:02:00Z"),
         { ...done("build-plan-tasks", "2026-07-01T00:03:00Z"), status: "FAILED" },
+        done("build-decision", "2026-07-01T00:04:00Z", {
+          route: "verify",
+          artifacts: [`${REL}/build-decision-1-1.md`],
+        }),
       ]),
     );
     writeDecision(cwd, 1, 1, ["Status: DECIDED", "Question: CHALLENGE", "From: challenge"]);
     const r = await run(cwd, wf("start", "build"));
     expect(r.json).toMatchObject({
       resumed: true,
-      lastDoneStep: "build-worktree-setup",
+      lastDoneStep: "build-decision",
       openDecision: null,
     });
   });
@@ -559,8 +568,169 @@ describe("bkit workflows start — resume facts", () => {
       group: 2,
       verifyAttempt: 3,
       testAttempt: null,
+      gate: null,
+      sourceChanged: null,
+      status: "OPEN",
       plan: `docs/plans/${M}/${FID}-plan.md`,
     });
+  });
+
+  it("openDecision carries the Gate header", async () => {
+    const cwd = repo();
+    write(cwd, `${REL}/status.jsonl`, jsonl([started("2026-07-01T00:00:00Z")]));
+    writeDecision(cwd, 1, 1, [
+      "Status: OPEN",
+      "Question: VERIFY_LOOP",
+      "From: verify",
+      "Pause step: 7",
+      "Group: 1",
+      "Gate: FAIL",
+      `Plan: docs/plans/${M}/${FID}-plan.md`,
+    ]);
+    const r = await run(cwd, wf("start", "build"));
+    expect(r.code).toBe(0);
+    expect(r.json.openDecision).toMatchObject({ decision: 1, gate: "FAIL" });
+  });
+
+  it("openDecision carries the Source changed header", async () => {
+    const cwd = repo();
+    write(cwd, `${REL}/status.jsonl`, jsonl([started("2026-07-01T00:00:00Z")]));
+    writeDecision(cwd, 1, 1, [
+      "Status: OPEN",
+      "Question: VERIFY_LOOP",
+      "From: holistic",
+      "Pause step: 10",
+      "Source changed: false",
+      `Plan: docs/plans/${M}/${FID}-plan.md`,
+    ]);
+    const r = await run(cwd, wf("start", "build"));
+    expect(r.code).toBe(0);
+    expect(r.json.openDecision).toMatchObject({ decision: 1, sourceChanged: "false" });
+  });
+
+  it("workflows start reports openDecision for a DECIDED decision file that no build-decision row names", async () => {
+    const cwd = repo();
+    write(
+      cwd,
+      `${REL}/status.jsonl`,
+      jsonl([started("2026-07-01T00:00:00Z"), done("build-challenge", "2026-07-01T00:05:00Z")]),
+    );
+    writeDecision(cwd, 1, 1, [
+      "Status: DECIDED",
+      "Question: CHALLENGE",
+      "From: challenge",
+      "Pause step: 11",
+      `Plan: docs/plans/${M}/${FID}-plan.md`,
+    ]);
+    const r = await run(cwd, wf("start", "build"));
+    expect(r.code).toBe(0);
+    expect(r.json.openDecision).toMatchObject({
+      file: `${REL}/build-decision-1-1.md`,
+      decision: 1,
+      question: "CHALLENGE",
+      from: "challenge",
+      pauseStep: 11,
+    });
+  });
+
+  it("workflows start reports the status of a reopened DECIDED decision file in openDecision", async () => {
+    const cwd = repo();
+    write(
+      cwd,
+      `${REL}/status.jsonl`,
+      jsonl([started("2026-07-01T00:00:00Z"), done("build-challenge", "2026-07-01T00:05:00Z")]),
+    );
+    writeDecision(cwd, 1, 1, [
+      "Status: DECIDED",
+      "Question: VERIFY_LOOP",
+      "From: verify",
+      "Pause step: 7",
+      "Group: 1",
+      "Gate: FAIL",
+      `Plan: docs/plans/${M}/${FID}-plan.md`,
+    ]);
+    const decided = await run(cwd, wf("start", "build"));
+    expect(decided.code).toBe(0);
+    expect(decided.json.openDecision).toMatchObject({ decision: 1, status: "DECIDED" });
+
+    const open = repo();
+    write(open, `${REL}/status.jsonl`, jsonl([started("2026-07-01T00:00:00Z")]));
+    writeDecision(open, 1, 1, [
+      "Status: OPEN",
+      "Question: VERIFY_LOOP",
+      "From: verify",
+      "Pause step: 7",
+      "Group: 1",
+      "Gate: FAIL",
+      `Plan: docs/plans/${M}/${FID}-plan.md`,
+    ]);
+    const r = await run(open, wf("start", "build"));
+    expect(r.json.openDecision).toMatchObject({ decision: 1, status: "OPEN" });
+  });
+
+  it("workflows start does not report openDecision for a DECIDED decision file that a build-decision row names", async () => {
+    const cwd = repo();
+    write(
+      cwd,
+      `${REL}/status.jsonl`,
+      jsonl([
+        started("2026-07-01T00:00:00Z"),
+        done("build-challenge", "2026-07-01T00:05:00Z"),
+        done("build-decision", "2026-07-01T00:06:00Z", {
+          route: "verify",
+          artifacts: [`${REL}/build-decision-1-1.md`],
+        }),
+      ]),
+    );
+    writeDecision(cwd, 1, 1, [
+      "Status: DECIDED",
+      "Question: CHALLENGE",
+      "From: challenge",
+      "Pause step: 11",
+      `Plan: docs/plans/${M}/${FID}-plan.md`,
+    ]);
+    const r = await run(cwd, wf("start", "build"));
+    expect(r.code).toBe(0);
+    expect(r.json.openDecision).toBeNull();
+  });
+
+  it("openDecision gate is null without the header", async () => {
+    const cwd = repo();
+    write(cwd, `${REL}/status.jsonl`, jsonl([started("2026-07-01T00:00:00Z")]));
+    writeDecision(cwd, 1, 1, [
+      "Status: OPEN",
+      "Question: VERIFY_LOOP",
+      "From: verify",
+      "Pause step: 7",
+      "Group: 1",
+      `Plan: docs/plans/${M}/${FID}-plan.md`,
+    ]);
+    const r = await run(cwd, wf("start", "build"));
+    expect(r.code).toBe(0);
+    expect(r.json.openDecision).not.toBeNull();
+    expect(r.json.openDecision.gate).toBeNull();
+  });
+
+  it("openDecision gate ignores a Gate line below the header", async () => {
+    const cwd = repo();
+    write(cwd, `${REL}/status.jsonl`, jsonl([started("2026-07-01T00:00:00Z")]));
+    write(
+      cwd,
+      `${REL}/build-decision-1-1.md`,
+      [
+        "Status: OPEN",
+        "Question: CHALLENGE",
+        "From: challenge",
+        "",
+        "**Q1 — Task 3:** Fix it?",
+        "Gate: FAIL",
+        "",
+      ].join("\n"),
+    );
+    const r = await run(cwd, wf("start", "build"));
+    expect(r.code).toBe(0);
+    expect(r.json.openDecision).not.toBeNull();
+    expect(r.json.openDecision.gate).toBeNull();
   });
 
   it("reads Test attempt from a tests pause", async () => {
@@ -788,6 +958,111 @@ describe("bkit workflows fail", () => {
     expect(r.json.comment).toContain("Step: 14 — Run Tests; Sub-step: 2");
     expect(r.json.comment).toContain("Error: tests failed: 3");
     expect((await run(cwd, wf("fail", "build"))).json.comment).toBeNull();
+  });
+
+  it("bkit workflows fail --next-step adds a Next step line to the failure comment and prints nextStep", async () => {
+    const cwd = repo();
+    write(cwd, "tmp/error.md", "CI is red\n\n");
+    const r = await run(
+      cwd,
+      wf(
+        "fail",
+        "ship",
+        "--step-number=10",
+        "--step-title=Merge Gate + Merge PR",
+        "--error-file=tmp/error.md",
+        "--next-step=/bkit-debug 911-ship-failed-merge",
+      ),
+    );
+    expect(r.code).toBe(0);
+    expect(r.json.nextStep).toBe("/bkit-debug 911-ship-failed-merge");
+    expect(r.json.comment).toContain("Next step: `/bkit-debug 911-ship-failed-merge`");
+    expect(r.json.comment).toContain("Error: CI is red");
+  });
+
+  it("bkit workflows fail refuses a multi-line, non-/bkit- or markdown-carrying --next-step before any write", async () => {
+    const cwd = repo();
+    const started = await run(cwd, wf("start", "build"));
+    const token = `--token=${started.json.lock.token}`;
+    const before = fs.readFileSync(statusOf(cwd), "utf-8");
+    const bads = [
+      "/bkit-debug a\n/bkit-debug b",
+      "rm -rf /",
+      "bkit-debug x",
+      // Each of these could end the comment's code span or start live markdown or HTML.
+      "/bkit-debug x` [link](https://example.com) `",
+      "/bkit-debug <img src=x>",
+      "/bkit-debug ![x](y)",
+      "/bkit-debug @someone",
+      "/bkit-debug a /bkit-debug b",
+      "/bkit-debug a b",
+      "/bkit-debug a\u0085b",
+      "/bkit-debug  x",
+      "/bkit-debug x ",
+    ];
+    for (const bad of bads) {
+      const r = await run(cwd, wf("fail", "build", `--month=${M}`, token, `--next-step=${bad}`));
+      expect(r.code).toBe(6);
+      expect(r.err).toContain("--next-step must be one /bkit-* command line");
+    }
+    expect(fs.readFileSync(statusOf(cwd), "utf-8")).toBe(before);
+    expect(rows(statusOf(cwd)).some((x) => x.type === "workflow-failed")).toBe(false);
+    expect(fs.existsSync(path.join(cwd, REL, ".lock"))).toBe(true);
+  });
+
+  it("bkit workflows fail refuses a bad --next-step with an exit code no other usage error shares", async () => {
+    const cwd = repo();
+    const started = await run(cwd, wf("start", "build"));
+    const token = `--token=${started.json.lock.token}`;
+    // A usage error raised after the state write: a step number that is not a number.
+    const other = await run(
+      cwd,
+      wf("fail", "build", `--month=${M}`, token, "--step-number=x", "--step-title=Some step"),
+    );
+    expect(other.code).toBe(2);
+    expect(other.err).toContain('--step-number "x" is not a step number');
+    const refused = await run(
+      cwd,
+      wf("fail", "build", `--month=${M}`, token, "--next-step=rm -rf /"),
+    );
+    expect(refused.err).toContain("--next-step must be one /bkit-* command line");
+    expect(refused.code).not.toBe(0);
+    expect(refused.code).not.toBe(other.code);
+    expect(refused.code).not.toBe(2);
+  });
+
+  it("bkit workflows fail refuses an unsubstituted --next-step placeholder with the --next-step refusal exit", async () => {
+    const cwd = repo();
+    const started = await run(cwd, wf("start", "build"));
+    const token = `--token=${started.json.lock.token}`;
+    const before = fs.readFileSync(statusOf(cwd), "utf-8");
+    for (const bad of ["/bkit-debug {FID}", "{NEXT_STEP}"]) {
+      const r = await run(cwd, wf("fail", "build", `--month=${M}`, token, `--next-step=${bad}`));
+      expect(r.err).toContain("--next-step carries the unsubstituted placeholder");
+      expect(r.code).toBe(6);
+    }
+    expect(fs.readFileSync(statusOf(cwd), "utf-8")).toBe(before);
+    expect(rows(statusOf(cwd)).some((x) => x.type === "workflow-failed")).toBe(false);
+    expect(fs.existsSync(path.join(cwd, REL, ".lock"))).toBe(true);
+  });
+
+  it("bkit workflows fail treats an empty --next-step as absent", async () => {
+    const cwd = repo();
+    write(cwd, "tmp/error.md", "CI is red\n\n");
+    const r = await run(
+      cwd,
+      wf(
+        "fail",
+        "ship",
+        "--step-number=10",
+        "--step-title=Merge Gate + Merge PR",
+        "--error-file=tmp/error.md",
+        "--next-step=",
+      ),
+    );
+    expect(r.code).toBe(0);
+    expect(r.json.nextStep).toBeNull();
+    expect(r.json.comment).not.toContain("Next step:");
   });
 
   it("a debug run in SOAK mode always needs a handover", async () => {
@@ -1675,6 +1950,79 @@ describe("bkit workflows handover", () => {
     expect(fs.existsSync(path.join(wt, REL, "status.jsonl"))).toBe(true);
   });
 
+  describe("route and message: every exit the handover reaches ends the run as a stop", () => {
+    const notPushed = (tree: string) =>
+      `Record not pushed: the handover commit is only in ${tree}, and the links in this run's comments open once it is pushed`;
+
+    it("exit 0, pushed → route stop, no message", async () => {
+      const { cwd } = withRemote();
+      write(cwd, `${REL}/build-handover.md`, "# Handover\n");
+      const r = await run(cwd, wf("handover", "build", `--month=${M}`, "--push", "--open-pr=none"));
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ pushed: true, route: "stop", message: "" });
+    });
+
+    it("ship's owner Stop on an open PR: exit 9, push skipped → route stop with the not-pushed line", async () => {
+      const { cwd } = withRemote();
+      write(cwd, `${REL}/ship-handover.md`, "# Handover\n");
+      const r = await run(cwd, wf("handover", "ship", `--month=${M}`, "--push", "--open-pr=7"));
+      expect(r.code).toBe(9);
+      expect(r.json).toMatchObject({
+        pushed: false,
+        skipped: "open-pr",
+        route: "stop",
+        message: notPushed(cwd),
+      });
+    });
+
+    it("exit 10, the push refused → route stop with the not-pushed line", async () => {
+      const { cwd, remote } = withRemote();
+      fs.writeFileSync(
+        path.join(remote, "hooks", "pre-receive"),
+        "#!/bin/sh\necho protected >&2\nexit 1\n",
+        { mode: 0o755 },
+      );
+      write(cwd, `${REL}/debug-handover.md`, "# Handover\n");
+      const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push", "--open-pr=none"));
+      expect(r.code).toBe(10);
+      expect(r.json).toMatchObject({ pushed: false, route: "stop", message: notPushed(cwd) });
+    });
+
+    it("exit 11, dev cannot be fetched → route stop with the not-pushed line", async () => {
+      const { cwd, wt } = withDevRemote();
+      git(cwd, "remote", "set-url", "origin", path.join(cwd, "no-such-remote"));
+      write(wt, `${REL}/status.jsonl`, jsonl([{ type: "workflow-failed", workflow: "ship" }]));
+      const r = await run(wt, wf("handover", "ship", `--month=${M}`, "--flush"));
+      expect(r.code).toBe(11);
+      expect(r.json).toMatchObject({ pushed: false, route: "stop", message: notPushed(wt) });
+    });
+
+    it("--ref, no push → route stop, no message", async () => {
+      const { cwd } = withRemote();
+      write(cwd, `${REL}/build-handover.md`, "# Handover\n");
+      const r = await run(cwd, wf("handover", "build", `--month=${M}`, `--ref=feat/${FID}`));
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ pushed: false, route: "stop", message: "" });
+    });
+
+    it("exit 80, gh cannot answer the open-PR lookup → prints nothing, so the workflow reads no route", async () => {
+      const { cwd } = withRemote();
+      write(cwd, `${REL}/build-handover.md`, "# Handover\n");
+      const bin = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-workflows-nogh-")));
+      dirs.push(bin);
+      fs.writeFileSync(path.join(bin, "gh"), "#!/bin/sh\nexit 4\n", { mode: 0o755 });
+      const savedPath = process.env.PATH;
+      process.env.PATH = [bin, savedPath].join(path.delimiter);
+      try {
+        const r = await run(cwd, wf("handover", "build", `--month=${M}`, "--push"));
+        expect(r.code).toBe(80);
+        expect(r.json).toBeUndefined();
+      } finally {
+        restoreEnvironment("PATH", savedPath);
+      }
+    });
+  });
+
   it("--push on dev lands only the logs and ledgers through a throwaway checkout, never the checkout's code", async () => {
     const { cwd, remote } = withDevRemote();
     const head = git(cwd, "rev-parse", "HEAD");
@@ -1973,6 +2321,132 @@ describe("bkit workflows close --flush (ship)", () => {
     ];
     return { cwd, remote, wt, close };
   }
+
+  it("preserves newer feature work when closing an already merged PR", async () => {
+    const { cwd, remote, wt, close } = shipping(true);
+    write(wt, "new-fix.ts", "export const fix = true;\n");
+    git(wt, "add", "new-fix.ts");
+    git(wt, "commit", "-qm", "fix: work after merged PR");
+    const newer = git(wt, "rev-parse", "HEAD");
+    const result = await run(wt, close);
+    expect(result.code, result.err).toBe(0);
+    expect(result.json.worktree).toMatchObject({ removed: false, branchDeleted: false });
+    expect(fs.existsSync(wt)).toBe(true);
+    expect(git(cwd, "rev-parse", `feat/${FID}`)).toBe(newer);
+    expect(fs.readFileSync(path.join(wt, "new-fix.ts"), "utf-8")).toBe(
+      "export const fix = true;\n",
+    );
+    expect(git(remote, "show", `dev:${REL}/status.jsonl`)).toContain('"workflow-done"');
+    expect(git(remote, "ls-tree", "dev", "new-fix.ts")).toBe("");
+  });
+
+  it("preserves unlanded file deletions and ledger additions on close", async () => {
+    const { cwd, remote, wt, close } = shipping(true);
+    git(wt, "rm", "-q", "a.txt");
+    git(wt, "commit", "-qm", "fix: feature deletes a file");
+    const result = await run(wt, close);
+    expect(result.code, result.err).toBe(0);
+    expect(fs.existsSync(wt)).toBe(true);
+    expect(git(cwd, "branch", "--list", `feat/${FID}`)).toContain(`feat/${FID}`);
+    expect(fs.existsSync(path.join(wt, "a.txt"))).toBe(false);
+    expect(git(remote, "show", "dev:a.txt")).toBe("base");
+    expect(result.json.worktree).toMatchObject({ removed: false, branchDeleted: false });
+
+    const rowsOnly = shipping(true);
+    const ledger = '{"key":"feature-row","ts":123}\n';
+    write(rowsOnly.wt, "events.jsonl", ledger);
+    git(rowsOnly.wt, "add", "events.jsonl");
+    git(rowsOnly.wt, "commit", "-qm", "feat: feature ledger row");
+    const ledgerResult = await run(rowsOnly.wt, rowsOnly.close);
+    expect(ledgerResult.code, ledgerResult.err).toBe(0);
+    expect(ledgerResult.json.worktree).toMatchObject({ removed: false, branchDeleted: false });
+    expect(fs.readFileSync(path.join(rowsOnly.wt, "events.jsonl"), "utf-8")).toBe(ledger);
+    expect(git(rowsOnly.remote, "show", "dev:events.jsonl")).not.toContain("feature-row");
+  });
+
+  it("preserves dirty work and uncertain branch evidence during close", async () => {
+    const dirty = shipping(true);
+    write(dirty.wt, "a.txt", "uncommitted edit\n");
+    write(dirty.wt, "untracked.txt", "only copy\n");
+    const lock = await run(dirty.cwd, [
+      "locks",
+      "acquire",
+      "--kind=workflow",
+      "--workflow=ship",
+      `--fid=${FID}`,
+    ]);
+    expect(lock.code).toBe(0);
+    const dirtyResult = await run(dirty.wt, [...dirty.close, `--token=${lock.json.token}`]);
+    expect(dirtyResult.code, dirtyResult.err).toBe(0);
+    expect(dirtyResult.json.worktree).toMatchObject({ removed: false, branchDeleted: false });
+    expect(fs.readFileSync(path.join(dirty.wt, "a.txt"), "utf-8")).toBe("uncommitted edit\n");
+    expect(fs.readFileSync(path.join(dirty.wt, "untracked.txt"), "utf-8")).toBe("only copy\n");
+    expect(fs.existsSync(path.join(dirty.cwd, REL, ".lock"))).toBe(false);
+    expect(git(dirty.remote, "show", `dev:${REL}/status.jsonl`)).toContain('"workflow-done"');
+
+    const uncertain = shipping(true);
+    const original = git(uncertain.wt, "rev-parse", "HEAD");
+    removing.onEnter = () => {
+      git(
+        uncertain.cwd,
+        "remote",
+        "set-url",
+        "origin",
+        path.join(uncertain.cwd, "unreadable-origin.git"),
+      );
+    };
+    const uncertainResult = await run(uncertain.wt, uncertain.close);
+    expect(uncertainResult.code, uncertainResult.err).toBe(0);
+    expect(uncertainResult.json.worktree).toMatchObject({ removed: false, branchDeleted: false });
+    expect(fs.existsSync(uncertain.wt)).toBe(true);
+    expect(git(uncertain.cwd, "rev-parse", `feat/${FID}`)).toBe(original);
+    expect(uncertainResult.err).toMatch(/fetch|uncertain|unavailable|cannot.*read/i);
+  });
+
+  it("preserves a local feature ref changed after its cleanup proof", async () => {
+    const { cwd, wt, close } = shipping(true);
+    const candidate = path.join(cwd, "race-candidate");
+    git(cwd, "worktree", "add", "-q", candidate, "-b", "race-candidate", `feat/${FID}`);
+    write(candidate, "raced-fix.ts", "export const raced = true;\n");
+    git(candidate, "add", "raced-fix.ts");
+    git(candidate, "commit", "-qm", "fix: concurrent local feature work");
+    const raced = git(candidate, "rev-parse", "HEAD");
+    git(cwd, "worktree", "remove", candidate);
+    const realGit = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf-8" }).stdout.trim();
+    const bin = path.join(cwd, "race-bin");
+    fs.mkdirSync(bin);
+    fs.symlinkSync(
+      path.resolve(__dirname, "../../../../../tests/fixtures/gh/bin/gh"),
+      path.join(bin, "git"),
+    );
+    const racedMarker = path.join(bin, "raced");
+    const body = path.join(bin, "git-body.sh");
+    fs.writeFileSync(
+      body,
+      [
+        `case "$*" in`,
+        `  *"update-ref -d refs/heads/feat/${FID}"*|*"branch -D feat/${FID}"*)`,
+        `    if [ ! -f '${racedMarker}' ]; then '${realGit}' -C '${cwd}' update-ref 'refs/heads/feat/${FID}' '${raced}'; : > '${racedMarker}'; fi ;;`,
+        `esac`,
+        `exec '${realGit}' "$@"`,
+      ].join("\n"),
+    );
+    const savedPath = process.env.PATH;
+    const savedBody = process.env.BKIT_FAKE_TOOL_SCRIPT;
+    try {
+      process.env.PATH = [bin, savedPath].join(path.delimiter);
+      process.env.BKIT_FAKE_TOOL_SCRIPT = body;
+      const result = await run(wt, close);
+      expect(result.code, result.err).toBe(0);
+      expect(fs.existsSync(racedMarker)).toBe(true);
+      expect(git(cwd, "rev-parse", `refs/heads/feat/${FID}`)).toBe(raced);
+      expect(result.json.worktree.branchDeleted).toBe(false);
+      expect(git(cwd, "show", `feat/${FID}:raced-fix.ts`)).toBe("export const raced = true;");
+    } finally {
+      restoreEnvironment("PATH", savedPath);
+      restoreEnvironment("BKIT_FAKE_TOOL_SCRIPT", savedBody);
+    }
+  });
 
   it("lands ONE DONE commit on dev carrying the book, then removes the worktree and branch", async () => {
     const { cwd, remote, wt, close } = shipping(true);
@@ -2501,6 +2975,106 @@ describe("bkit workflows close / handover — a debug run in place on dev that s
     expect(rec.commits.at(-1)).toBe(git(cwd, "rev-parse", "HEAD"));
   });
 
+  describe("handover --push lists the run's commits in a run-commits row", () => {
+    /** `shared()` pushed to a bare origin, then two commits the run made and its record listing them. */
+    function made() {
+      const cwd = shared();
+      const remote = fs.realpathSync(
+        fs.mkdtempSync(path.join(os.tmpdir(), "bkit-workflows-remote-")),
+      );
+      dirs.push(remote);
+      git(remote, "init", "-q", "--bare");
+      git(cwd, "remote", "set-url", "origin", remote);
+      git(cwd, "push", "-q", "origin", "dev");
+      const start = JSON.parse(fs.readFileSync(recordAt(cwd), "utf-8")) as { startSha: string };
+      git(cwd, "commit", "-q", "--allow-empty", "-m", "fix one");
+      const first = git(cwd, "rev-parse", "HEAD");
+      git(cwd, "commit", "-q", "--allow-empty", "-m", "fix two");
+      const second = git(cwd, "rev-parse", "HEAD");
+      const rec = JSON.parse(fs.readFileSync(recordAt(cwd), "utf-8")) as Record<string, unknown>;
+      fs.writeFileSync(recordAt(cwd), JSON.stringify({ ...rec, commits: [first, second] }));
+      return { cwd, remote, startSha: start.startSha, first, second };
+    }
+    const runCommitRows = (remote: string) =>
+      git(remote, "show", `dev:${REL}/status.jsonl`)
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l) as Record<string, unknown>)
+        .filter((r) => r.type === "run-commits");
+
+    it("an IN_PROGRESS run gets one row with the record's commits and startSha, landed with the handover", async () => {
+      const { cwd, remote, startSha, first, second } = made();
+      const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
+      expect(r.code).toBe(0);
+      expect(runCommitRows(remote)).toEqual([
+        {
+          type: "run-commits",
+          workflow: "debug",
+          at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/),
+          startSha,
+          commits: [first, second],
+          pushed: [],
+        },
+      ]);
+      expect(fs.existsSync(recordAt(cwd))).toBe(false);
+    });
+
+    const parkedAt = (cwd: string) =>
+      path.resolve(
+        cwd,
+        git(cwd, "rev-parse", "--git-path", `bkit/shared-checkout-parked/${FID}.json`),
+      );
+
+    it("an IN_PROGRESS run also keeps a local parked copy of the commit list", async () => {
+      const { cwd, startSha, first, second } = made();
+      const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
+      expect(r.code).toBe(0);
+      expect(JSON.parse(fs.readFileSync(parkedAt(cwd), "utf-8"))).toEqual({
+        workflow: "debug",
+        at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/),
+        startSha,
+        commits: [first, second],
+        pushed: [],
+      });
+    });
+
+    it.each(["workflow-failed", "workflow-done"])(
+      "a run closed by %s keeps no parked copy",
+      async (type) => {
+        const { cwd } = made();
+        fs.appendFileSync(
+          statusOf(cwd),
+          jsonl([{ type, workflow: "debug", at: new Date().toISOString() }]),
+        );
+        const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
+        expect(r.code).toBe(0);
+        expect(fs.existsSync(parkedAt(cwd))).toBe(false);
+      },
+    );
+
+    it("a FAILED run gets no row", async () => {
+      const { cwd, remote } = made();
+      fs.appendFileSync(
+        statusOf(cwd),
+        jsonl([{ type: "workflow-failed", workflow: "debug", at: new Date().toISOString() }]),
+      );
+      const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
+      expect(r.code).toBe(0);
+      expect(runCommitRows(remote)).toEqual([]);
+    });
+
+    it("a DONE run gets no row", async () => {
+      const { cwd, remote } = made();
+      fs.appendFileSync(
+        statusOf(cwd),
+        jsonl([{ type: "workflow-done", workflow: "debug", at: new Date().toISOString() }]),
+      );
+      const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
+      expect(r.code).toBe(0);
+      expect(runCommitRows(remote)).toEqual([]);
+    });
+  });
+
   it("failed handover from dev removes the record and keeps recorded paths", async () => {
     const cwd = repo();
     const remote = fs.realpathSync(
@@ -2704,6 +3278,41 @@ describe("bkit workflows input", () => {
   it("a missing prompt file exits 13", async () => {
     const cwd = repo();
     expect((await run(cwd, input("design"))).code).toBe(13);
+  });
+
+  const GRILL = "# Grill\n\n## Grill decisions\n\n- Ship it behind a flag.\n";
+  const occurrences = (text: string, part: string) => text.split(part).length - 1;
+
+  it("a rebuilt design input keeps the owner-interview record appended after the first build", async () => {
+    const cwd = withIssue();
+    const rel = `${REL}/design-input-2.md`;
+    await run(cwd, input("design", ...ISSUE));
+    write(cwd, `${REL}/design-grill-2.md`, GRILL);
+    fs.appendFileSync(path.join(cwd, rel), `\n${GRILL}`);
+    const r = await run(cwd, input("design", ...ISSUE));
+    const text = fs.readFileSync(path.join(cwd, rel), "utf-8");
+    expect(text.endsWith(`\n\n${GRILL}`)).toBe(true);
+    expect(occurrences(text, "## Grill decisions")).toBe(1);
+    expect(r.json).toMatchObject({ path: rel, bytes: Buffer.byteLength(text) });
+  });
+
+  it("a grill file that was never appended is appended once, after a blank line", async () => {
+    const cwd = withIssue();
+    const rel = `${REL}/design-input-2.md`;
+    write(cwd, `${REL}/design-grill-2.md`, GRILL);
+    const r = await run(cwd, input("design"));
+    const text = fs.readFileSync(path.join(cwd, rel), "utf-8");
+    expect(text).toBe(`${PROMPT}\n${GRILL}`);
+    expect(r.json).toMatchObject({ bytes: Buffer.byteLength(text) });
+  });
+
+  it("a workflow with no grill file writes exactly the sections", async () => {
+    const cwd = withIssue();
+    write(cwd, `${REL}/design-grill-2.md`, GRILL);
+    const r = await run(cwd, input("plan"));
+    const text = fs.readFileSync(path.join(cwd, REL, "plan-input-2.md"), "utf-8");
+    expect(text).toBe(PROMPT);
+    expect(r.json).toMatchObject({ bytes: Buffer.byteLength(PROMPT) });
   });
 });
 
@@ -2938,14 +3547,14 @@ describe("bkit workflows summary", () => {
     `# Plan\n\n<!-- bkit:group 1 start -->\n### GROUP 1: Work\n${tasks.join("\n")}\n<!-- bkit:group 1 end -->\n`;
 
   /** A github-tracked tree with one build run's status rows. */
-  function tree(steps: object[], plan?: string) {
+  function tree(steps: object[], plan?: string, workflow = "build") {
     const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-summary-")));
     dirs.push(cwd);
     write(cwd, "package.json", JSON.stringify({ bkit: { tracker: { default: "github" } } }));
     write(
       cwd,
       `${SREL}/status.jsonl`,
-      jsonl([{ type: "workflow-started", workflow: "build", at: START }, ...steps]),
+      jsonl([{ type: "workflow-started", workflow, at: START }, ...steps]),
     );
     if (plan !== undefined) write(cwd, `docs/plans/${M}/${SFID}-plan.md`, plan);
     return cwd;
@@ -2978,6 +3587,27 @@ describe("bkit workflows summary", () => {
     expect((await run(cwd, base)).code).toBe(0);
     expect(md()).toContain("Publish: pr");
     expect((await run(cwd, [...base, "--publish=maybe"])).code).toBe(2);
+  });
+
+  it("lists ship-failure rows from a run started before their removal", async () => {
+    const cwd = tree(
+      [
+        done("ship-merge-pr", "2020-01-01T00:10:00Z", { workflow: "ship" }),
+        done("ship-failure-diagnose", "2020-01-01T00:11:00Z", { workflow: "ship" }),
+        done("ship-failure-remediate", "2020-01-01T00:12:00Z", {
+          workflow: "ship",
+          verdict: "PASS",
+          strategy: "STANDARD",
+        }),
+      ],
+      undefined,
+      "ship",
+    );
+    const r = await summarize(cwd, "ship");
+    expect(r.code).toBe(0);
+    const md = fs.readFileSync(path.join(cwd, SREL, "ship-summary.md"), "utf-8");
+    expect(md).toContain("ship-failure-diagnose");
+    expect(md).toContain("ship-failure-remediate");
   });
 
   it("summary is FAIL when a plan task is not done", async () => {
@@ -3054,6 +3684,85 @@ describe("bkit workflows summary", () => {
     const md = fs.readFileSync(path.join(cwd, SREL, "build-summary.md"), "utf-8");
     expect(md).toContain("build-plan-tasks (group 1) FAIL, resolved by build-plan-verify");
     expect(md).toContain("build-summary | FAIL");
+  });
+
+  it("prints CONCERNS when a Fix now group's fix task and a test-fix FAIL are both resolved", async () => {
+    const decisionRel = `${SREL}/build-decision-1-1.md`;
+    const verifyRel = `${SREL}/build-verify-10-1.md`;
+    const block = (n: number) => task(n, true);
+    const plan = [
+      "# Plan",
+      "",
+      `<!-- bkit:group 9 start -->\n### GROUP 9: Work\n${block(41)}\n<!-- bkit:group 9 end -->`,
+      `<!-- bkit:group 10 start -->\n### GROUP 10: Fix\n${block(42)}\n<!-- bkit:group 10 end -->`,
+      "",
+    ].join("\n");
+    const scope = "src/a.test.ts";
+    const cwd = tree(
+      [
+        done("build-plan-tasks", "2020-01-01T00:01:00Z", { verdict: "FAIL", group: 9 }),
+        done("build-plan-verify", "2020-01-01T00:02:00Z", { verdict: "FAIL", group: 9 }),
+        done("build-plan-gaps-remediate", "2020-01-01T00:03:00Z", { verdict: "FAIL", group: 9 }),
+        done("build-decision", "2020-01-01T00:04:00Z", {
+          route: "verify",
+          artifacts: [decisionRel],
+        }),
+        done("build-plan-tasks", "2020-01-01T00:05:00Z", { verdict: "PASS", group: 10 }),
+        done("build-plan-verify", "2020-01-01T00:06:00Z", {
+          verdict: "PASS",
+          failures: 0,
+          group: 10,
+          artifacts: [verifyRel],
+        }),
+        done("build-run-tests", "2020-01-01T00:07:00Z", {
+          verdict: "FAIL",
+          failures: 1,
+          scope,
+        }),
+        done("build-failure-remediate", "2020-01-01T00:08:00Z", { verdict: "FAIL" }),
+        done("build-run-tests", "2020-01-01T00:09:00Z", {
+          verdict: "PASS",
+          failures: 0,
+          attempt: 2,
+          scope,
+        }),
+      ],
+      plan,
+    );
+    write(
+      cwd,
+      decisionRel,
+      [
+        "Status: DECIDED",
+        "Question: VERIFY_GAPS",
+        "From: verify",
+        "Pause step: 8",
+        "Plan: docs/plans/p-plan.md",
+        "Group: 9",
+        "Verify attempt: 2",
+        "",
+        "**Q1 — Gap one:** accept it?",
+        "Options: A) Accept / B) Fix now",
+        "Recommended: A) Accept — minor",
+        "Decision: Accept — minor",
+        "",
+        "**Q2 — Gap two:** fix it?",
+        "Options: A) Accept / B) Fix now",
+        "Recommended: B) Fix now — real",
+        "Decision: Fix now",
+        "Fix task: 42",
+        "",
+      ].join("\n"),
+    );
+    write(cwd, verifyRel, "Verdict: PASS\nTasks: 42\n<!-- verdict:end -->\n");
+    const r = await summarize(cwd);
+    expect(r.code).toBe(0);
+    expect(r.json.verdict).toBe("CONCERNS");
+    expect(r.json.failures).toBe(0);
+    const md = fs.readFileSync(path.join(cwd, SREL, "build-summary.md"), "utf-8");
+    expect(md.split("## Resolved Findings")[1]!.split("## ")[0]!).toContain(
+      "build-decision-1-1.md",
+    );
   });
 
   it("summary recommends /bkit-debug on FAIL", async () => {

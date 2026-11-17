@@ -64,6 +64,7 @@
     ],
     "ask": [
       "Bash(sudo:*)",
+      "Bash(doas:*)",
       "Bash(brew install:*)",
       "Bash(pnpm publish:*)",
       "Bash(npm publish:*)",
@@ -95,6 +96,9 @@
       "Bash(git commit -n*)",
       "Bash(git commit * -n)",
       "Bash(git commit * -n *)",
+      "Bash(*bkit*tests jump*)",
+      "Bash(*cli.js tests jump*)",
+      "Bash(*cli.ts tests jump*)",
       "Read(./.env)",
       "Read(./.env.*)",
       "Read(./**/.env)",
@@ -120,7 +124,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
         "hooks": [
           {
             "type": "command",

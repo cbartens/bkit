@@ -74,7 +74,7 @@ describe("detectManagedStale", () => {
 
   it("returns null when every stamped file matches, in every comment form", () => {
     writeRendered(".claude/agents/bkit-a.md", "4.0.0");
-    writeBlock("docs/testing.md", "4.0.0");
+    writeBlock(".agents/docs.md", "4.0.0");
     writeBlock("AGENTS.md", "4.0.0");
     write(
       ".gitignore",
@@ -91,12 +91,12 @@ describe("detectManagedStale", () => {
 
   it("returns a blocker on a protected branch, naming each stale file and its version", () => {
     writeRendered(".claude/agents/bkit-a.md", "4.1.0");
-    writeBlock("docs/testing.md", "4.0.0");
+    writeBlock(".agents/docs.md", "4.0.0");
     const f = detectManagedStale(tmpDir, "4.1.0", true);
     expect(f?.id).toBe("bkit-managed-stale");
     expect(f?.severity).toBe("blocker");
     expect(f?.detect).toContain("1 of 2");
-    expect(f?.detect).toContain(`${path.join("docs", "testing.md")} (v4.0.0)`);
+    expect(f?.detect).toContain(`${path.join(".agents", "docs.md")} (v4.0.0)`);
     expect(f?.detect).not.toContain("bkit-a.md");
     expect(f?.detect).not.toContain("non-blocking");
   });
@@ -148,7 +148,7 @@ describe("detectManagedStale", () => {
 
   it("reads the stamp from the real block when prose quotes both markers first", () => {
     write(
-      "docs/testing.md",
+      ".agents/docs.md",
       "Edit outside `<!-- bkit:start -->` / `<!-- bkit:end -->`.\n" +
         `<!-- bkit:start -->\n${managedVersionMarker("4.1.0")}\n\n# T\n<!-- bkit:end -->\n`,
     );
@@ -157,7 +157,7 @@ describe("detectManagedStale", () => {
 
   it("never reads inline prose vX.Y.Z as the stamp", () => {
     write(
-      "docs/architecture.md",
+      ".agents/docs.md",
       "<!-- bkit:start -->\n\n# Architecture\n\ncarries `<!-- bkit:managed vX.Y.Z … -->`.\n<!-- bkit:end -->\n",
     );
     const f = detectManagedStale(tmpDir, "4.0.0", true);

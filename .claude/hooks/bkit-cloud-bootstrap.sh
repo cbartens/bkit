@@ -18,6 +18,8 @@
 #
 # The `bkit baseline install` section below is bkit's starting point; the whole
 # file is yours now — add your own steps anywhere (examples at the bottom).
+# Customise: the BKIT_CLOUD_ALLOWLIST_FINGERPRINT block compares the pasted network
+# allowlist's fingerprint with .bkit/allowlist.json; keep it or compare your own way.
 
 set -euo pipefail
 
@@ -52,6 +54,31 @@ if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] && command -v jq >/dev/null 2>&1; then
   if [ "$TRUSTED" != "true" ]; then
     log "WORKSPACE NOT TRUSTED at $TRUST_ROOT -- Claude Code is ignoring EVERY permissions.allow row in .claude/settings.json for this session (deny/ask still apply, so destructive-op gating is unaffected). This container clones to a different path than the setup script baked in. Fix: re-paste the setup script from .claude/bkit-cloud.md section 4, which re-stamps the cache-bust line and rebuilds the snapshot."
   fi
+fi
+
+# Allowlist fingerprint compare. The operator pastes the network allowlist from
+# .claude/bkit-cloud.md into the cloud dashboard and copies its fingerprint into the
+# BKIT_CLOUD_ALLOWLIST_FINGERPRINT env var. This compares that value with the
+# `fingerprint` in .bkit/allowlist.json. A match is an operator assertion only: the
+# deployed dashboard allowlist stays unverified. Every outcome warns or reports and
+# continues; the hook never exits non-zero here.
+# Stdout reaches the session's context (stderr does not), so a warning prints on both.
+fp_warn() { log "$*"; printf '[cloud-bootstrap] %s\n' "$*"; }
+EXPECTED_FP=""
+if command -v jq >/dev/null 2>&1; then
+  EXPECTED_FP=$(jq -r '.fingerprint // empty' .bkit/allowlist.json 2>/dev/null || printf '')
+fi
+FP_REFRESH="Refresh: run 'bkit upgrade', re-paste the list from .claude/bkit-cloud.md section Network access into the cloud environment, then set BKIT_CLOUD_ALLOWLIST_FINGERPRINT to the fingerprint printed there."
+if ! [[ "$EXPECTED_FP" =~ ^[0-9a-f]{8}$ ]]; then
+  fp_warn "WARNING: the expected fingerprint is unavailable (.bkit/allowlist.json has no valid 8-hex fingerprint, is not valid JSON, or jq is missing), so the cloud network allowlist cannot be compared. Fix: run 'bkit upgrade' in the repo and install jq."
+elif [ -z "${BKIT_CLOUD_ALLOWLIST_FINGERPRINT:-}" ]; then
+  fp_warn "WARNING: BKIT_CLOUD_ALLOWLIST_FINGERPRINT is not set, so the cloud network allowlist cannot be checked for staleness. Expected fingerprint: $EXPECTED_FP. $FP_REFRESH"
+elif ! [[ "$BKIT_CLOUD_ALLOWLIST_FINGERPRINT" =~ ^[0-9a-f]{8}$ ]]; then
+  fp_warn "WARNING: BKIT_CLOUD_ALLOWLIST_FINGERPRINT is not an 8-hex fingerprint (value not shown). Expected fingerprint: $EXPECTED_FP. $FP_REFRESH"
+elif [ "$BKIT_CLOUD_ALLOWLIST_FINGERPRINT" != "$EXPECTED_FP" ]; then
+  fp_warn "WARNING: the cloud network allowlist is stale: BKIT_CLOUD_ALLOWLIST_FINGERPRINT is $BKIT_CLOUD_ALLOWLIST_FINGERPRINT, the repo expects $EXPECTED_FP. $FP_REFRESH"
+else
+  log "allowlist fingerprint $EXPECTED_FP: operator-asserted match; the deployed dashboard allowlist is unverified"
 fi
 
 if [ -f pnpm-lock.yaml ] && command -v pnpm >/dev/null 2>&1; then

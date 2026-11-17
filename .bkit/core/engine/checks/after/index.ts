@@ -28,6 +28,7 @@ import {
 import {
   buildDepUpdaterSetupAdvisory,
   detectBkitStubs,
+  detectProjectDocs,
   detectValeMissing,
   detectValePackageNotSynced,
   detectWorkflowLintToolsMissing,
@@ -44,7 +45,11 @@ import {
   detectTestIntegrationEnv,
   detectTurboIntegrationInputs,
 } from "./ci-yml.js";
-import { type SuppressionNote, type SuppressionReporter } from "./suppression.js";
+import {
+  isAdvisorySuppressed,
+  type SuppressionNote,
+  type SuppressionReporter,
+} from "./suppression.js";
 import {
   dropTipSilencedAdvisories,
   setupTipsChecklistLines,
@@ -361,8 +366,9 @@ export function runPostInstallCheck(
   const managedDuplicate = detectManagedDuplicate(cwd);
   if (managedDuplicate) phase3.push(managedDuplicate);
 
-  // BKIT_GH_TOKEN shell env — authenticates the GitHub MCP server.
-  const ghMcpToken = detectGhMcpToken(cwd);
+  // BKIT_GH_TOKEN shell env — authenticates the GitHub MCP server. Skipped inside the pre-push
+  // hook's inner run, which unsets the .bkit/.env keys on purpose (BKIT_PRE_PUSH_LOGGED is set).
+  const ghMcpToken = process.env.BKIT_PRE_PUSH_LOGGED ? null : detectGhMcpToken(cwd);
   if (ghMcpToken) phase3.push(ghMcpToken);
 
   // Main branch protection — bkit's PR-base gates (build Step 16, ship Step 2)
@@ -471,6 +477,12 @@ export function runPostInstallCheck(
 
   // bkit-stub sentinels in shipped templates — one advisory per still-commented stub.
   for (const stub of detectBkitStubs(cwd)) phase3.push(stub);
+
+  // Project documents (docs/*.md): missing, empty, starter-only or unindexed. Advisory only.
+  for (const f of detectProjectDocs(cwd)) {
+    if (!isAdvisorySuppressed(cwd, f.id, f.severity)) phase3.push(f);
+    else onSuppressed?.({ id: f.id, scope: "." });
+  }
 
   // turbo.json inputs for cache-replay safety (KN-24).
   for (const f of detectTurboIntegrationInputs(cwd)) phase3.push(f);

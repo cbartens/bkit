@@ -1,13 +1,17 @@
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  RETIRED_DRIVER_HASHES,
+  driverText,
   writeTier1,
   writeTier2,
   writeTier2JsonContained,
   deepContains,
   deepMergeJson,
+  mergeManagedJson,
   ensurePackageJsonScripts,
   type WriteSet,
   type JsonValue,
@@ -250,6 +254,92 @@ describe("writeTier2 — retired Antigravity drivers (docs/migrations.md)", () =
       warn.mockRestore();
     });
   }
+});
+
+describe("writeTier2 — retired Claude Code guardrails driver (docs/migrations.md)", () => {
+  const FIXTURE = path.resolve(
+    __dirname,
+    "../../../../tests/fixtures/claude-6.1.1/bkit-guardrails.cjs.txt",
+  );
+  const SRC = path.resolve(__dirname, "../../.claude/hooks/bkit-guardrails.cjs");
+  const OLD_EMIT = 'emit({ hookEventName: "PreToolUse", additionalContext: result.context });';
+  const DENY_EMIT =
+    'emit(result.verdict === "deny" ? { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: result.reason } : { hookEventName: "PreToolUse", additionalContext: result.context });';
+
+  function seed(edit?: (old: string) => string): string {
+    const dst = path.join(tmpDir, ".claude", "hooks", "bkit-guardrails.cjs");
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    const old = fs.readFileSync(FIXTURE, "utf-8");
+    fs.writeFileSync(dst, edit ? edit(old) : old, "utf-8");
+    return dst;
+  }
+
+  function outsideBlock(content: string): string {
+    return driverText(content, "slash-comment") ?? "";
+  }
+
+  function runWithWarnings(dst: string): { warned: string; ws: WriteSet } {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const ws = makeWriteSet();
+    writeTier2(SRC, dst, TOKENS, "slash-comment", false, ws);
+    const warned = warn.mock.calls.flat().join("\n");
+    warn.mockRestore();
+    return { warned, ws };
+  }
+
+  it("an unedited 6.1.1 driver is replaced by the whole new file, which emits the deny", () => {
+    const dst = seed();
+    const { warned, ws } = runWithWarnings(dst);
+    const result = fs.readFileSync(dst, "utf-8");
+    expect(result).not.toContain(OLD_EMIT);
+    expect(result).toContain('permissionDecision: "deny"');
+    expect(result).toContain("permissionDecisionReason: result.reason");
+    expect(ws.writes).toEqual([{ path: dst, action: "write" }]);
+    expect(warned).toBe("");
+
+    const again = makeWriteSet();
+    writeTier2(SRC, dst, TOKENS, "slash-comment", false, again);
+    expect(again.writes).toEqual([]);
+  });
+
+  it("an edited driver without a permissionDecision emit is kept and gets a printed fix", () => {
+    const dst = seed((old) => `${old}// consumer's own line\n`);
+    const before = outsideBlock(fs.readFileSync(dst, "utf-8"));
+    const { warned } = runWithWarnings(dst);
+    const result = fs.readFileSync(dst, "utf-8");
+    expect(outsideBlock(result)).toBe(before);
+    expect(result).toContain("function bkitGuardrails(payload)");
+    expect(warned).toContain(".claude/hooks/bkit-guardrails.cjs");
+    expect(warned).toContain('permissionDecision: "deny"');
+    expect(warned).toContain("permissionDecisionReason: result.reason");
+    expect(warned).toContain("bkit install");
+    expect(warned).not.toContain("Antigravity");
+  });
+
+  it("an edited driver that already emits permissionDecision is kept with no warning", () => {
+    const dst = seed((old) => `${old.replace(OLD_EMIT, DENY_EMIT)}// consumer's own line\n`);
+    const before = outsideBlock(fs.readFileSync(dst, "utf-8"));
+    const { warned } = runWithWarnings(dst);
+    expect(outsideBlock(fs.readFileSync(dst, "utf-8"))).toBe(before);
+    expect(warned).toBe("");
+  });
+
+  it("the Antigravity fix never fires for a Claude driver writing hookSpecificOutput", () => {
+    const dst = seed((old) => `${old}// consumer's own line\n`);
+    expect(fs.readFileSync(dst, "utf-8")).toContain("hookSpecificOutput");
+    const { warned } = runWithWarnings(dst);
+    expect(warned).not.toContain("Antigravity ignores");
+  });
+
+  it("no retired hash matches the driver of the template bkit ships today", () => {
+    for (const [consumerPath, hashes] of Object.entries(RETIRED_DRIVER_HASHES)) {
+      const template = fs.readFileSync(path.resolve(__dirname, "../..", consumerPath), "utf-8");
+      const driver = driverText(template, "slash-comment");
+      expect(driver, consumerPath).not.toBeNull();
+      const hash = createHash("sha256").update(driver!).digest("hex");
+      expect(hashes, consumerPath).not.toContain(hash);
+    }
+  });
 });
 
 describe("ensurePackageJsonScripts", () => {
@@ -938,5 +1028,87 @@ describe.skipIf(process.platform === "win32")("executable bit drift", () => {
     const ws = makeWriteSet();
     writeTier2(src, dst, TOKENS, "html-comment", true, ws);
     expect(ws.writes).toEqual([]);
+  });
+});
+
+describe("mergeManagedJson", () => {
+  it("merges managed lists while keeping consumer-added entries", () => {
+    const grp = (matcher: string, command: string): JsonValue => ({
+      matcher,
+      hooks: [{ type: "command", command }],
+    });
+    const template = {
+      permissions: { allow: ["Bash(a)", "Bash(b)"], deny: ["Read(x)"] },
+      env: { K: "template" },
+      hooks: {
+        PreToolUse: [
+          grp("Edit|Write|NotebookEdit", "node gate.cjs"),
+          grp("Bash", "node guard.cjs"),
+        ],
+      },
+    } as JsonValue;
+    const existing = {
+      permissions: { allow: ["Bash(mine)", "Bash(b)", "Bash(a)"], ask: ["Bash(ask)"] },
+      env: { K: "old", OWN: "1" },
+      hooks: {
+        PreToolUse: [
+          grp("ConsumerTool", "node consumer.js"),
+          grp("Edit|Write", "node gate.cjs"),
+          grp("Bash", "node guard.cjs"),
+        ],
+        Stop: [grp("", "echo own")],
+      },
+    } as JsonValue;
+
+    const merged = mergeManagedJson(existing, template) as Record<string, JsonValue>;
+    const perms = merged.permissions as Record<string, JsonValue>;
+
+    // Plain-value list: template entries in template order, then consumer-only entries.
+    expect(perms.allow).toEqual(["Bash(a)", "Bash(b)", "Bash(mine)"]);
+    expect(perms.deny).toEqual(["Read(x)"]);
+    expect(perms.ask).toEqual(["Bash(ask)"]);
+    // Objects merge as deepMergeJson does: template wins, consumer-only keys stay.
+    expect(merged.env).toEqual({ K: "template", OWN: "1" });
+    // Hook groups: a consumer group sharing a command is replaced; others follow the template's.
+    const hooks = merged.hooks as Record<string, JsonValue[]>;
+    expect(hooks.PreToolUse).toEqual([
+      grp("Edit|Write|NotebookEdit", "node gate.cjs"),
+      grp("Bash", "node guard.cjs"),
+      grp("ConsumerTool", "node consumer.js"),
+    ]);
+    expect(hooks.Stop).toEqual([grp("", "echo own")]);
+
+    // Re-merging the result is stable: no duplicates, same order.
+    expect(mergeManagedJson(merged, template)).toEqual(merged);
+    // deepMergeJson still replaces whole lists.
+    const dm = deepMergeJson(existing, template) as Record<string, Record<string, JsonValue>>;
+    expect(dm.permissions.allow).toEqual(["Bash(a)", "Bash(b)"]);
+  });
+
+  it("keeps a consumer hook placed inside a bkit hook group", () => {
+    const bkitHook: JsonValue = {
+      type: "command",
+      command: "node .claude/hooks/bkit-gateguard.cjs",
+    };
+    const mine: JsonValue = { type: "command", command: "node scripts/my-check.js" };
+    const existing = {
+      hooks: {
+        PreToolUse: [{ matcher: "Edit|Write|MultiEdit", hooks: [bkitHook, mine] }],
+      },
+    } as JsonValue;
+    const template = {
+      hooks: {
+        PreToolUse: [{ matcher: "Edit|Write|MultiEdit|NotebookEdit", hooks: [bkitHook] }],
+      },
+    } as JsonValue;
+
+    const merged = mergeManagedJson(existing, template) as Record<string, JsonValue>;
+    const groups = (merged.hooks as Record<string, JsonValue[]>).PreToolUse;
+    // The template group replaces bkit's matcher and hook, and the consumer hook rides along.
+    expect(groups).toEqual([
+      { matcher: "Edit|Write|MultiEdit|NotebookEdit", hooks: [bkitHook, mine] },
+    ]);
+    // A second run is a no-op.
+    expect(mergeManagedJson(merged, template)).toEqual(merged);
   });
 });

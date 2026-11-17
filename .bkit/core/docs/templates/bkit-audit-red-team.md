@@ -2,7 +2,7 @@
 
 {{BKIT_MANAGED_MARKER}}
 
-<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. -->
+<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. When you edit this template, follow `.bkit/authoring.md` § Doc Templates. -->
 
 # Red Team Audit
 
@@ -38,7 +38,7 @@ Three kinds of failure do not show up in a source read. A row-security denial lo
 - Penetration Testing Execution Standard (PTES): pre-engagement, intelligence gathering, threat modelling, vulnerability analysis, exploitation, post-exploitation, reporting.
 - When a probe drives a model: OWASP GenAI Red Teaming Guide, OWASP AI Testing Guide, MITRE ATLAS.
 - OWASP Mobile Application Security Testing Guide (MASTG), when the native build is in scope.
-- bkit block of `docs/security.md` (bkit version from `.bkit/version`): § Untrusted Content & Prompt Injection
+- `.bkit/prompts.md` § Special Behaviors: § Untrusted Content & Prompt Injection
 
 ### Scope
 

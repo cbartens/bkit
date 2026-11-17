@@ -20,19 +20,28 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { BKIT_LINT_FILE_SCRIPT, BKIT_TEST_FILE_SCRIPT } from "../../install/manifest.js";
+import { BKIT_GATE_CHANGED_SCRIPT, BKIT_LINT_FILE_SCRIPT, BKIT_TEST_FILE_SCRIPT, } from "../../install/manifest.js";
 import { clampLogPath } from "../../ledgers/clamp-log.js";
 import { appendLine, statusTimestamp, validateCiSelection, testRunProblem, } from "../../ledgers/status.js";
-import { classifyLockExit, CommandError, EXIT, git, runGit, testsLockHolder, wholeNumber, } from "../lib.js";
+import { CommandError, EXIT, git, runGit, wholeNumber } from "../lib.js";
 import { parseJson } from "../../shared/json.js";
+import { oneLine } from "../../shared/text.js";
 import { readPackageJson } from "../../shared/package-json.js";
-import { COULD_NOT_RUN_EXIT_CODES, scriptCommand, testCommand, } from "../../shared/package-manager.js";
+import { COULD_NOT_RUN_EXIT_CODES, scriptCommand } from "../../shared/package-manager.js";
 import { CONFIG_DEFAULTS, readBkitConfig } from "../../shared/settings.js";
 import { FILE_FLAG, GROUP_FLAG, WORKFLOW_FLAG, positiveInt, readStatusRows, readRuns, statusFile, str, } from "./status.js";
 import { NO_MARKERS_REASON, derivedTestMatrix, fenceNeverClosed, parsePlanBlocks, reuseInventory, supersessionInventory, } from "./plan-blocks.js";
 import { writeStepRow } from "./steps.js";
+import { activeRunStart } from "./counters.js";
+import { REPORT_ENV, reportFailures, runGateUnderLock, runTestFile, runToLog, } from "./junit.js";
 import { appendRecord, clampFile } from "./context.js";
-import { testsChangedVerb } from "./tests-changed.js";
+import { minPushPathspecs } from "../ci/ci.js";
+import { requiredPushGate, runWithReceipt } from "../ci/push-gate.js";
+import { testsBaseVerb } from "./tests-base.js";
+import { changedBetween, changedFiles, commitExists, declares, snapshotTree, deletedFiles, importersOf, testsChangedVerb, } from "./tests-changed.js";
+import { ORIGIN_DEV, featureBase } from "./feature-base.js";
+import { testsJumpVerb } from "./tests-jump.js";
+import { readPlanRows } from "./ledgers.js";
 /** Exit code: no candidate gate is declared in package.json. */
 export const EXIT_NO_GATE = 3;
 /** Exit code: the gate could not run (exit 126 / 127, or the package runner is missing). */
@@ -43,7 +52,6 @@ export const EXIT_ARTIFACT_STEP = 5;
 export const TEST_RUN_ROW = "test-run";
 /** The env var naming the folder every runner a gate calls writes its JUnit XML into. */
 export const REPORT_DIR_ENV = "BKIT_TEST_REPORT_DIR";
-export { classifyLockExit } from "../lib.js";
 const NO_REPORT_HINT = `no JUnit report in $${REPORT_DIR_ENV} — failures unknown; turn on each test runner's JUnit ` +
     `reporter in the gate and point its output into $${REPORT_DIR_ENV} ` +
     "(.bkit/workflows.md § Local gate scripts)";
@@ -65,30 +73,66 @@ export function resolveGate(dir, candidates) {
         return typeof body === "string" && body.trim() !== "";
     }) ?? null);
 }
+/** The `--changed-since` word that names the feature's start commit. */
+export const FEATURE_BASE_WORD = "feature-base";
+/**
+ * `--changed-since` as a commit name: `feature-base` resolves through `featureBase`, which
+ * falls back to the name `origin/dev` when it cannot work out the feature's start commit.
+ */
+function sinceBase(top, raw, log) {
+    if (raw !== FEATURE_BASE_WORD)
+        return raw;
+    const base = featureBase(top, log);
+    if (base === ORIGIN_DEV)
+        log(`feature base: no meeting point with ${ORIGIN_DEV} — measuring from ${ORIGIN_DEV}`);
+    else
+        log(`feature base: ${base}`);
+    return base;
+}
+/**
+ * The files `bkit:gate:changed` gets for a run measured from `base`: the changed files plus
+ * the files that still mention a deleted one, sorted, with the deleted files. Null when the
+ * search for those files fails: the caller runs the whole check, never a pass.
+ */
+function changedScope(top, base, candidates, log, diff = {
+    files: changedFiles(top, base),
+    deleted: deletedFiles(top, base),
+}) {
+    const { files: changed, deleted } = diff;
+    const importers = importersOf(top, base, deleted);
+    if (importers === null) {
+        log(`could not search ${base} for the files that mention the deleted ${deleted.join(" ")} — running the whole ${resolveGate(top, candidates) ?? "--gate"}`);
+        return null;
+    }
+    for (const [file, hits] of importers)
+        log(hits.length === 0
+            ? `deleted ${file}: no file mentions it`
+            : `deleted ${file}: checking the ${hits.length} file(s) that mention it`);
+    return { files: [...new Set([...changed, ...[...importers.values()].flat()])].sort(), deleted };
+}
+/**
+ * The `tested` snapshot of the newest PASS test-run row of `steps` in `workflow` whose
+ * commit still exists, or null; each snapshot gone from the object store is logged.
+ */
+function newestPass(top, file, workflow, steps, log) {
+    const passes = readStatusRows(file).filter((r) => r.type === TEST_RUN_ROW &&
+        r.workflow === workflow &&
+        typeof r.step === "string" &&
+        steps.includes(r.step) &&
+        r.verdict === "PASS" &&
+        typeof r.tested === "string");
+    for (const row of passes.reverse()) {
+        const sha = String(row.tested);
+        if (commitExists(top, sha)) {
+            log(`testing the files changed since run ${String(row.run)} of ${String(row.step)} passed (snapshot ${sha})`);
+            return sha;
+        }
+        log(`the snapshot ${sha} of run ${String(row.run)} of ${String(row.step)} is gone`);
+    }
+    return null;
+}
 /** The scope string the status rows record: the package runner plus the script name. */
 export const gateScope = (gate) => scriptCommand(gate).join(" ");
-/**
- * Run argv with stdout and stderr interleaved into `log` (like `> log 2>&1`).
- * Exit 127 when the binary is missing; 128 + n when killed by signal n.
- */
-export function runToLog(argv, cwd, log, env) {
-    fs.mkdirSync(path.dirname(log), { recursive: true });
-    const fd = fs.openSync(log, "w");
-    const protectedArgv = testCommand(argv);
-    const res = spawnSync(protectedArgv[0], protectedArgv.slice(1), {
-        cwd,
-        stdio: ["ignore", fd, fd],
-        env: env === undefined ? process.env : { ...process.env, ...env },
-    });
-    fs.closeSync(fd);
-    if (res.error) {
-        fs.appendFileSync(log, `${argv[0]}: not found on PATH (${res.error.message})\n`);
-        return 127;
-    }
-    if (res.status !== null)
-        return res.status;
-    return 128 + ((res.signal ? os.constants.signals[res.signal] : undefined) ?? 1);
-}
 /** `{log}.reports`, emptied: a previous attempt's reports never count toward this one. */
 function freshReportDir(log) {
     const dir = `${log}.reports`;
@@ -96,20 +140,30 @@ function freshReportDir(log) {
     fs.mkdirSync(dir, { recursive: true });
     return dir;
 }
-/** Failing plus erroring test cases across every `*.xml` under `dir`; null when there is none. */
-export function countReportFailures(dir) {
-    const xml = fs.readdirSync(dir, { recursive: true }).filter((f) => f.endsWith(".xml") && fs.statSync(path.join(dir, f)).isFile());
-    if (xml.length === 0)
-        return null;
-    return xml
-        .flatMap((f) => parseJunit(fs.readFileSync(path.join(dir, f), "utf-8")))
-        .filter((c) => c.state === "failure" || c.state === "error").length;
-}
 const tailLines = (file, n) => fs
     .readFileSync(file, "utf-8")
     .replace(/\r?\n$/, "")
     .split(/\r?\n/)
     .slice(-n);
+/** The most failing-test names one `test-run` row keeps. */
+export const FAILED_TESTS_CAP = 100;
+/** A failing JUnit case as a `failedTests` name: `{file ?? classname} > {name}`, or the name alone. */
+export const caseLabel = (c) => {
+    const where = c.file ?? c.classname;
+    return where === null || where === "" ? c.name : `${where} > ${c.name}`;
+};
+/**
+ * The `failedTests` row fields for `names`: unique, sorted, at most `FAILED_TESTS_CAP`, with
+ * `failedTestsTruncated` when cut; none when `names` is empty.
+ */
+export function failedTestsField(names) {
+    const unique = [...new Set(names.filter((n) => n !== ""))].sort();
+    if (unique.length === 0)
+        return {};
+    return unique.length > FAILED_TESTS_CAP
+        ? { failedTests: unique.slice(0, FAILED_TESTS_CAP), failedTestsTruncated: true }
+        : { failedTests: unique };
+}
 /**
  * Append one `test-run` row to `file`. `run` numbers this step's test-run rows in the
  * workflow's active run (since its last workflow-started row), this one included, so a
@@ -140,6 +194,9 @@ function appendTestRun(file, r) {
         log: r.log,
         ...(r.artifact === undefined ? {} : { artifact: r.artifact }),
         ...(r.source === undefined ? {} : { source: r.source }),
+        ...(typeof r.tested === "string" ? { tested: r.tested } : {}),
+        ...(r.failedTests === undefined ? {} : { failedTests: r.failedTests }),
+        ...(r.failedTestsTruncated === undefined ? {} : { failedTestsTruncated: true }),
         ...r.evidence,
     };
     const problem = testRunProblem(row);
@@ -151,20 +208,23 @@ function appendTestRun(file, r) {
 // ---------------------------------------------------------------------------
 // Test-first: JUnit reading, plan `Test first:` lines, red / green judgement
 // ---------------------------------------------------------------------------
-/** The env var naming the JUnit report path `bkit:test:file` must write. */
-export const REPORT_ENV = "BKIT_TEST_REPORT";
 /** The status row step a group's red writes: one row per `tests red` run, a state and blob per planned test. */
 export const RED_STEP = "build-tests-red";
+/** The status row step `steps finish` writes for a contradicted planned test: one row per takeover task it adds. */
+export const TAKEOVER_STEP = "build-takeover";
 /**
  * The states that count as a red: the test failed, its file did not load, the tests step
- * vouched for its pass, or it is an existing test updated and passing, whose diff the
- * verifier judges (it may add expectations, never remove or loosen one).
+ * vouched for its pass, it is an existing test updated and passing, whose diff the
+ * verifier judges (it may add expectations, never remove or loosen one), or it is a test
+ * taken over from an earlier task, written in this build and passing after its rewrite
+ * (reported as changed hands, not proven failing).
  */
 export const RED_PROVEN = new Set([
     "red",
     "red-not-loaded",
     "passed-accepted",
     "updated",
+    "taken-over",
 ]);
 /** The `build-tests-red` rows of `workflow` in status.jsonl, in file order; `group` narrows. */
 function redRows(file, workflow, group) {
@@ -215,13 +275,131 @@ export function redEntries(file, workflow, group) {
     return out;
 }
 /**
- * The planned tests of `group` a code step changed since their red: a test whose own lines
- * (`testBlock`) no longer hash to the recorded block. A row with no block (written before
- * per-test locking, or when no line carried the name) derives the block from the recorded
- * blob; when that holds no block either, the whole file's blob is compared. Other edits to a
- * test file are free.
+ * The plan beside a run's status file: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` →
+ * `docs/plans/{YYYYMM}/{FID}-plan.md`.
  */
-export function touchedTests(top, file, workflow, group) {
+export function runPlanPath(statusFile) {
+    const logs = path.dirname(statusFile);
+    return path.join(path.dirname(path.dirname(logs)), `${path.basename(logs)}-plan.md`);
+}
+/**
+ * The lock's baseline per planned test, from the status rows in order: every `build-tests-red`
+ * entry (a proven red is never replaced by an unproven result for the same lines) and every
+ * `changedTests` record of a code step; the latest per key wins. `planned` (the plan-named key
+ * set) limits the keys; null keeps them all.
+ */
+export function lockBaselines(rows, planned) {
+    const out = new Map();
+    /** The newest blob any red recorded per test file (a later tests step's additions included). */
+    const newestBlob = new Map();
+    for (const row of rows) {
+        if (row.type !== "step-done")
+            continue;
+        if (row.step === RED_STEP && typeof row.group === "number") {
+            for (const t of redTestsOf(row)) {
+                if (t.blob !== null)
+                    newestBlob.set(t.test, t.blob);
+                const key = redKey(t.task, t.test, t.testName);
+                if (planned !== null && !planned.has(key))
+                    continue;
+                const earlier = out.get(key);
+                const keepsProof = earlier !== undefined &&
+                    RED_PROVEN.has(earlier.state) &&
+                    !RED_PROVEN.has(t.state) &&
+                    typeof earlier.block === "string" &&
+                    earlier.block === t.block;
+                if (!keepsProof)
+                    out.set(key, {
+                        ...t,
+                        reasons: earlier?.reasons ?? [],
+                        fromChange: false,
+                        text: t.blob,
+                        origin: t.blob,
+                    });
+                // A takeover's entry, whatever its state, is the new baseline of every earlier key
+                // naming the same test: the earlier task's lock moves onto the taken-over lines.
+                if (t.from === undefined)
+                    continue;
+                for (const [k, b] of out)
+                    if (k !== key && b.test === t.test && sameTestName(b.testName, t.testName))
+                        out.set(k, {
+                            ...b,
+                            state: t.state,
+                            blob: t.blob,
+                            block: t.block,
+                            fromChange: false,
+                            text: t.blob,
+                            origin: t.blob,
+                        });
+            }
+        }
+        if (CODE_STEPS.has(String(row.step)) && Array.isArray(row.changedTests)) {
+            for (const c of row.changedTests) {
+                if (typeof c.task !== "number" || typeof c.test !== "string")
+                    continue;
+                if (typeof c.testName !== "string")
+                    continue;
+                if (typeof c.reason !== "string" || c.reason === "")
+                    continue;
+                const key = redKey(c.task, c.test, c.testName);
+                if (planned !== null && !planned.has(key))
+                    continue;
+                const earlier = out.get(key);
+                out.set(key, {
+                    task: c.task,
+                    test: c.test,
+                    testName: c.testName,
+                    state: "red",
+                    blob: null,
+                    block: typeof c.block === "string" ? c.block : null,
+                    fromChange: true,
+                    text: typeof c.after === "string" ? c.after : null,
+                    origin: earlier?.origin ?? (typeof c.blob === "string" ? c.blob : null),
+                    reasons: [
+                        ...(earlier?.reasons ?? []),
+                        ...(typeof c.reason === "string" ? [c.reason] : []),
+                    ],
+                });
+            }
+        }
+    }
+    // A test no line names (block null) is locked by its whole file, against the file's newest red blob.
+    for (const b of out.values()) {
+        const blob = newestBlob.get(b.test);
+        if (b.fromChange || b.block !== null || blob === undefined || b.blob === null)
+            continue;
+        b.blob = blob;
+        b.text = blob;
+        b.origin = blob;
+    }
+    return out;
+}
+/** The code steps whose `changedTests` records move the lock's baseline. */
+const CODE_STEPS = new Set([
+    "build-plan-tasks",
+    "build-plan-gaps-remediate",
+    "build-plan-gaps-remediate-holistic",
+]);
+/** The status rows of one workflow. */
+export const workflowRows = (file, workflow) => fs.existsSync(file)
+    ? readStatusRows(file).filter((r) => r.workflow === workflow)
+    : [];
+/** The key set of the tests a plan's `TEST FIRST` lines name (done tasks included), or null with no plan. */
+function plannedKeys(plan) {
+    return plan === undefined
+        ? null
+        : new Set(readTestFirst(plan).flatMap((s) => s.kind === "test" ? s.tests.map((t) => redKey(s.task, t.test, t.name)) : []));
+}
+/**
+ * The planned tests (every group) a code step changed since their baseline (`lockBaselines`): a
+ * test whose own lines (`testBlock`) no longer hash to the recorded block. A record with no
+ * block (written before per-test locking, or when no line carried the name) derives the block
+ * from the recorded blob; when that holds no block either, the whole file's blob is compared.
+ * Other edits to a test file are free. With `plan` (the plan's text), only tests a `TEST FIRST`
+ * line still names are checked: a name the plan dropped locks nothing. Each result carries the
+ * test's task, its current block and the reasons already recorded, for `finish`.
+ */
+export function touchedTests(top, file, workflow, plan) {
     const touched = [];
     const texts = new Map();
     const textOf = (test) => {
@@ -231,19 +409,50 @@ export function touchedTests(top, file, workflow, group) {
         }
         return texts.get(test);
     };
-    for (const t of redEntries(file, workflow, group).values()) {
+    for (const t of lockBaselines(workflowRows(file, workflow), plannedKeys(plan)).values()) {
+        const now = blockHash(textOf(t.test), t.testName);
+        const hit = (wholeFile) => touched.push({
+            test: t.test,
+            name: t.testName,
+            task: t.task,
+            block: now,
+            reasons: t.reasons,
+            text: t.text,
+            origin: t.origin,
+            fromChange: t.fromChange,
+            wholeFile,
+        });
         let block = t.block ?? null;
         if (block === null)
             block = blockHash(blobText(top, t.blob), t.testName);
         if (block === null) {
+            if (t.blob === null && t.fromChange) {
+                if (now !== null && t.reasons.length > 0)
+                    hit(true);
+                continue;
+            }
             if (git(top, ["hash-object", "--", t.test]) !== t.blob)
-                touched.push({ test: t.test, name: t.testName });
+                hit(true);
             continue;
         }
-        if (blockHash(textOf(t.test), t.testName) !== block)
-            touched.push({ test: t.test, name: t.testName });
+        if (now !== block)
+            hit(false);
     }
     return touched;
+}
+/**
+ * The line diff of the test's own lines from the baseline text `blob` to the file now, and
+ * whether it only adds lines; null when either side cannot be read.
+ */
+export function baselineDiff(top, blob, test, name) {
+    // A null blob is a red that recorded the file `missing`: every line of the test is added.
+    const was = blob === null ? "" : testBlock(blobText(top, blob), name);
+    const abs = path.join(top, test);
+    const now = fs.existsSync(abs) ? testBlock(fs.readFileSync(abs, "utf-8"), name) : null;
+    if (was === null || now === null)
+        return null;
+    const d = lineDiff(was, now);
+    return { additive: d.removed === 0, diff: d.text };
 }
 /** The text a recorded blob holds, untrimmed; null when the object store lacks it. */
 function blobText(top, blob) {
@@ -342,7 +551,7 @@ export function testSpan(text, name) {
  * which only a read of the added lines tells.
  */
 export function lineDiff(before, after) {
-    const a = before.split("\n");
+    const a = before === "" ? [] : before.split("\n");
     const b = after.split("\n");
     const lcs = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
     for (let i = a.length - 1; i >= 0; i--)
@@ -393,45 +602,6 @@ function groupStartSha(file, workflow, group) {
 const NO_TEST_FILE_HINT = `declare "${BKIT_TEST_FILE_SCRIPT}" in package.json: it runs the one test file passed as its ` +
     `argument and writes a JUnit report to $${REPORT_ENV} ` +
     "(.bkit/workflows.md § Local gate scripts)";
-const XML_ENTITIES = {
-    amp: "&",
-    lt: "<",
-    gt: ">",
-    quot: '"',
-    apos: "'",
-};
-function decodeXml(s) {
-    return s.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (whole, e) => {
-        if (!e.startsWith("#"))
-            return XML_ENTITIES[e.toLowerCase()] ?? whole;
-        const cp = /^#x/i.test(e) ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
-        return cp >= 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : whole;
-    });
-}
-const ATTRS = String.raw `((?:\s+[\w:.-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)`;
-function attr(attrs, name) {
-    const m = new RegExp(String.raw `\s${name}\s*=\s*(?:"([^"]*)"|'([^']*)')`).exec(attrs);
-    return m ? decodeXml(m[1] ?? m[2] ?? "") : undefined;
-}
-/** CDATA text as escaped character data, so a tag inside it never ends an element early. */
-const escapeCdata = (xml) => xml.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_, text) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
-/** Every `<testcase>` in a JUnit report: its name, outcome, first failure message and detail. */
-export function parseJunit(xml) {
-    const body = escapeCdata(xml).replace(/<!--[\s\S]*?-->/g, "");
-    const cases = [];
-    const testcase = new RegExp(String.raw `<testcase${ATTRS}\s*(?:\/>|>([\s\S]*?)<\/testcase>)`, "g");
-    const outcome = new RegExp(String.raw `<(failure|error|skipped)${ATTRS}\s*(?:\/>|>([\s\S]*?)<\/\1>)`);
-    for (const m of body.matchAll(testcase)) {
-        const child = outcome.exec(m[2] ?? "");
-        cases.push({
-            name: attr(m[1] ?? "", "name") ?? "",
-            state: child ? child[1] : "passed",
-            message: child ? (attr(child[2] ?? "", "message") ?? "") : "",
-            detail: child ? decodeXml((child[3] ?? "").replace(/<[^>]*>/g, "")).trim() : "",
-        });
-    }
-    return cases;
-}
 /** A report case is the named test when its name is the name, or ends with it as the last segment. */
 export const isNamedCase = (caseName, want) => caseName === want || caseName.endsWith(` ${want}`);
 const caseNames = (cases) => cases.length === 0
@@ -492,16 +662,77 @@ export const TEST_FIRST = "**TEST FIRST:**";
 export const TEST_EXCEPTION = "**TEST EXCEPTION:**";
 /** The plan caps `package.json` `bkit.workflows.tasks` sets for the checkout `cwd` sits in. */
 export const planCaps = (cwd) => readBkitConfig(toplevel(cwd)).tasks;
+/** `ledgers check` on the plan text as plan-check problems: the line absent or unfilled, or each key with no row. */
+function ledgerRowProblems(root, text) {
+    const r = readPlanRows(root, text);
+    if (r.unreadable !== undefined)
+        return [
+            {
+                line: r.line,
+                kind: "ledger",
+                message: `${r.unreadable} — list each decision / deferral row key written for this plan, or write None`,
+            },
+        ];
+    if (r.missing.length === 0)
+        return [];
+    return [
+        {
+            line: r.line,
+            kind: "ledger",
+            message: `no docs/decisions.jsonl or docs/deferrals.jsonl row for ${r.missing.map((k) => `\`${k}\``).join(", ")} — write each missing row, or correct the **Ledger rows:** line`,
+        },
+    ];
+}
 /** The caps as the plan-check report and help state them. */
 export const capsText = (c) => `${c.maxPerGroup} tasks and ${c.maxTestsPerGroup} TEST FIRST tests per group; ${c.maxTestsPerTask} tests across ${c.maxTestFilesPerTask} test files per task`;
-/** A task block's TEST FIRST read as one `TestFirst`; a TEST EXCEPTION with no TEST FIRST is its `n/a`. */
+/** The test a JUnit-style suite path (`suite > test`) names: its last segment. */
+const lastSegment = (name) => name.split(" > ").pop().trim();
+/**
+ * Two planned test names name one test: equal, or, when one of them has no ` > ` (a bare
+ * test name against a suite path), equal in their last segment. Two suite paths must match
+ * whole: `a > works` and `b > works` are two tests.
+ */
+export const sameTestName = (a, b) => a === b || ((!a.includes(" > ") || !b.includes(" > ")) && lastSegment(a) === lastSegment(b));
+/**
+ * Every planned test a later task names that an earlier task (plan order, done tasks
+ * included) also names in the same file: the later task takes the test over. `from` is
+ * the nearest earlier task naming it. Paths compare posix-normalized; names compare per
+ * `sameTestName`.
+ */
+export function planTakeovers(text) {
+    const seen = [];
+    const out = [];
+    for (const t of parsePlanBlocks(text).tasks) {
+        const mine = t.testFirst?.tests ?? [];
+        for (const x of mine) {
+            const test = path.posix.normalize(x.test);
+            const owner = [...seen]
+                .reverse()
+                .find((s) => s.test === test && sameTestName(s.name, x.name));
+            if (owner !== undefined)
+                out.push({
+                    task: t.task,
+                    from: owner.task,
+                    test,
+                    name: x.name,
+                    line: x.line,
+                    sameGroup: owner.group === t.group,
+                });
+        }
+        for (const x of mine)
+            seen.push({ task: t.task, group: t.group, test: path.posix.normalize(x.test), name: x.name });
+    }
+    return out;
+}
 /**
  * Planned tests of open tasks whose name a test in their file already carries: the tests
  * step cannot write a new test under that name, so it either updates the existing one or
- * finds it passing. Reported only — the plan names the update, or a new name.
+ * finds it passing. Reported only — the plan names the update, or a new name. A test the
+ * task takes over from an earlier task (`planTakeovers`) is left out.
  */
 function existingTestNames(text, top) {
     const out = [];
+    const takenOver = new Set(planTakeovers(text).map((k) => redKey(k.task, k.test, k.name)));
     for (const t of parsePlanBlocks(text).tasks) {
         if (t.done)
             continue;
@@ -509,6 +740,8 @@ function existingTestNames(text, top) {
         if (s.kind !== "test")
             continue;
         for (const x of s.tests) {
+            if (takenOver.has(redKey(t.task, x.test, x.name)))
+                continue;
             const abs = path.join(top, x.test);
             if (!fs.existsSync(abs))
                 continue;
@@ -518,6 +751,7 @@ function existingTestNames(text, top) {
     }
     return out;
 }
+/** A task block's TEST FIRST read as one `TestFirst`; a TEST EXCEPTION with no TEST FIRST is its `n/a`. */
 function testFirstOf(t) {
     const { task, testFirst: tf, testException: exc } = t;
     const plain = (tests) => tests.map(({ test, name }) => ({ test, name }));
@@ -641,17 +875,32 @@ export function checkPlanText(text, caps = CONFIG_DEFAULTS.tasks) {
     // matrix section yields no problem: the refusal is on a row, and issue-form plans carry none.
     const matrix = derivedTestMatrix(text);
     if (matrix !== null) {
-        if (matrix.taskColumn === null)
+        const expected = "Test description | Type | Target file | Task";
+        const header = (matrix.head[0] ?? "")
+            .split("|")
+            .slice(1, -1)
+            .map((c) => c.trim().toLowerCase())
+            .join(" | ");
+        if (header !== expected.toLowerCase())
             problems.push({
                 line: matrix.line,
                 kind: "matrix",
-                message: "the Derived Test Matrix header has no `Task` column; add one naming the task each row's test belongs to",
+                message: `the Derived Test Matrix header must be exactly \`${expected}\`, in that order with no other columns`,
             });
-        else {
+        if (matrix.taskColumn !== null) {
             const mapped = new Set();
             for (const row of matrix.rows) {
                 const named = row.tasks.map((n) => `TASK ${n}`);
-                if (row.tasks.length === 0)
+                const taskCell = (row.cells[matrix.taskColumn] ?? "").trim();
+                if (row.cells.length !== 4 ||
+                    (taskCell !== "" &&
+                        !/^(?:task\s*)?\d+(?:\s*(?:,|and)\s*(?:task\s*)?\d+)*$/i.test(taskCell)))
+                    problems.push({
+                        line: row.number,
+                        kind: "matrix",
+                        message: `Derived Test Matrix row must have 4 cells in the template's order, with only task numbers (\`N\` or \`TASK N\`) in its \`Task\` cell`,
+                    });
+                else if (row.tasks.length === 0)
                     problems.push({
                         line: row.number,
                         kind: "matrix",
@@ -846,17 +1095,6 @@ export function planExistence(text, root) {
         }
     }
     return out.sort((a, b) => a.line - b.line);
-}
-/** Run one test file through `bkit:test:file`; the report is read and removed. */
-function runTestFile(top, test, log) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-test-report-"));
-    const report = path.join(dir, "junit.xml");
-    const exitCode = runToLog([...scriptCommand(BKIT_TEST_FILE_SCRIPT), test], top, log, {
-        [REPORT_ENV]: report,
-    });
-    const cases = fs.existsSync(report) ? parseJunit(fs.readFileSync(report, "utf-8")) : null;
-    fs.rmSync(dir, { recursive: true, force: true });
-    return { exitCode, cases };
 }
 const couldNotRunMessage = (exitCode) => `${gateScope(BKIT_TEST_FILE_SCRIPT)} could not run (exit ${exitCode}: ${exitCode === 126 ? "not executable" : "command not found"}) — no test executed`;
 const toplevel = (cwd) => git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd;
@@ -1066,6 +1304,31 @@ function updatedEntry(top, task, t, base) {
     const d = lineDiff(was, now);
     return { ...entry, additive: d.removed === 0, diff: d.text };
 }
+/** The `TakenOver` entry for a red entry carrying `from`: its lines at the owner's red against now. */
+function takenOverEntry(top, reds, red) {
+    const owner = [...reds.values()].find((r) => r.task === red.from && r.test === red.test && sameTestName(r.testName, red.testName));
+    const d = owner === undefined ? null : baselineDiff(top, owner.blob, red.test, red.testName);
+    return {
+        task: red.task,
+        from: red.from,
+        test: red.test,
+        name: red.testName,
+        state: red.state,
+        additive: d?.additive ?? null,
+        diff: d?.diff ?? null,
+    };
+}
+/** Every BLOCKED line of a code step's log that names a planned test, with its reason. */
+export function blockedTests(log) {
+    return [
+        ...log.matchAll(/^BLOCKED\s*[—–-]+\s*(TASK|Gap)\s+(\d+):\s*test\s+`([^`]+)`\s+`([^`]+)`\s*[—–-]+\s*(.+)$/gm),
+    ].map((m) => ({
+        test: m[3].trim(),
+        name: m[4].trim(),
+        reason: m[5].trim(),
+        task: m[1] === "TASK" ? Number(m[2]) : null,
+    }));
+}
 /** Every PASSES line of a tests step's log: the tests the writer saw passing and vouches for. */
 function passesLines(log) {
     return [
@@ -1150,7 +1413,7 @@ function writeAuditReport(log, o) {
     if (o.gaps.length === 0)
         out.push("None.");
     for (const g of o.gaps)
-        out.push(`- ${g.task === null ? "Plan" : `Task ${g.task}`} \`${g.kind}\` — ${g.detail} — Fixable: ${g.fixable} — log: ${g.logLine}`);
+        out.push(`- ${g.task === null ? "Plan" : `Task ${g.task}`} \`${g.kind}\` — ${oneLine(g.detail)} — Fixable: ${g.fixable} — log: ${g.logLine}`);
     if (o.exceptions.length > 0)
         out.push("", "## Test exceptions", "");
     for (const e of o.exceptions)
@@ -1176,10 +1439,31 @@ function writeAuditReport(log, o) {
             out.push("", `  ${fence}diff`, ...u.diff.split("\n").map((l) => `  ${l}`), `  ${fence}`, "");
         }
     }
+    if (o.takenOver.length > 0)
+        out.push("", "## Taken over", "");
+    for (const t of o.takenOver) {
+        const judged = t.state === "taken-over"
+            ? "changed hands and passes after the rewrite: not proven failing, and never a gap"
+            : `recorded \`${t.state}\` after the rewrite`;
+        out.push(`- Task ${t.task} \`${t.test}\` "${t.name}" — taken over from Task ${t.from}; ${judged}`);
+        if (t.diff !== null) {
+            const fence = fenceFor(t.diff);
+            out.push("", `  ${fence}diff`, ...t.diff.split("\n").map((l) => `  ${l}`), `  ${fence}`, "");
+        }
+    }
     if (o.unproven.length > 0)
         out.push("", "## Unproven", "");
     for (const u of o.unproven)
         out.push(`- Task ${u.task} \`${u.test}\` "${u.name}" — ${u.detail}; the owner answers it at the end of the build`);
+    if (o.changed.length > 0)
+        out.push("", "## Changed by a code step", "");
+    for (const c of o.changed) {
+        out.push(`- Task ${c.task} \`${c.test}\` "${c.name}" — a code step changed it under a BLOCKED line: ${c.reason}; the owner answers it at the end of the build`);
+        if (c.diff !== null) {
+            const fence = fenceFor(c.diff);
+            out.push("", `  ${fence}diff`, ...c.diff.split("\n").map((l) => `  ${l}`), `  ${fence}`, "");
+        }
+    }
     for (const t of o.outputs) {
         const fence = fenceFor(t.tail);
         out.push("", `## Runner output — \`${t.test}\``, "", fence, t.tail, fence);
@@ -1191,9 +1475,11 @@ export const testsCommand = {
     noun: "tests",
     summary: "Run the deepest declared local gate, or one test file to record a red and audit a green.",
     verbs: {
+        base: testsBaseVerb,
         changed: testsChangedVerb,
+        jump: testsJumpVerb,
         run: {
-            summary: "Run the first declared --gate, and with --file append a test-run status row for the run; exit 0 PASS, 1 FAIL, 4 could not run, 81 tests lock held.",
+            summary: "Run the first declared --gate, or with --changed-since only the files changed since that commit, and with --file append a test-run status row for the run; exit 0 PASS (also when nothing changed), 1 FAIL, 4 could not run, 81 tests lock held (read from the lock status file, never from the exit code alone).",
             use: "by-hand",
             flags: [
                 {
@@ -1241,6 +1527,16 @@ export const testsCommand = {
                     help: "status.jsonl: append one test-run row for this run, pass or fail; needs --workflow and --step",
                 },
                 { name: "workflow", type: "string", help: "--file: workflow name, for the test-run row" },
+                {
+                    name: "changed-since",
+                    type: "string",
+                    help: `commit the work began on, or \`${FEATURE_BASE_WORD}\` for the feature's start commit (\`origin/dev\` when it cannot be worked out): run \`${BKIT_GATE_CHANGED_SCRIPT}\` on the files changed since it (uncommitted and committed) plus the files that mention a deleted one, recording the file count as the scope; a failed search for those files, or an undeclared \`${BKIT_GATE_CHANGED_SCRIPT}\` → the --gate runs whole`,
+                },
+                {
+                    name: "since-pass-of",
+                    type: "string",
+                    help: `step[,step...]: measure from the \`tested\` snapshot of the newest PASS test-run row of these steps in --workflow whose snapshot still exists; with none, from --changed-since; needs --file, --workflow and --changed-since`,
+                },
                 { name: "ci-run", type: "string", help: "selected GitHub evidence run ID" },
                 { name: "ci-url", type: "string", help: "selected GitHub evidence attempt URL" },
             ],
@@ -1258,13 +1554,13 @@ export const testsCommand = {
                 exitCode: "the gate's exit code",
                 gate: "the script that ran",
                 scope: "the command that ran, as status rows record it",
-                failures: `0 on PASS; on FAIL the failing + erroring test cases in the JUnit reports, or null when no report counts any (unknown, never 0)`,
+                failures: `0 on PASS; on FAIL the failing + erroring test cases in the JUnit reports, or null when no report counts any (unknown, never 0); a CI evidence round: the selected run's failed jobs without the capstone, or null`,
                 reports: `{log}.reports — emptied before the run and passed to the gate as $${REPORT_DIR_ENV}`,
                 log: "where the full output was saved (as given); the untouched original",
                 logBytes: "size of the saved output",
                 artifact: "--artifact as given, else null",
                 clamp: "the artifact's clamp record (raw = the log, source = scope), else null",
-                row: `the ${TEST_RUN_ROW} row appended to --file ({type, workflow, at, step, attempt?, run, verdict, exitCode, failures, scope, log, artifact?}; run = this step's test-run rows in the workflow's active run, this one included), else null; a tests-lock wait writes no row`,
+                row: `the ${TEST_RUN_ROW} row appended to --file ({type, workflow, at, step, attempt?, run, verdict, exitCode, failures, scope, log, artifact?, source, tested?, failedTests?, failedTestsTruncated?}; run = this step's test-run rows in the workflow's active run, this one included; tested = on a local row, the commit (no ref) holding the tree the gate ran on, left off when git cannot build it; failedTests = on a FAIL, each failing case as \`{file or classname} > {name}\` (a CI evidence round: \`job:{name}\` per failed job), unique, sorted, at most ${FAILED_TESTS_CAP}, failedTestsTruncated true when cut), else null; a tests-lock wait writes no row`,
                 lockHolder: "tests-lock holder when the wait gave up, else null",
             },
             textOmit: ["clamp", "row"],
@@ -1357,18 +1653,19 @@ export const testsCommand = {
                             source: "ci",
                             verdict: "FAIL",
                             exitCode: null,
-                            failures: null,
+                            failures: selection.failedJobCount ?? null,
                             scope,
                             log: logArg,
                             artifact,
                             evidence,
+                            ...failedTestsField((selection.failedJobs ?? []).map((job) => `job:${job}`)),
                         });
                         ctx.emit({
                             source: "ci",
                             verdict: "FAIL",
                             scope,
                             exitCode: null,
-                            failures: null,
+                            failures: selection.failedJobCount ?? null,
                             ...evidence,
                             artifact,
                             log: logArg,
@@ -1387,7 +1684,48 @@ export const testsCommand = {
                 // Gates are declared and run at the top of the checkout being tested (the
                 // feature worktree), wherever in it the caller happens to stand.
                 const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
-                const gate = resolveGate(top, candidates);
+                const passSteps = str(ctx.flags.sincePassOf)
+                    ?.split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean);
+                if (passSteps !== undefined &&
+                    (status === undefined || ctx.flags.changedSince === undefined || passSteps.length === 0))
+                    throw new CommandError(EXIT.USAGE, "--since-pass-of needs one or more steps, --file, --workflow and --changed-since");
+                const sinceRaw = sinceBase(top, str(ctx.flags.changedSince), ctx.log);
+                if (sinceRaw !== undefined &&
+                    git(top, ["rev-parse", "-q", "--verify", `${sinceRaw}^{commit}`]) === null)
+                    throw new CommandError(EXIT.USAGE, `--changed-since ${sinceRaw} names no commit`);
+                // The tree this run tests, taken before the gate starts.
+                const tested = status === undefined ? null : snapshotTree(top);
+                if (status !== undefined && tested === null)
+                    ctx.log("could not snapshot the working tree — the test-run row records no tested");
+                // With --since-pass-of: the files that differ from the newest passing run's snapshot.
+                const passDiff = () => {
+                    if (passSteps === undefined)
+                        return null;
+                    const pass = newestPass(top, status, workflow, passSteps, ctx.log);
+                    if (pass === null) {
+                        ctx.log(`no passing run of ${passSteps.join(", ")} to measure from — testing from --changed-since ${sinceRaw}`);
+                        return null;
+                    }
+                    const diff = changedBetween(top, pass, tested);
+                    if (diff === null) {
+                        ctx.log(`could not list the files changed since the passing run at ${pass} — testing from --changed-since ${sinceRaw}`);
+                        return null;
+                    }
+                    return { base: pass, ...diff };
+                };
+                let scoped = null;
+                if (sinceRaw !== undefined && declares(top, BKIT_GATE_CHANGED_SCRIPT)) {
+                    const fromPass = passDiff();
+                    scoped =
+                        fromPass === null
+                            ? changedScope(top, sinceRaw, candidates, ctx.log)
+                            : changedScope(top, fromPass.base, candidates, ctx.log, fromPass);
+                }
+                const useChanged = scoped !== null;
+                const changed = scoped?.files ?? [];
+                const gate = useChanged ? BKIT_GATE_CHANGED_SCRIPT : resolveGate(top, candidates);
                 if (gate === null) {
                     const read = readPackageJson(top);
                     if (!read.ok)
@@ -1395,21 +1733,70 @@ export const testsCommand = {
                     ctx.log(`no bkit:gate:* script declared (looked for ${candidates.join(", ")}) — ${NO_GATE_HINT}`);
                     return EXIT_NO_GATE;
                 }
-                const scope = gateScope(gate);
+                const scope = useChanged
+                    ? `${gateScope(gate)} (${changed.length} changed file${changed.length === 1 ? "" : "s"})`
+                    : gateScope(gate);
                 const log = path.resolve(ctx.cwd, logArg);
+                if (scoped !== null && changed.length === 0) {
+                    ctx.log(scoped.deleted.length === 0
+                        ? `no files changed since ${sinceRaw} — nothing to run`
+                        : `only deleted files that no file mentions changed since ${sinceRaw} — nothing to run`);
+                    const row = status === undefined
+                        ? null
+                        : appendTestRun(status, {
+                            workflow: workflow,
+                            step: step,
+                            attempt,
+                            verdict: "PASS",
+                            exitCode: 0,
+                            failures: 0,
+                            scope,
+                            log: logArg,
+                            artifact: undefined,
+                            source: "local",
+                            tested,
+                        });
+                    ctx.emit({
+                        source: "local",
+                        verdict: "PASS",
+                        exitCode: 0,
+                        gate,
+                        scope,
+                        failures: 0,
+                        reports: null,
+                        log: logArg,
+                        logBytes: 0,
+                        artifact: null,
+                        clamp: null,
+                        row,
+                        lockHolder: null,
+                    });
+                    return EXIT.OK;
+                }
                 const reports = freshReportDir(log);
                 ctx.log(`running ${scope} — full output in ${logArg}`);
                 const fetchedAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
                 const who = ["bkit tests run", gate, fid, step].filter(Boolean).join(" ");
-                const exitCode = runToLog(scriptCommand(gate), top, log, {
-                    [REPORT_DIR_ENV]: reports,
-                    LOCAL_STACK_LOCK_WAIT_S: String(waitS),
-                    LOCAL_STACK_LOCK_WHO: who,
-                });
+                // The gate's run under the tests lock, kept for the receipt's lock-wait check.
+                const lock = {};
+                const runGate = () => {
+                    lock.run = runGateUnderLock(useChanged ? [...scriptCommand(gate), ...changed] : scriptCommand(gate), top, log, {
+                        [REPORT_DIR_ENV]: reports,
+                        LOCAL_STACK_LOCK_WAIT_S: String(waitS),
+                        LOCAL_STACK_LOCK_WHO: who,
+                    });
+                    return lock.run.exitCode;
+                };
+                // The required full gate leaves a push receipt, so the branch's first push
+                // reuses it; bookkeeping paths may be uncommitted, as every engine call writes one.
+                const exitCode = sinceRaw === undefined && gate === requiredPushGate(top)
+                    ? runWithReceipt(top, gate, minPushPathspecs(readBkitConfig(top)), runGate, ctx.log, () => lock.run?.lock === "lock-wait")
+                    : runGate();
                 const logText = fs.readFileSync(log, "utf-8");
-                const lockExit = classifyLockExit({ exitCode, log: logText, who });
+                // runWithReceipt always runs the gate, so lock.run is set here.
+                const lockExit = lock.run?.lock ?? "gate";
                 const lockWait = lockExit === "lock-wait";
-                const lockHolder = lockWait ? testsLockHolder(logText, who) : null;
+                const lockHolder = lockWait ? (lock.run?.status?.holder ?? null) : null;
                 const lines = lockExit === "gate"
                     ? Number(tailRaw) > 0
                         ? tailLines(log, Number(tailRaw))
@@ -1419,7 +1806,8 @@ export const testsCommand = {
                     ctx.log(line);
                 const couldNotRun = lockExit === "could-not-run" || COULD_NOT_RUN_EXIT_CODES.has(exitCode);
                 const verdict = couldNotRun || lockWait ? null : exitCode === 0 ? "PASS" : "FAIL";
-                const counted = lockExit === "gate" ? countReportFailures(reports) : null;
+                const failing = lockExit === "gate" ? reportFailures(reports) : null;
+                const counted = failing?.length ?? null;
                 if (counted === null && lockExit === "gate")
                     ctx.log(NO_REPORT_HINT);
                 else if (verdict === "FAIL" && counted === 0)
@@ -1462,6 +1850,8 @@ export const testsCommand = {
                         log: logArg,
                         artifact,
                         source: "local",
+                        tested,
+                        ...failedTestsField(verdict === "FAIL" ? (failing ?? []).map(caseLabel) : []),
                     });
                 ctx.emit({
                     source: "local",
@@ -1485,7 +1875,9 @@ export const testsCommand = {
                 if (lockWait)
                     return EXIT.AGENT_WAIT;
                 if (couldNotRun) {
-                    ctx.log(`${scope} could not run (exit ${exitCode}: ${lockExit === "could-not-run" ? "tests lock refused" : exitCode === 126 ? "not executable" : "command not found"}) — no tests executed; this is not a FAIL verdict`);
+                    ctx.log(lock.run?.status?.outcome === "held-too-long"
+                        ? `${scope} could not finish (exit ${exitCode}: stopped at the tests-lock hold limit) — its tests have no result; this is not a FAIL verdict`
+                        : `${scope} could not run (exit ${exitCode}: ${lockExit === "could-not-run" ? "tests lock refused" : exitCode === 126 ? "not executable" : "command not found"}) — no tests executed; this is not a FAIL verdict`);
                     return EXIT_COULD_NOT_RUN;
                 }
                 ctx.log(`verdict ${verdict} (exit ${exitCode})`);
@@ -1493,7 +1885,7 @@ export const testsCommand = {
             },
         },
         red: {
-            summary: "Run every TEST FIRST test of one group's open tasks before any task code exists, and write one build-tests-red row holding a state and blob per planned test; a test an earlier row of the group proved red, its file unchanged since, is not run again. Exit 0 every test red, 1 a gap (a test passing, absent from its report, failing lint, or its file missing), 3 bkit:test:file undeclared (blobs recorded, nothing ran), 4 a script could not run.",
+            summary: "Run every TEST FIRST test of one group's open tasks before any task code exists, and write one build-tests-red row holding a state and blob per planned test; a test an earlier row of the group proved red, its file unchanged since, is not run again. A test a later task takes over from an earlier one (same file and name) carries `from`, and one that passes after the rewrite is recorded taken-over. Exit 0 every test red, 1 a gap (a test passing, absent from its report, failing lint, or its file missing), 3 bkit:test:file undeclared (blobs recorded, nothing ran), 4 a script could not run.",
             use: "workflow",
             flags: [
                 FILE_FLAG,
@@ -1526,9 +1918,9 @@ export const testsCommand = {
                 enforced: "false when bkit:test:file is not declared (the row records the blobs, every state unknown, exit 3) or the plan could not be read (no row, exit 1)",
                 reason: "why test-first is not enforced",
                 attempt: "this group's build-tests-red rows so far, this one included",
-                tests: "[{task, test, testName, state, blob, reason?}] in plan order, the tests run now: state red | red-not-loaded | passed-accepted | vacuous | missing | no-report | lint | unknown; blob the test file's git blob as it stood (null when the file is missing); reason the tests step's, on passed-accepted",
+                tests: "[{task, test, testName, state, blob, reason?, base?, from?}] in plan order, the tests run now: state red | red-not-loaded | passed-accepted | updated | taken-over | vacuous | missing | no-report | lint | unknown; blob the test file's git blob as it stood (null when the file is missing); reason the tests step's, on passed-accepted; from the earlier task a takeover took the test over from (a passing takeover written in this build is taken-over, one that existed at the run start is updated with base the run's start commit)",
                 skipped: "planned tests an earlier row of the group proved red, their file unchanged since: not run again, and not on this row",
-                gaps: "[{task, test, name, kind, detail}]: every planned test whose state is not red, red-not-loaded or passed-accepted; kind is the state",
+                gaps: "[{task, test, name, kind, detail}]: every planned test whose state is not red, red-not-loaded, passed-accepted, updated or taken-over; kind is the state",
                 row: "the build-tests-red row written",
                 log: "where the report was written (as given)",
             },
@@ -1577,7 +1969,7 @@ export const testsCommand = {
                 // retry, a handover or a task added to the group runs only what is left, and an edit
                 // to another test of the same file costs no proof. A test whose lines could not be
                 // found, and rows from before per-test locking, stand while the whole file is unchanged.
-                const proven = redEntries(status, workflow, group);
+                const proven = lockBaselines(workflowRows(status, workflow), null);
                 const textOf = (test) => {
                     const abs = path.join(top, test);
                     return fs.existsSync(abs) ? fs.readFileSync(abs, "utf-8") : null;
@@ -1598,18 +1990,40 @@ export const testsCommand = {
                     const shown = runGit(top, ["show", `${startSha}:${t.test}`]);
                     return shown.ok ? blockHash(shown.stdout, t.testName) : null;
                 };
+                // A takeover whose earlier task has a baseline carries `from`; a passing one is judged
+                // against the run start, not the group start.
+                const takeovers = new Map(planTakeovers(planText).map((k) => [redKey(k.task, k.test, k.name), k]));
+                const baselines = [...proven.values()];
+                const fromOf = (task, test, name) => {
+                    const k = takeovers.get(redKey(task, test, name));
+                    if (k === undefined)
+                        return undefined;
+                    const owned = baselines.some((b) => b.task === k.from && b.test === k.test && sameTestName(b.testName, k.name));
+                    return owned ? k.from : undefined;
+                };
+                const runStartRaw = activeRunStart(status, workflow)?.parentSha;
+                const runStart = typeof runStartRaw === "string" ? runStartRaw : undefined;
+                /** The test's lines at the run's start commit: it existed before this build. */
+                const blockAtRunStart = (t) => {
+                    if (runStart === undefined)
+                        return null;
+                    const shown = runGit(top, ["show", `${runStart}:${t.test}`]);
+                    return shown.ok ? blockHash(shown.stdout, t.testName) : null;
+                };
                 const tests = [];
                 let skipped = 0;
                 for (const s of readTestFirst(planText, group)) {
                     if (s.kind !== "test" || done.has(s.task))
                         continue;
                     for (const t of s.tests) {
+                        const from = fromOf(s.task, t.test, t.name);
                         const planned = {
                             task: s.task,
                             test: t.test,
                             testName: t.name,
                             state: "unknown",
                             blob: null,
+                            ...(from === undefined ? {} : { from }),
                         };
                         if (standing(planned))
                             skipped += 1;
@@ -1681,6 +2095,20 @@ export const testsCommand = {
                         }
                         for (const t of mine) {
                             const judged = judgeRed(cases, t.testName, file);
+                            if (t.from !== undefined && judged.state === "vacuous") {
+                                const pre = blockAtRunStart(t);
+                                if (pre === null) {
+                                    t.state = "taken-over";
+                                    details.set(t, `taken over from TASK ${t.from} and passing after its rewrite: changed hands, not proven failing`);
+                                    continue;
+                                }
+                                if (pre !== t.block) {
+                                    t.state = "updated";
+                                    t.base = runStart;
+                                    details.set(t, `taken over from TASK ${t.from}; it existed before the run (\`${runStart.slice(0, 9)}\`) and passes: the verifier judges its diff — it may add expectations, never remove or loosen one`);
+                                    continue;
+                                }
+                            }
                             const accepted = judged.state === "vacuous"
                                 ? passes.find((p) => p.task === t.task && p.test === t.test && p.name === t.testName)
                                 : undefined;
@@ -1756,7 +2184,7 @@ export const testsCommand = {
             },
         },
         green: {
-            summary: "Audit a plan's test-first evidence (each TEST FIRST test red at its group's tests step, by the build-tests-red row, or accepted there as passing before any task code; the named test passing now); exit 0 no gaps, 1 gaps or a plan with no task markers.",
+            summary: "Audit a plan's test-first evidence (each TEST FIRST test red at its group's tests step, by the build-tests-red row, or accepted there as passing before any task code; the named test passing now); a taken-over test is listed under takenOver with its diff since the earlier task's red, never as a gap or unproven; exit 0 no gaps, 1 gaps or a plan with no task markers.",
             use: "workflow",
             flags: [
                 FILE_FLAG,
@@ -1784,6 +2212,8 @@ export const testsCommand = {
                 gaps: "[{task, kind, detail, fixable, logLine}]: no-test-first | test-first-malformed | test-first-unread (task null: a plan-level format problem) | not-green | exception-refused (a task whose only test field is a TEST EXCEPTION not honoured) | delete-still-referenced (a DELETE line's file still exists, or its name is still found in the tree); fixable is null when the gap needs a diff read; logLine is the line the verifier appends",
                 alreadyLanded: "[{task, test, name, reason}]: tests the tests step accepted as passing before any task code (passed-accepted on the red row); no red is due for them",
                 unproven: "[{task, test, name, detail}]: tests with no proven red (no build-tests-red row, or a state other than red, red-not-loaded, updated or passed-accepted) and no honoured TEST EXCEPTION; never a gap — the owner answers them once, at the end of the build",
+                changed: "[{task, test, name, reason, diff, additive}]: plan-named tests (every group) a code step changed under a BLOCKED line naming them (the step's changedTests record), with the diff of the test's own lines since its baseline and whether it only adds lines; never a gap — the owner answers them once, at the end of the build",
+                takenOver: "[{task, from, test, name, state, diff, additive}]: planned tests a later task took over (a red entry with from); diff / additive compare the test's own lines at the earlier owner's red with the file now (null when a side cannot be read); never a gap, never unproven",
                 updated: "[{task, test, name, base, additive, diff}]: existing tests the tests step changed (updated on the red row); base is the group's start commit; additive = the test's own lines since base gained lines and lost none (null when a side cannot be read), diff = their unified line diff; the verifier judges each diff — it may add expectations, never remove or loosen one",
                 log: "where the report was written (as given)",
             },
@@ -1817,6 +2247,20 @@ export const testsCommand = {
                     (resolveGate(top, [BKIT_TEST_FILE_SCRIPT]) === null
                         ? `\`${BKIT_TEST_FILE_SCRIPT}\` is not declared in package.json`
                         : undefined);
+                const changed = [
+                    ...lockBaselines(workflowRows(statusFile(ctx), workflow), plannedKeys(planText)).values(),
+                ]
+                    .filter((b) => b.fromChange && b.reasons.length > 0)
+                    .map((b) => ({
+                    task: b.task,
+                    test: b.test,
+                    name: b.testName,
+                    reason: b.reasons.join("; "),
+                    ...(() => {
+                        const d = baselineDiff(top, b.origin, b.test, b.testName);
+                        return { diff: d?.diff ?? null, additive: d?.additive ?? null };
+                    })(),
+                }));
                 const empty = {
                     verdict: null,
                     rows: [],
@@ -1825,6 +2269,8 @@ export const testsCommand = {
                     landed: [],
                     unproven: [],
                     updated: [],
+                    takenOver: [],
+                    changed,
                     outputs: [],
                 };
                 if (reason !== undefined) {
@@ -1838,6 +2284,8 @@ export const testsCommand = {
                         alreadyLanded: [],
                         unproven: [],
                         updated: [],
+                        takenOver: [],
+                        changed,
                         log: logArg,
                     });
                     ctx.log(`test-first not enforced: ${reason}`);
@@ -1848,6 +2296,7 @@ export const testsCommand = {
                 const landed = [];
                 const unproven = [];
                 const updated = [];
+                const takenOver = [];
                 const statusRel = repoRel(top, ctx.cwd, statusFile(ctx));
                 const exceptions = [];
                 const gaps = [];
@@ -1931,6 +2380,8 @@ export const testsCommand = {
                         }
                         else if (RED_PROVEN.has(red.state)) {
                             row.red = red.state;
+                            if (red.from !== undefined)
+                                takenOver.push(takenOverEntry(top, reds, red));
                             if (red.state === "updated")
                                 updated.push(updatedEntry(top, s.task, t, red.base ?? null));
                         }
@@ -1969,6 +2420,8 @@ export const testsCommand = {
                     landed,
                     unproven,
                     updated,
+                    takenOver,
+                    changed,
                     outputs,
                 });
                 ctx.emit({
@@ -1979,6 +2432,8 @@ export const testsCommand = {
                     alreadyLanded: landed,
                     unproven,
                     updated,
+                    takenOver,
+                    changed,
                     log: logArg,
                 });
                 ctx.log(`test-first audit: ${gaps.length} gap(s), ${unproven.length} unproven — report in ${logArg}`);
@@ -1986,7 +2441,7 @@ export const testsCommand = {
             },
         },
         "plan-check": {
-            summary: `Check a plan's group and task blocks: the block format, DONE WHEN and TEST FIRST on every task, DEPENDS ON order, the caps from package.json \`bkit.workflows.tasks\` (defaults: ${capsText(CONFIG_DEFAULTS.tasks)}), a Reuse Inventory NEW row per CREATE file, a Supersession Inventory row per DELETE, a \`Task\` on every Derived Test Matrix row and a row per test-bearing task, and that each READ / UPDATE / DELETE file and symbol exists; exit 0 no problems, 1 refused.`,
+            summary: `Check a plan's group and task blocks: the block format, DONE WHEN and TEST FIRST on every task, DEPENDS ON order, the caps from package.json \`bkit.workflows.tasks\` (defaults: ${capsText(CONFIG_DEFAULTS.tasks)}), a Reuse Inventory NEW row per CREATE file, a Supersession Inventory row per DELETE, a \`Task\` on every Derived Test Matrix row and a row per test-bearing task, and that each READ / UPDATE / DELETE file and symbol exists; lists each later task's TEST FIRST test an earlier task also names under takeovers, reported only; exit 0 no problems, 1 refused.`,
             use: "by-hand",
             flags: [
                 {
@@ -2006,14 +2461,20 @@ export const testsCommand = {
                     required: true,
                     help: "file the report is written to, `Problems:` header first (directories are created)",
                 },
+                {
+                    name: "ledger-rows",
+                    type: "boolean",
+                    help: "also refuse a plan whose `**Ledger rows:**` line is absent, unfilled or names a key with no docs/decisions.jsonl or docs/deferrals.jsonl row (the `ledgers check` test)",
+                },
             ],
             output: {
                 plan: "the plan file checked (as given)",
                 groups: "[{group, title, tasks, tests, kb}]: each group's tasks, planned TEST FIRST tests and size",
                 tasks: "[{task, group, tests, files}]: each task's planned tests and distinct test files",
-                problems: "[{line, kind, message}]: format | stray | field | depends | cap | inventory | matrix | supersession | markers — each refuses the plan",
+                problems: "[{line, kind, message}]: format | stray | field | depends | cap | inventory | matrix | supersession | markers | ledger (--ledger-rows only) — each refuses the plan",
                 existence: "[{line, task, message}]: READ / UPDATE / DELETE files or symbols not found; refuses only with --existence=refuse",
-                existing: "[{line, task, test, name}]: planned tests of open tasks whose name a test in their file already carries; reported only, never refuses",
+                existing: "[{line, task, test, name}]: planned tests of open tasks whose name a test in their file already carries, takeovers left out; reported only, never refuses",
+                takeovers: "[{task, from, test, name, line, sameGroup}]: planned tests a later task names that an earlier task (`from`, the nearest) also names; reported only, never refuses",
                 log: "where the report was written (as given)",
             },
             run: (ctx) => {
@@ -2030,8 +2491,11 @@ export const testsCommand = {
                 const text = fs.readFileSync(planAbs, "utf-8");
                 const caps = planCaps(ctx.cwd);
                 const { groups, sizes, problems } = checkPlanText(text, caps);
+                if (ctx.flags.ledgerRows === true)
+                    problems.push(...ledgerRowProblems(toplevel(ctx.cwd), text));
                 const existence = planExistence(text, toplevel(ctx.cwd));
                 const existing = existingTestNames(text, toplevel(ctx.cwd));
+                const takeovers = planTakeovers(text);
                 const refused = problems.length > 0 || (existenceArg === "refuse" && existence.length > 0);
                 const out = [
                     `Problems: ${problems.length}`,
@@ -2072,10 +2536,23 @@ export const testsCommand = {
                     out.push("", "## Planned test names already in use (reported only)", "");
                 for (const e of existing)
                     out.push(`- \`${plan}:${e.line}\` TASK ${e.task}: \`${e.test}\` already holds a test named "${e.name}" — name the update to it in TEST FIRST, or give the new test a new name`);
+                if (takeovers.length > 0)
+                    out.push("", "## Tests that change hands (reported only)", "");
+                for (const k of takeovers)
+                    out.push(`- \`${plan}:${k.line}\` TASK ${k.task} takes over "${k.name}" in \`${k.test}\` from TASK ${k.from}${k.sameGroup ? " (same group: one test, one baseline)" : " — the build records it failing again"}`);
                 const log = path.resolve(ctx.cwd, logArg);
                 fs.mkdirSync(path.dirname(log), { recursive: true });
                 fs.writeFileSync(log, `${out.join("\n")}\n`);
-                ctx.emit({ plan, groups, tasks: sizes, problems, existence, existing, log: logArg });
+                ctx.emit({
+                    plan,
+                    groups,
+                    tasks: sizes,
+                    problems,
+                    existence,
+                    existing,
+                    takeovers,
+                    log: logArg,
+                });
                 ctx.log(`plan check: ${problems.length} problem(s), ${existence.length} existence finding(s)${refused ? " — refused" : ""}; report in ${logArg}`);
                 return refused ? EXIT.NO : EXIT.OK;
             },

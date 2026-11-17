@@ -11,6 +11,7 @@ import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { parse as parseYamlText } from "yaml";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 const tmpDirs: string[] = [];
 afterEach(() => {
@@ -127,12 +128,16 @@ describe("shipped copy-and-own test files", () => {
     expect(SHIPPED_TEST_FILES.length).toBeGreaterThan(0);
   });
 
-  it.each(SHIPPED_TEST_FILES)("%s passes when run on its own", { timeout: 30_000 }, (file) => {
-    const res = spawnSync(process.execPath, [path.join(SHIPPED_SCRIPTS_DIR, file)], {
-      encoding: "utf-8",
-    });
-    expect(res.status, res.stdout + res.stderr).toBe(0);
-  });
+  it.each(SHIPPED_TEST_FILES)(
+    "%s passes when run on its own",
+    { timeout: localLimit(30_000) },
+    (file) => {
+      const res = spawnSync(process.execPath, [path.join(SHIPPED_SCRIPTS_DIR, file)], {
+        encoding: "utf-8",
+      });
+      expect(res.status, res.stdout + res.stderr).toBe(0);
+    },
+  );
 });
 
 const CAPSTONE_SCRIPT = path.resolve(".bkit/templates/scripts/ci/bkit-check-capstone.mjs");

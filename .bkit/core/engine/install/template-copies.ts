@@ -9,6 +9,14 @@ import {
   getTemplatesRoot,
   TEMPLATE_COPIES_DIR,
 } from "../shared/package-roots.js";
+import { hasLintStagedConfig } from "../checks/tips/detect.js";
+import { readDependencyNames, readPackageJson } from "../shared/package-json.js";
+import {
+  adoptedProjectDocPath,
+  inspectRepoFile,
+  PROJECT_DOC_TOPICS,
+  type ProjectDocTopic,
+} from "./project-docs.js";
 import type { WriteSet } from "./write.js";
 
 export function listFilesRecursive(dir: string): string[] {
@@ -111,20 +119,39 @@ export const TEMPLATE_CHANGE_CONSEQUENCES: Readonly<Record<string, string>> = {
     "your adopted copy's guardrails exemptions are now stale; your slop gate may go red",
 };
 
-/** `  changed: <dest>`, plus the consequence when that template's adopted copy backs a gate. */
-function formatChangedLine(rel: string): string {
+/** Where the project keeps its copy of a changed `docs/{topic}.md` starter, or null. */
+function adoptedDocCopy(rel: string, cwd: string): string | null {
+  const match = /^docs\/([^/]+)\.md$/.exec(rel);
+  if (match === null) return null;
+  const topic = match[1];
+  if (topic === "components") return inspectRepoFile(cwd, rel) === "regular" ? rel : null;
+  return PROJECT_DOC_TOPICS.includes(topic as ProjectDocTopic)
+    ? adoptedProjectDocPath(cwd, topic as ProjectDocTopic)
+    : null;
+}
+
+/**
+ * `  changed: <dest>`, plus the consequence when that template's adopted copy backs a gate, and
+ * `adopted at <path>, review your copy` when the project keeps a copy of a changed doc starter.
+ */
+function formatChangedLine(rel: string, cwd: string): string {
   const line = `  changed: ${path.join(TEMPLATE_COPIES_DIR, rel)}`;
   const note = TEMPLATE_CHANGE_CONSEQUENCES[rel];
-  return note === undefined ? line : `${line} — ${note}`;
+  const adopted = adoptedDocCopy(rel, cwd);
+  const parts = [
+    ...(note === undefined ? [] : [note]),
+    ...(adopted === null ? [] : [`adopted at ${adopted}, review your copy`]),
+  ];
+  return parts.length === 0 ? line : `${line} \u2014 ${parts.join("; ")}`;
 }
 
 /**
  * The upgrade report for a template sync: one line per changed, added or removed
  * template, then where to read about adopting them. Empty when nothing changed.
  */
-export function formatTemplateChanges(changes: TemplateCopyChanges): string {
+export function formatTemplateChanges(changes: TemplateCopyChanges, cwd: string): string {
   const lines = [
-    ...changes.changed.map(formatChangedLine),
+    ...changes.changed.map((rel) => formatChangedLine(rel, cwd)),
     ...changes.added.map((p) => `  added:   ${path.join(TEMPLATE_COPIES_DIR, p)}`),
     ...changes.removed.map((p) => `  removed: ${path.join(TEMPLATE_COPIES_DIR, p)}`),
   ];
@@ -134,4 +161,30 @@ export function formatTemplateChanges(changes: TemplateCopyChanges): string {
     ...lines,
     TEMPLATES_POINTER,
   ].join("\n");
+}
+
+/** The line install, check and upgrade print after their log prefix when a gating lint-staged has no config to read. */
+export const MISSING_LINT_STAGED_CONFIG_LINE =
+  "no root lint-staged config — commits will fail. Fix: cp .bkit/templates/lintstagedrc.example.json .lintstagedrc.json";
+
+// True when `bkit:gate:format` runs `lint-staged` without a `--config` / `-c` path.
+function formatGateRunsBareLintStaged(cwd: string): boolean {
+  const pkg = readPackageJson(cwd);
+  const scripts = pkg.ok ? (pkg.pkg.scripts as Record<string, unknown> | undefined) : undefined;
+  const format = scripts?.["bkit:gate:format"];
+  if (typeof format !== "string" || !/\blint-staged\b/.test(format)) return false;
+  return !/(?:^|\s)(?:--config(?:[=\s]|$)|-c(?:[=\s]|$))/.test(format);
+}
+
+// bkit writes no lint-staged config into a consumer repo. When the format gate runs lint-staged
+// bare, lint-staged is installed and no config exists, the commit hook fails: print the one-line
+// fix after the calling command's `logPrefix`. Prints in a dry run too; writes nothing. Returns
+// true when it printed. No-op in dogfood.
+export function warnMissingLintStagedConfig(cwd: string, logPrefix: string): boolean {
+  if (path.resolve(cwd) === getPkgRoot()) return false;
+  if (!formatGateRunsBareLintStaged(cwd)) return false;
+  if (!readDependencyNames(cwd).includes("lint-staged")) return false;
+  if (hasLintStagedConfig(cwd)) return false;
+  console.log(`${logPrefix} ${MISSING_LINT_STAGED_CONFIG_LINE}`);
+  return true;
 }

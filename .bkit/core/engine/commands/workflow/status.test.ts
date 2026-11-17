@@ -5,7 +5,7 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CommandError, runCommand } from "../lib";
+import { CommandError, resolveInvocation, runCommand } from "../lib";
 import { COMMANDS } from "../registry";
 import { runStatusRows, stepsBlock } from "./run-facts";
 import { readRuns, readStatusEvents, readStatusRows } from "./status";
@@ -418,6 +418,26 @@ describe("bkit status route", () => {
     expect(none.json.parentSha).toBeNull();
   });
 
+  it("prints the source of the step's last row in the active run, else null", async () => {
+    const file = log([
+      started("debug", "2026-10-01T00:00:00Z"),
+      done("debug", "debug-run-tests", "2026-10-01T00:01:00Z", {
+        verdict: "FAIL",
+        failures: 1,
+        source: "local",
+      }),
+      done("debug", "debug-run-tests", "2026-10-01T00:02:00Z", {
+        verdict: "FAIL",
+        failures: 1,
+        source: "ci",
+      }),
+    ]);
+    const r = await run([...base, `--file=${file}`, "--workflow=debug", "--step=debug-run-tests"]);
+    expect(r.json).toMatchObject({ verdict: "FAIL", source: "ci" });
+    const none = await run([...base, `--file=${file}`, "--workflow=debug"]);
+    expect(none.json.source).toBeNull();
+  });
+
   it("counts absent failures as 0 when a verdict is present", async () => {
     const file = log([done("build", "s", "2026-10-01T00:01:00Z", { verdict: "CONCERNS" })]);
     expect(
@@ -451,7 +471,7 @@ describe("bkit status route", () => {
     expect(r.err).toContain("no DONE s row in the active build run");
   });
 
-  it("reads strategy across ALL runs and gives the next rung", async () => {
+  it("reads strategy across ALL runs; the previous label does not move the next one", async () => {
     const file = log([
       started("build", "2026-10-01T00:00:00Z"),
       done("build", "s", "2026-10-01T00:01:00Z", { strategy: "STANDARD" }),
@@ -459,10 +479,10 @@ describe("bkit status route", () => {
       started("build", "2026-10-01T00:03:00Z"),
     ]);
     const r = await run([...base, `--file=${file}`, "--workflow=build", "--step=s"]);
-    expect(r.json).toMatchObject({ strategy: "STANDARD", nextStrategy: "PIVOT" });
+    expect(r.json).toMatchObject({ strategy: "STANDARD", nextStrategy: "STANDARD" });
   });
 
-  it("starts the ladder at STANDARD when no strategy is recorded", async () => {
+  it("gives STANDARD when no strategy is recorded", async () => {
     const file = log([done("build", "s", "2026-10-01T00:01:00Z")]);
     expect(
       (await run([...base, `--file=${file}`, "--workflow=build", "--step=s"])).json.nextStrategy,
@@ -551,15 +571,15 @@ describe("bkit status route", () => {
     expect((await run([...base, `--file=${file}`, "--workflow=debug"])).json.debugMode).toBeNull();
   });
 
-  it.each([
-    ["PIVOT", "FINAL"],
-    ["FINAL", "FINAL"],
-  ])("climbs the ladder: %s -> %s", async (prior, next) => {
-    const file = log([done("build", "s", "2026-10-01T00:01:00Z", { strategy: prior })]);
-    expect(
-      (await run([...base, `--file=${file}`, "--workflow=build", "--step=s"])).json,
-    ).toMatchObject({ strategy: prior, nextStrategy: next });
-  });
+  it.each(["PIVOT", "FINAL"])(
+    "a previous %s label alone gives STANDARD: no failing test repeats",
+    async (prior) => {
+      const file = log([done("build", "s", "2026-10-01T00:01:00Z", { strategy: prior })]);
+      expect(
+        (await run([...base, `--file=${file}`, "--workflow=build", "--step=s"])).json,
+      ).toMatchObject({ strategy: prior, nextStrategy: "STANDARD", repeatTests: [] });
+    },
+  );
 
   it("fails a --require'd strategy outside the ladder", async () => {
     const file = log([done("build", "s", "2026-10-01T00:01:00Z", { strategy: "YOLO" })]);
@@ -600,7 +620,7 @@ describe("bkit status route", () => {
     ]);
     const q = async (...f: string[]) =>
       (await run([...base, `--file=${file}`, "--workflow=build", "--step=s", ...f])).json;
-    expect(await q("--group=1")).toMatchObject({ strategy: "PIVOT", nextStrategy: "FINAL" });
+    expect(await q("--group=1")).toMatchObject({ strategy: "PIVOT", nextStrategy: "STANDARD" });
     expect(await q("--group=2")).toMatchObject({ strategy: null, nextStrategy: "STANDARD" });
     expect(await q()).toMatchObject({ strategy: null, nextStrategy: "STANDARD" });
   });
@@ -616,6 +636,403 @@ describe("bkit status route", () => {
       },
     ]);
     expect((await run([...base, `--file=${file}`, "--workflow=debug"])).json.debugAttempt).toBe(0);
+  });
+});
+
+describe("bkit status route fix label from repeated failing tests", () => {
+  const testRun = (
+    workflow: string,
+    step: string,
+    at: string,
+    attempt: number,
+    failedTests?: string[],
+  ) => ({
+    type: "test-run",
+    workflow,
+    step,
+    at,
+    attempt,
+    verdict: failedTests === undefined || failedTests.length > 0 ? "FAIL" : "PASS",
+    failures: failedTests?.length ?? 1,
+    ...(failedTests === undefined ? {} : { failedTests }),
+  });
+  const holistic = (file: string) =>
+    run([
+      "status",
+      "route",
+      `--file=${file}`,
+      "--workflow=build",
+      "--step=build-plan-gaps-remediate-holistic",
+    ]);
+  const fixRow = (at: string, strategy: string, extra: Record<string, unknown> = {}) =>
+    done("build", "build-plan-gaps-remediate-holistic", at, { strategy, ...extra });
+  /** `n` check rounds of the active run: the gate's newest row counts only at attempt `n`. */
+  const checks = (n: number, step = "build-plan-verify-holistic", group?: number) =>
+    Array.from({ length: n }, (_, i) =>
+      done("build", step, `2026-10-01T00:00:${10 + i}Z`, {
+        verdict: "PASS",
+        ...(group === undefined ? {} : { group }),
+      }),
+    );
+
+  it("nextStrategy is STANDARD when no failing test failed in an earlier attempt", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(2),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:01:00Z", 1, ["a"]),
+      fixRow("2026-10-01T00:02:00Z", "STANDARD"),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:03:00Z", 2, ["b"]),
+    ]);
+    const r = await holistic(file);
+    expect(r.json).toMatchObject({
+      strategy: "STANDARD",
+      nextStrategy: "STANDARD",
+      repeatTests: [],
+    });
+  });
+
+  it("nextStrategy is STANDARD for a round with no failing tests after an earlier PIVOT round", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(3),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:01:00Z", 1, ["a"]),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:02:00Z", 2, ["a"]),
+      fixRow("2026-10-01T00:03:00Z", "PIVOT"),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:04:00Z", 3, []),
+    ]);
+    const r = await holistic(file);
+    expect(r.json).toMatchObject({ strategy: "PIVOT", nextStrategy: "STANDARD", repeatTests: [] });
+  });
+
+  it("nextStrategy is PIVOT when a failing test failed in one earlier attempt", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(2),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:01:00Z", 1, ["a"]),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:02:00Z", 2, ["a"]),
+    ]);
+    const r = await holistic(file);
+    expect(r.json).toMatchObject({ nextStrategy: "PIVOT", repeatTests: ["a"] });
+  });
+
+  it("nextStrategy is FINAL when a failing test failed in two earlier attempts", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(3),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:01:00Z", 1, ["a"]),
+      fixRow("2026-10-01T00:02:00Z", "STANDARD"),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:03:00Z", 2, ["a"]),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:04:00Z", 3, ["a"]),
+    ]);
+    const r = await holistic(file);
+    expect(r.json).toMatchObject({ nextStrategy: "FINAL", repeatTests: ["a"] });
+  });
+
+  it("repeats count distinct earlier attempts, not re-runs under one attempt", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(2),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:01:00Z", 1, ["a"]),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:02:00Z", 1, ["a"]),
+      fixRow("2026-10-01T00:03:00Z", "PIVOT"),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:04:00Z", 2, ["a"]),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:05:00Z", 2, ["a"]),
+    ]);
+    const r = await holistic(file);
+    expect(r.json).toMatchObject({ nextStrategy: "PIVOT", repeatTests: ["a"] });
+  });
+
+  it("repeats read the rows of earlier runs of the workflow", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(1),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:01:00Z", 1, ["a"]),
+      { type: "workflow-failed", workflow: "build", at: "2026-10-01T00:02:00Z" },
+      started("build", "2026-10-01T00:03:00Z"),
+      done("build", "build-plan-verify-holistic", "2026-10-01T00:03:30Z", { verdict: "PASS" }),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:04:00Z", 1, ["a"]),
+    ]);
+    const r = await holistic(file);
+    expect(r.json).toMatchObject({ nextStrategy: "PIVOT", repeatTests: ["a"] });
+  });
+
+  it("a row without failedTests counts as no repeat", async () => {
+    const earlier = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(2),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:01:00Z", 1),
+      fixRow("2026-10-01T00:02:00Z", "STANDARD"),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:03:00Z", 2, ["a"]),
+    ]);
+    const latest = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(2),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:01:00Z", 1, ["a"]),
+      fixRow("2026-10-01T00:02:00Z", "STANDARD"),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:03:00Z", 2),
+    ]);
+    for (const file of [earlier, latest]) {
+      const r = await holistic(file);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ nextStrategy: "STANDARD", repeatTests: [] });
+    }
+  });
+
+  it("a group's repeats read only that group's gate rows", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(2, "build-plan-verify", 1),
+      ...checks(2, "build-plan-verify", 2),
+      testRun("build", "build-group-gate-1", "2026-10-01T00:01:00Z", 1, ["a"]),
+      testRun("build", "build-group-gate-1", "2026-10-01T00:02:00Z", 2, ["a"]),
+      done("build", "build-plan-gaps-remediate", "2026-10-01T00:03:00Z", {
+        group: 2,
+        strategy: "STANDARD",
+      }),
+      testRun("build", "build-group-gate-2", "2026-10-01T00:04:00Z", 2, ["a"]),
+    ]);
+    const at = async (group: string) =>
+      (
+        await run([
+          "status",
+          "route",
+          `--file=${file}`,
+          "--workflow=build",
+          "--step=build-plan-gaps-remediate",
+          group,
+        ])
+      ).json;
+    expect(await at("--group=2")).toMatchObject({ nextStrategy: "STANDARD", repeatTests: [] });
+    expect(await at("--group=1")).toMatchObject({ nextStrategy: "PIVOT", repeatTests: ["a"] });
+  });
+
+  it("route prints repeatTests with the repeated tests only", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(2),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:01:00Z", 1, ["b", "x"]),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:02:00Z", 2, ["a", "b", "c", "x"]),
+    ]);
+    const r = await holistic(file);
+    expect(r.json).toMatchObject({ nextStrategy: "PIVOT", repeatTests: ["b", "x"] });
+  });
+
+  it("a group gate row from an older attempt gives STANDARD and no repeat tests", async () => {
+    // Attempt 3's verify found gaps, so no gate ran: attempt 2's failing tests are not failing now.
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(3, "build-plan-verify", 1),
+      testRun("build", "build-group-gate-1", "2026-10-01T00:01:00Z", 1, ["a"]),
+      testRun("build", "build-group-gate-1", "2026-10-01T00:02:00Z", 2, ["a"]),
+    ]);
+    const r = await run([
+      "status",
+      "route",
+      `--file=${file}`,
+      "--workflow=build",
+      "--step=build-plan-gaps-remediate",
+      "--group=1",
+    ]);
+    expect(r.json).toMatchObject({ nextStrategy: "STANDARD", repeatTests: [] });
+  });
+
+  it("a gate row from an earlier run gives STANDARD when the active run has no gate row", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(1),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:01:00Z", 1, ["a"]),
+      { type: "workflow-failed", workflow: "build", at: "2026-10-01T00:02:00Z" },
+      started("build", "2026-10-01T00:03:00Z"),
+      done("build", "build-plan-verify-holistic", "2026-10-01T00:04:00Z", { verdict: "FAIL" }),
+    ]);
+    const r = await holistic(file);
+    expect(r.json).toMatchObject({ nextStrategy: "STANDARD", repeatTests: [] });
+  });
+});
+
+describe("bkit status resume gate re-run", () => {
+  /** A red-gate pause file: the loop question, then one item per `[title, answer]`. */
+  const pauseFile = (o: {
+    status?: string;
+    from?: string;
+    items?: Array<[string, string | null]>;
+  }) =>
+    [
+      `Status: ${o.status ?? "OPEN"}`,
+      `From: ${o.from ?? "verify"}`,
+      "Group: 1",
+      "Gate: FAIL",
+      "",
+      "build verify: attempt 3 of 3",
+      "",
+      "## Progress",
+      "",
+      "**Q1 — Verify loop:** another fix round?",
+      "A) Try again — another fix round runs",
+      "B) Stop — the run ends here",
+      "Recommended: A) Try again — the last round made progress",
+      "",
+      ...(o.items ?? []).flatMap(([title, answer], i) => [
+        `**Q${i + 2} — ${title}:** accept it?`,
+        "A) Accept — the item is recorded as accepted",
+        "B) Fix now — a fix task is added to the plan",
+        "Recommended: A) Accept — minor",
+        ...(answer === null ? [] : [`Decision: ${answer}`]),
+        "",
+      ]),
+    ].join("\n");
+  /** An active build run stopped inside the pause `text` (decision 1 of run 1). */
+  const stopped = (text: string, rows: object[] = []) => {
+    const file = log([
+      started("build", "2026-11-01T00:00:00Z"),
+      done("build", "build-plan-verify", "2026-11-01T00:10:00Z", { group: 1, verdict: "PASS" }),
+      ...rows,
+    ]);
+    fs.writeFileSync(path.join(path.dirname(file), "build-decision-1-1.md"), text);
+    return file;
+  };
+  const resume = (file: string) => run(["status", "resume", "--workflow=build", `--file=${file}`]);
+
+  it("status resume prints gateRerun true for an open red-gate pause with only the loop question undecided", async () => {
+    const r = await resume(stopped(pauseFile({ items: [["Task 3 gap", "Accept — minor"]] })));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ gateRerun: true, rerunFrom: "verify" });
+  });
+
+  it("status resume prints gateRerun false when another question is undecided", async () => {
+    const r = await resume(stopped(pauseFile({ items: [["Task 3 gap", null]] })));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ gateRerun: false, rerunFrom: null });
+  });
+
+  it("status resume prints gateRerun false for a closed pause", async () => {
+    const closed = pauseFile({ status: "DECIDED" }).replace(
+      "Recommended: A) Try again — the last round made progress",
+      "Recommended: A) Try again — the last round made progress\nDecision: A",
+    );
+    const r = await resume(stopped(closed));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ gateRerun: false, rerunFrom: null });
+  });
+
+  it("status resume prints rerunFrom holistic for a red holistic pause", async () => {
+    const r = await resume(stopped(pauseFile({ from: "holistic" })));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ gateRerun: true, rerunFrom: "holistic" });
+  });
+
+  it("status resume prints gateRerun false with no active run", async () => {
+    const file = log([]);
+    fs.writeFileSync(path.join(path.dirname(file), "build-decision-1-1.md"), pauseFile({}));
+    const r = await resume(file);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ active: false, gateRerun: false, rerunFrom: null });
+  });
+});
+
+describe("bkit status resume debug test round", () => {
+  const resume = (file: string, workflow = "debug") =>
+    run(["status", "resume", `--workflow=${workflow}`, `--file=${file}`]);
+  const tests = (at: string, verdict: string, source: string) =>
+    done("debug", "debug-run-tests", at, { verdict, failures: verdict === "FAIL" ? 2 : 0, source });
+
+  it("a debug run stopped after Step 3 prints what counters derive and status route print for Step 3's round", async () => {
+    const file = log([
+      started("debug", "2026-11-01T00:00:00Z"),
+      done("debug", "debug-worktree-setup", "2026-11-01T00:01:00Z"),
+      tests("2026-11-01T00:02:00Z", "FAIL", "local"),
+      done("debug", "debug-failure-remediate", "2026-11-01T00:03:00Z"),
+      tests("2026-11-01T00:04:00Z", "FAIL", "ci"),
+      done("debug", "context-fetch", "2026-11-01T00:05:00Z"),
+    ]);
+    const r = await resume(file);
+    const derived = await run([
+      "counters",
+      "derive",
+      `--file=${file}`,
+      "--workflow=debug",
+      "--step=debug-run-tests",
+      "--position=current",
+    ]);
+    const routed = await run([
+      "status",
+      "route",
+      `--file=${file}`,
+      "--workflow=debug",
+      "--step=debug-run-tests",
+      "--require=verdict",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      number: 5,
+      testVerdict: "FAIL",
+      testSource: "ci",
+      normalAttempt: 2,
+    });
+    expect(r.json.normalAttempt).toBe(derived.json.value);
+    expect(r.json.testVerdict).toBe(routed.json.verdict);
+    expect(r.json.testSource).toBe(routed.json.source);
+  });
+
+  it("a debug run that resumes at Step 3 prints its last round, and one with no round prints null", async () => {
+    const file = log([
+      started("debug", "2026-11-01T00:00:00Z"),
+      done("debug", "debug-worktree-setup", "2026-11-01T00:01:00Z"),
+      tests("2026-11-01T00:02:00Z", "PASS", "local"),
+    ]);
+    const r = await resume(file);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      number: 3,
+      testVerdict: "PASS",
+      testSource: "local",
+      normalAttempt: 1,
+    });
+    const empty = await resume(log([started("debug", "2026-11-01T00:00:00Z")]));
+    expect(empty.json).toMatchObject({
+      number: 1,
+      testVerdict: null,
+      testSource: null,
+      normalAttempt: null,
+    });
+  });
+
+  it("a debug run past Step 3 with no readable test round exits 4", async () => {
+    const file = log([
+      started("debug", "2026-11-01T00:00:00Z"),
+      done("debug", "debug-worktree-setup", "2026-11-01T00:01:00Z"),
+      done("debug", "context-fetch", "2026-11-01T00:05:00Z"),
+    ]);
+    const r = await resume(file);
+    expect(r.code).toBe(4);
+    expect(r.json).toMatchObject({ number: 5, testVerdict: null });
+  });
+
+  it("another workflow prints null test round fields", async () => {
+    const r = await resume(log([]), "build");
+    expect(r.json).toMatchObject({ testVerdict: null, testSource: null, normalAttempt: null });
+  });
+});
+
+describe("bkit status route step fields", () => {
+  it("status route no longer prints cleanBase", async () => {
+    const r = await run([
+      "status",
+      "route",
+      `--file=${log([
+        started("build", "2026-10-01T00:00:00Z"),
+        done("build", "build-plan-verify-holistic", "2026-10-01T00:01:00Z", {
+          parentSha: "a".repeat(40),
+          verdict: "PASS",
+          failures: 0,
+        }),
+      ])}`,
+      "--workflow=build",
+      "--step=build-plan-verify-holistic",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ verdict: "PASS", parentSha: "a".repeat(40) });
+    expect(r.json).not.toHaveProperty("cleanBase");
   });
 });
 
@@ -1153,5 +1570,321 @@ describe("bkit status row owner-pause friction", () => {
     expect(r.code).toBe(4);
     expect(r.err).toContain("friction");
     expect(readStatusRows(file).filter((r) => r.type === "owner-pause")).toHaveLength(1);
+  });
+});
+
+describe("bkit status invocation", () => {
+  const REL = "docs/plans/202611/logs/860-x/status.jsonl";
+  const runRepo = (rows: object[] = [started("build", "2026-11-09T10:00:00Z")]) => {
+    const root = tmp();
+    spawnSync("git", ["init", "-q", "-b", "dev"], { cwd: root });
+    fs.mkdirSync(path.dirname(path.join(root, REL)), { recursive: true });
+    fs.writeFileSync(path.join(root, REL), rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+    return root;
+  };
+
+  it("issues invocation metadata from an explicit run and registered step", async () => {
+    const root = runRepo();
+    const statusBefore = fs.readFileSync(path.join(root, REL), "utf-8");
+    const r = await run(
+      [
+        "status",
+        "invocation",
+        "--workflow=build",
+        "--step=build-branch-sync",
+        `--file=${REL}`,
+        "--agent=bkit-build-plan-tests",
+        "--host=claude",
+        "--configured-model=sonnet",
+      ],
+      root,
+    );
+    expect(r.code).toBe(0);
+    // Number, title and paths come from the step table and the explicit run, not the caller.
+    expect(r.json).toMatchObject({
+      workflow: "build",
+      step: "build-branch-sync",
+      number: 3,
+      title: "Branch Sync",
+      run: 1,
+      scope: "run",
+      statusPath: path.join(root, REL),
+      bookRoot: root,
+      agent: "bkit-build-plan-tests",
+      host: "claude",
+      configuredModel: "sonnet",
+    });
+    expect(typeof r.json.invocation).toBe("string");
+    expect(r.json.invocation).not.toBe("");
+    // Issuing appends only the invocation event to the issuing run's own status log; the receipt is an outbox index.
+    const statusAfter = fs.readFileSync(path.join(root, REL), "utf-8");
+    expect(statusAfter.startsWith(statusBefore)).toBe(true);
+    expect(statusAfter.length).toBeGreaterThan(statusBefore.length);
+    expect(statusAfter.slice(statusBefore.length)).toContain(String(r.json.invocation));
+    expect(fs.existsSync(String(r.json.receipt))).toBe(true);
+    expect(String(r.json.receipt)).toContain("bkit-outbox");
+
+    // An unregistered step, and a step of another workflow, are refused.
+    const bad = await run(
+      ["status", "invocation", "--workflow=build", "--step=not-a-step", `--file=${REL}`],
+      root,
+    );
+    expect(bad.code).toBe(2);
+    const cross = await run(
+      ["status", "invocation", "--workflow=build", "--step=plan-generate", `--file=${REL}`],
+      root,
+    );
+    expect(cross.code).toBe(2);
+
+    // A runless audit gets scoped outbox authority without a fabricated run or status file.
+    const bare = tmp();
+    spawnSync("git", ["init", "-q", "-b", "dev"], { cwd: bare });
+    const audit = await run(
+      ["status", "invocation", "--standalone=audit", "--name=bkit-audit-example"],
+      bare,
+    );
+    expect(audit.code).toBe(0);
+    expect(audit.json).toMatchObject({ scope: "outbox", run: null, statusPath: null });
+    expect(fs.existsSync(String(audit.json.receipt))).toBe(true);
+    expect(fs.existsSync(path.join(bare, "docs"))).toBe(false);
+  });
+
+  it("refuses to issue an invocation into a status file outside the issuing checkout", async () => {
+    const mine = runRepo();
+    const other = runRepo();
+    const otherFile = path.join(other, REL);
+    const before = fs.readFileSync(otherFile, "utf-8");
+    const mineBefore = fs.readFileSync(path.join(mine, REL), "utf-8");
+    const r = await run(
+      [
+        "status",
+        "invocation",
+        "--workflow=build",
+        "--step=build-branch-sync",
+        `--file=${otherFile}`,
+      ],
+      mine,
+    );
+    expect(r.code).not.toBe(0);
+    expect(fs.readFileSync(otherFile, "utf-8")).toBe(before);
+    expect(fs.readFileSync(path.join(mine, REL), "utf-8")).toBe(mineBefore);
+    const relative = path.relative(mine, otherFile);
+    const viaRelative = await run(
+      [
+        "status",
+        "invocation",
+        "--workflow=build",
+        "--step=build-branch-sync",
+        `--file=${relative}`,
+      ],
+      mine,
+    );
+    expect(viaRelative.code).not.toBe(0);
+    expect(fs.readFileSync(otherFile, "utf-8")).toBe(before);
+  });
+
+  it("refuses to issue an invocation through a status file symlinked out of the checkout", async () => {
+    const mine = tmp();
+    spawnSync("git", ["init", "-q", "-b", "dev"], { cwd: mine });
+    const other = runRepo();
+    const otherFile = path.join(other, REL);
+    const before = fs.readFileSync(otherFile, "utf-8");
+    fs.mkdirSync(path.dirname(path.join(mine, REL)), { recursive: true });
+    fs.symlinkSync(otherFile, path.join(mine, REL));
+    const r = await run(
+      ["status", "invocation", "--workflow=build", "--step=build-branch-sync", `--file=${REL}`],
+      mine,
+    );
+    expect(r.code).not.toBe(0);
+    expect(fs.readFileSync(otherFile, "utf-8")).toBe(before);
+    expect(fs.readFileSync(otherFile, "utf-8")).not.toContain('"invocation"');
+  });
+
+  it("writes no absolute checkout path into the run's committed invocation event", async () => {
+    const root = runRepo();
+    const statusFile = path.join(root, REL);
+    const before = fs.readFileSync(statusFile, "utf-8");
+    const issued = await run(
+      [
+        "status",
+        "invocation",
+        "--workflow=build",
+        "--step=build-branch-sync",
+        `--file=${REL}`,
+        "--agent=bkit-build-plan-tests",
+        "--host=claude",
+        "--configured-model=sonnet",
+      ],
+      root,
+    );
+    expect(issued.code).toBe(0);
+    const id = String(issued.json.invocation);
+
+    const after = fs.readFileSync(statusFile, "utf-8");
+    const added = after.slice(before.length);
+    const events = added
+      .split("\n")
+      .filter((l) => l !== "")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "invocation", id });
+
+    // The committed row names the checkout nowhere: no absolute path in any field.
+    expect(added).not.toContain(root);
+    expect(added).not.toContain(os.homedir());
+    const absolute = Object.entries(events[0]!)
+      .filter(([, value]) => path.isAbsolute(String(value)))
+      .map(([key]) => key);
+    expect(absolute).toEqual([]);
+
+    // The private receipt and the printed result keep the absolute paths.
+    expect(issued.json.statusPath).toBe(statusFile);
+    expect(issued.json.bookRoot).toBe(root);
+
+    // A lookup still resolves the absolute paths from the relative event and the current top.
+    fs.rmSync(String(issued.json.receipt));
+    expect(resolveInvocation(root, id, {})).toMatchObject({
+      id,
+      statusPath: statusFile,
+      bookRoot: root,
+    });
+  });
+
+  it("records the issued invocation in the run status log and rebuilds a deleted receipt", async () => {
+    const root = runRepo();
+    const statusFile = path.join(root, REL);
+    const before = fs.readFileSync(statusFile, "utf-8");
+    const issued = await run(
+      [
+        "status",
+        "invocation",
+        "--workflow=build",
+        "--step=build-branch-sync",
+        `--file=${REL}`,
+        "--agent=bkit-build-plan-tests",
+        "--host=claude",
+        "--configured-model=sonnet",
+      ],
+      root,
+    );
+    expect(issued.code).toBe(0);
+    const id = String(issued.json.invocation);
+
+    // The run's own status log gains exactly one additive row, and it names the invocation.
+    const after = fs.readFileSync(statusFile, "utf-8");
+    expect(after.startsWith(before)).toBe(true);
+    const added = after
+      .slice(before.length)
+      .split("\n")
+      .filter((l) => l !== "")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(added).toHaveLength(1);
+    expect(JSON.stringify(added[0])).toContain(id);
+    expect(added[0]).toMatchObject({
+      workflow: "build",
+      step: "build-branch-sync",
+      agent: "bkit-build-plan-tests",
+    });
+
+    // Losing the receipt does not lose the live run's id: the lookup rebuilds it from the event.
+    fs.rmSync(String(issued.json.receipt));
+    expect(fs.existsSync(String(issued.json.receipt))).toBe(false);
+    const resolved = resolveInvocation(root, id, {});
+    expect(resolved).toMatchObject({
+      id,
+      workflow: "build",
+      step: "build-branch-sync",
+      agent: "bkit-build-plan-tests",
+      statusPath: statusFile,
+      run: 1,
+    });
+    expect(fs.existsSync(String(issued.json.receipt))).toBe(true);
+
+    // A forged id with no event stays refused, and the lookup adds nothing to the log.
+    expect(() => resolveInvocation(root, `inv-${"0".repeat(32)}`, {})).toThrow(/invocation/);
+    expect(fs.readFileSync(statusFile, "utf-8")).toBe(after);
+  });
+
+  it("binds group and attempt and registers setup, remediation and ship steps", async () => {
+    const root = runRepo([
+      started("build", "2026-11-09T10:00:00Z"),
+      started("ship", "2026-11-09T10:30:00Z"),
+    ]);
+    const issue = (workflow: string, step: string, extra: string[] = []) =>
+      run(
+        [
+          "status",
+          "invocation",
+          `--workflow=${workflow}`,
+          `--step=${step}`,
+          `--file=${REL}`,
+          ...extra,
+        ],
+        root,
+      );
+
+    const remediate = await issue("build", "build-plan-gaps-remediate", [
+      "--group=2",
+      "--attempt=3",
+      "--agent=bkit-build-plan-gaps-remediate",
+    ]);
+    expect(remediate.code).toBe(0);
+    expect(remediate.json).toMatchObject({
+      scope: "run",
+      group: "2",
+      attempt: "3",
+      agent: "bkit-build-plan-gaps-remediate",
+      bookRoot: root,
+    });
+    // An agent with no reported model is recorded unavailable.
+    expect(remediate.json.observedModel).toBe("unavailable");
+
+    const setup = await issue("build", "build-worktree-setup");
+    expect(setup.json).toMatchObject({
+      number: 2,
+      group: null,
+      attempt: null,
+      observedModel: null,
+    });
+
+    const ship = await issue("ship", "ship-summary");
+    expect(ship.code).toBe(0);
+    expect(ship.json).toMatchObject({ workflow: "ship", number: 6, bookRoot: root });
+
+    const debug = await issue("debug", "debug-run-tests");
+    expect(debug.code).toBe(0);
+    expect(debug.json).toMatchObject({ workflow: "debug", number: 3 });
+
+    // Malformed ids and standalone calls with a group are refused.
+    expect((await issue("build", "build-branch-sync", ["--group=a/b"])).code).toBe(2);
+    expect((await issue("build", "build-branch-sync", ["--agent=Bad Name"])).code).toBe(2);
+    const bare = await run(
+      ["status", "invocation", "--standalone=utility", "--name=u", "--group=1"],
+      root,
+    );
+    expect(bare.code).toBe(2);
+    const runless = await run(
+      ["status", "invocation", "--standalone=audit", "--name=bkit-audit-x", "--agent=bkit-audit-x"],
+      root,
+    );
+    expect(runless.json).toMatchObject({
+      declaredStep: "audit:bkit-audit-x",
+      allowedAgent: "bkit-audit-x",
+      observedModel: "unavailable",
+    });
+  });
+  it("registers the no-plan conversion step", async () => {
+    const root = runRepo([started("build", "2026-11-09T10:00:00Z")]);
+    const convert = await run(
+      ["status", "invocation", "--workflow=build", "--step=build-plan-convert", `--file=${REL}`],
+      root,
+    );
+    expect(convert.code).toBe(0);
+    expect(convert.json).toMatchObject({
+      workflow: "build",
+      step: "build-plan-convert",
+      number: 4,
+      bookRoot: root,
+    });
   });
 });

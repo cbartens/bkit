@@ -1,0 +1,20 @@
+### run N=200
+fixture: 200 local-only commits, 50 files each, 1000 files in tree
+left/right counts: 1	200; copies (git cherry -): 0
+path lookups: 10000 commit:path pairs, 20000 batch-check answers
+full tier: content-match=20 unpublished=180
+git processes: cheap tier 2, full tier 3 (rev-list, diff-tree --stdin, cat-file --batch-check)
+cheap tier seconds: .082
+full tier seconds (excluding cheap tier): 2.167
+total seconds: 2.249
+[script exit 0]
+### run N=1000
+fixture: 1000 local-only commits, 50 files each, 1000 files in tree
+left/right counts: 1	1000; copies (git cherry -): 0
+path lookups: 50000 commit:path pairs, 100000 batch-check answers
+full tier: content-match=20 unpublished=980
+git processes: cheap tier 2, full tier 3 (rev-list, diff-tree --stdin, cat-file --batch-check)
+cheap tier seconds: .206
+full tier seconds (excluding cheap tier): 11.963
+total seconds: 12.169
+[script exit 0]

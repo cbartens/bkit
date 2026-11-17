@@ -88,6 +88,7 @@ export interface TaskCaps {
 export const ASK_POINTS = [
   "design.grill",
   "build.verify",
+  "build.holistic",
   "build.challenge",
   "build.tests",
   "debug.fix",
@@ -131,7 +132,7 @@ export interface BkitConfig {
   ciRequired: string[];
   /**
    * Globs (`:(glob)` git pathspecs) for paths a push may carry, on top of what bkit's
-   * workflows write (ship's bookkeeping allow-list, `docs/plans/**`, `ciSkipPaths`), and
+   * workflows write (ship's bookkeeping allow-list, `docs/plans/**`, `docs/audits/**`, `ciSkipPaths`), and
    * still run only `bkit:gate:min` in `.husky/pre-push`; empty = that floor alone.
    */
   minPushPaths: string[];
@@ -163,6 +164,8 @@ export interface BkitConfig {
   depUpdater: DepUpdater | "none" | null;
   /** `bkit.tracker.default` is set, so `none` is a choice; absent or `""` (what install seeds) = undecided. */
   issueTrackerExplicit: boolean;
+  /** `bkit.tracker.default` as written when it is set but names no tracker bkit knows; else null. */
+  issueTrackerUnknown: string | null;
   /** `bkit.cloud.agent` is set, so `none` is a choice; absent or `""` (what install seeds) = undecided. */
   cloudAgentsExplicit: boolean;
 }
@@ -207,6 +210,7 @@ export const CONFIG_DEFAULTS: Readonly<BkitConfig> = {
   asks: {
     "design.grill": { ask: true, max: 6 },
     "build.verify": { ask: true, max: 2 },
+    "build.holistic": { ask: true, max: 2 },
     "build.challenge": { ask: true, max: 2 },
     "build.tests": { ask: true, max: 2 },
     "debug.fix": { ask: true, max: 2 },
@@ -218,6 +222,7 @@ export const CONFIG_DEFAULTS: Readonly<BkitConfig> = {
   buildPublish: { remote: true, local: true },
   depUpdater: null,
   issueTrackerExplicit: false,
+  issueTrackerUnknown: null,
   cloudAgentsExplicit: false,
 };
 
@@ -413,6 +418,12 @@ export function readBkitConfig(root: string): BkitConfig {
     buildPublish: buildPublish(record(workflows.build).publish),
     depUpdater: parseDepUpdater(record(bkit.dependencies).updater),
     issueTrackerExplicit: tracker.default !== undefined && tracker.default !== "",
+    issueTrackerUnknown:
+      tracker.default !== undefined &&
+      tracker.default !== "" &&
+      parseIssueTracker(tracker.default) === null
+        ? String(tracker.default)
+        : null,
     cloudAgentsExplicit: cloud.agent !== undefined && cloud.agent !== "",
   };
 }

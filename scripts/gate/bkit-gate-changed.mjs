@@ -6,7 +6,7 @@
  *   related  → vitest related --run: the Vitest tests that import a changed file
  *   named    → each test file that names a changed path, by runner (vitest / node --test / bats)
  *   lint     → oxlint on the changed engine .ts files (the `lint` script's scope)
- *   format   → prettier --check on every changed file it knows
+ *   format   → prettier --check on every changed file it knows, symlinks excluded
  *   types    → pnpm typecheck when a .ts file changed (tsc checks whole projects only)
  * Exit: 0 when every stage passed or no file was named; 1 when any stage failed.
  */
@@ -14,6 +14,8 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+
+import { batsTestTimeoutSeconds, nodeTestLimitArgs } from "../ci/bkit-test-limits.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..");
 const bin = (name) => path.join(ROOT, "node_modules", ".bin", name);
@@ -27,9 +29,9 @@ const GENERIC_NAMES = new Set(["index.ts", "index.mjs", "package.json", "README.
 const kindOf = (file) =>
   file.endsWith(".bats") ? "bats" : file.endsWith(".mjs") ? "node" : "vitest";
 
-function run(stage, cmd, args) {
+function run(stage, cmd, args, env = process.env) {
   console.log(`\n[bkit:gate:changed] ${stage}: ${[path.basename(cmd), ...args].join(" ")}`);
-  const res = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit" });
+  const res = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", env });
   if (res.error) {
     console.error(`[bkit:gate:changed] ${stage}: ${cmd} could not run — ${res.error.message}`);
     return 1;
@@ -74,8 +76,18 @@ else {
   if (byKind("vitest").length > 0)
     stage("named", run("named", bin("vitest"), ["run", "--passWithNoTests", ...byKind("vitest")]));
   if (byKind("node").length > 0)
-    stage("named", run("named", process.execPath, ["--test", ...byKind("node")]));
-  if (byKind("bats").length > 0) stage("named", run("named", bin("bats"), byKind("bats")));
+    stage(
+      "named",
+      run("named", process.execPath, ["--test", ...nodeTestLimitArgs(), ...byKind("node")]),
+    );
+  if (byKind("bats").length > 0)
+    stage(
+      "named",
+      run("named", bin("bats"), byKind("bats"), {
+        ...process.env,
+        BATS_TEST_TIMEOUT: process.env.BATS_TEST_TIMEOUT || String(batsTestTimeoutSeconds()),
+      }),
+    );
 }
 
 const engineTs = files.filter((f) => f.startsWith(".bkit/core/engine/") && f.endsWith(".ts"));
@@ -93,7 +105,10 @@ if (engineTs.length > 0)
     ]),
   );
 
-stage("format", run("format", bin("prettier"), ["--check", "--ignore-unknown", ...files]));
+// prettier refuses an explicitly named symlink, so pass only real files.
+const formattable = files.filter((f) => !fs.lstatSync(path.join(ROOT, f)).isSymbolicLink());
+if (formattable.length > 0)
+  stage("format", run("format", bin("prettier"), ["--check", "--ignore-unknown", ...formattable]));
 
 if (files.some((f) => f.endsWith(".ts"))) stage("types", run("types", "pnpm", ["typecheck"]));
 

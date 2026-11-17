@@ -92,7 +92,29 @@ export const WORKFLOW_STEPS: Readonly<Record<ResumableWorkflow, readonly Workflo
       title: "Plan Gaps Remediate",
       resumeAt: "build-plan-verify",
     },
-    { step: "build-plan-verify-holistic", number: 10, title: "Plan Verify Holistic" },
+    // Holistic verify never passes on alone: its gate runs after every verdict, so a run
+    // stopped between the two runs the round again. Step 10 again.
+    {
+      step: "build-plan-verify-holistic",
+      number: 10,
+      title: "Plan Verify Holistic",
+      resumeAt: "build-plan-verify-holistic",
+    },
+    // The holistic gate routes with its verify: Step 10 again.
+    {
+      step: "build-holistic-gate",
+      number: 10,
+      title: "Plan Verify Holistic",
+      resumeAt: "build-plan-verify-holistic",
+    },
+    // A holistic fix can add a takeover group: Step 7 runs it, and goes straight on to
+    // Step 10 when no group is open.
+    {
+      step: "build-plan-gaps-remediate-holistic",
+      number: 10,
+      title: "Plan Verify Holistic",
+      resumeAt: "build-plan-tasks",
+    },
     // The reports are written: Step 11 continues at `bkit challenge merge`.
     { step: "build-challenge", number: 11, title: "Build Challenge", resumeAt: "build-challenge" },
     // Run Tests routes on its own verdict, and a fix loops back to it.
@@ -161,25 +183,15 @@ export const WORKFLOW_STEPS: Readonly<Record<ResumableWorkflow, readonly Workflo
     { step: "ship-prune-skills", number: 7, title: "Prune Skills" },
     { step: "ship-bookkeeping-push", number: 8, title: "Commit + Push Bookkeeping" },
     { number: 9, title: "Re-validate" },
-    // The merge gate reads the PR state again: a merged PR goes on to Step 13.
+    // The merge gate reads the PR state again: a merged PR goes on to Step 11.
     {
       step: "ship-merge-pr",
       number: 10,
       title: "Merge Gate + Merge PR",
       resumeAt: "ship-merge-pr",
     },
-    { step: "ship-failure-diagnose", number: 11, title: "Failure Diagnose" },
-    // A PASS fix is committed and pushed at Step 12 sub-step 4 (a re-run commits nothing
-    // new), then re-validated at Step 9; any other verdict re-reads the PR at Step 10.
-    {
-      step: "ship-failure-remediate",
-      number: 12,
-      title: "Failure Remediate",
-      resumeAt: "ship-merge-pr",
-      resumeOnVerdict: { PASS: "ship-failure-remediate" },
-    },
-    { step: "ship-switch-to-dev", number: 13, title: "Update Local Dev" },
-    { step: "ship-close-workflow", number: 14, title: "Close Workflow" },
+    { step: "ship-switch-to-dev", number: 11, title: "Update Local Dev" },
+    { step: "ship-close-workflow", number: 12, title: "Close Workflow" },
   ],
 };
 
@@ -215,12 +227,26 @@ export const DECISION_ROUTES: Readonly<
     routes: {
       fix: "build-plan-tasks",
       verify: "build-plan-verify",
+      holistic: "build-plan-verify-holistic",
       tests: "build-run-tests",
-      // Try again: a verify loop goes on to its gaps fix (Step 9), a tests loop to Step 13.
+      // Try again: a verify loop goes on to its gaps fix (Step 9 or Step 10's), a tests loop to Step 13.
       retry: {
         "build-plan-verify": "build-plan-gaps-remediate",
         "build-group-gate": "build-plan-gaps-remediate",
+        "build-plan-verify-holistic": "build-plan-gaps-remediate-holistic",
+        "build-holistic-gate": "build-plan-gaps-remediate-holistic",
+        "build-plan-gaps-remediate-holistic": "build-plan-gaps-remediate-holistic",
         "build-run-tests": "build-failure-diagnose",
+      },
+      // Continue: every gap accepted, so the loop is settled. A group verify goes on to the next
+      // group's Plan Execute, a holistic round to Build Challenge.
+      continue: {
+        "build-plan-verify": "build-plan-tasks",
+        "build-group-gate": "build-plan-tasks",
+        "build-plan-gaps-remediate": "build-plan-tasks",
+        "build-plan-verify-holistic": "build-challenge",
+        "build-holistic-gate": "build-challenge",
+        "build-plan-gaps-remediate-holistic": "build-challenge",
       },
     },
   },

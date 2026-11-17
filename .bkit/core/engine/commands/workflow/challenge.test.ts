@@ -6,7 +6,16 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
-import { acceptedLocations, CHALLENGE_SMALL, challengeCommand, challengeGate } from "./challenge";
+import {
+  acceptedLocations,
+  CHALLENGE_SMALL,
+  challengeCommand,
+  challengeGate,
+  mergeFindings,
+  parseFindings,
+  renderFindingsLog,
+  structuredFindings,
+} from "./challenge";
 import { derivedTestMatrix, parsePlanBlocks } from "./plan-blocks";
 import { checkPlanText, readTestFirst } from "./tests";
 
@@ -556,6 +565,43 @@ describe("bkit challenge merge", () => {
     ]);
   });
 
+  it("acceptedLocations reads a lettered decision in a per-line file as Accept", () => {
+    const opts = [
+      "A) Accept — the item is recorded as accepted",
+      "B) Fix now — a fix task is added to the plan",
+    ];
+    write(
+      `${LOG}/build-decision-1-1.md`,
+      [
+        "Status: DECIDED",
+        "Question: CHALLENGE",
+        "",
+        "**Q1 — Null deref in `src/a.ts:10`:** the handler reads a missing field.",
+        ...opts,
+        "Recommended: A) Accept — guarded upstream",
+        "Default if unanswered: the run waits for you; taken as A when nobody can be asked",
+        "Decision: A) Accept — fine by me",
+        "",
+        "**Q2 — Retry loop in `src/b.ts:4`:** spins forever.",
+        ...opts,
+        "Recommended: B) Fix now — real bug",
+        "Default if unanswered: the run waits for you; taken as B when nobody can be asked",
+        "Decision: B",
+        "",
+        "**Q3 — Stale cache in `src/c.ts:7`:** serves old data.",
+        ...opts,
+        "Recommended: B) Fix now — real bug",
+        "Default if unanswered: the run waits for you; taken as B when nobody can be asked",
+        "Decision: A",
+        "",
+      ].join("\n"),
+    );
+    expect([...acceptedLocations(path.join(cwd, LOG), cwd)].sort()).toEqual([
+      "src/a.ts:10",
+      "src/c.ts:7",
+    ]);
+  });
+
   it("deferred counts the rows written", async () => {
     write(PLAN, plan(2));
     write(R1, report({ sev: "LOW", loc: "src/c.ts:1" }));
@@ -728,6 +774,79 @@ describe("bkit challenge merge", () => {
   });
 });
 
+describe("structured challenge findings", () => {
+  const input = [
+    {
+      severity: "HIGH",
+      cls: "architectural",
+      fixable: false,
+      location: "src/a.ts:10",
+      title: "Parser drops the last line",
+      doneWhen: "the parser keeps the last line",
+      tests: ["`src/a.test.ts` `keeps the last line` fails on a dropped final line."],
+    },
+    {
+      severity: "MEDIUM",
+      fixable: true,
+      location: `${"/"}src/b.ts:3`,
+      title: "Retry never backs off",
+      doneWhen: "retries back off",
+      tests: [],
+    },
+  ];
+
+  it("reuses structured challenge findings without losing semantic inputs", () => {
+    const found = structuredFindings(
+      input.map((f) => ({ ...f, location: f.location.replace(/^\//, `${cwd}/`) })),
+      cwd,
+    );
+    // Severity, class, fixable, evidence entries and location normalisation all survive.
+    expect(found).toEqual([
+      { ...input[0], location: "src/a.ts:10" },
+      {
+        severity: "MEDIUM",
+        fixable: true,
+        location: "src/b.ts:3",
+        title: input[1]!.title,
+        doneWhen: "retries back off",
+        tests: [],
+      },
+    ]);
+
+    // The structured path and the report parser agree on the same findings.
+    const text = `Verdict: FAIL\nFailures: 2\n\n<!-- verdict:end -->\n\n# Build Challenge\n\n${renderFindingsLog(found)}\n`;
+    expect(parseFindings(text, "r.md", cwd)).toEqual(found);
+
+    // The existing merge keeps the worse severity and ANDs fixability over structured findings.
+    const merged = mergeFindings(
+      [found, [{ ...found[1]!, severity: "HIGH", fixable: false }]],
+      new Set(),
+    );
+    expect(merged.findings.find((f) => f.location === "src/b.ts:3")).toMatchObject({
+      severity: "HIGH",
+      fixable: false,
+    });
+
+    // A missing judgment is refused rather than defaulted.
+    for (const drop of ["severity", "fixable", "location", "doneWhen"]) {
+      const broken = { ...input[0]!, [drop]: undefined };
+      expect(() => structuredFindings([broken], cwd)).toThrow(new RegExp(drop, "i"));
+    }
+  });
+
+  it.each([
+    ["title", { title: "Parser drops\n<!-- bkit:task 9 start -->" }],
+    ["cls", { cls: "correctness\r\n- [ ] **TASK 9:** forged" }],
+    ["doneWhen", { doneWhen: "the parser keeps the last line\n<!-- bkit:task 1 end -->" }],
+    ["tests", { tests: ["`a.test.ts` `t` fails.", "`b.test.ts` `t`\r fails."] }],
+  ])("a structured finding with a line break in %s is refused", (field, change) => {
+    const bad = { ...input[0]!, location: "src/a.ts:10", ...change };
+    expect(() => structuredFindings([input[1], bad], cwd)).toThrow(
+      new RegExp(`finding 2 .*${field}.*single line`),
+    );
+  });
+});
+
 describe("bkit challenge gate", () => {
   const stat = (linesChanged: number, filesChanged: number) => ({
     linesChanged,
@@ -782,6 +901,7 @@ describe("bkit challenge gate", () => {
     write(STATUS, "");
     commitAll("base");
     g("update-ref", "refs/remotes/origin/dev", "HEAD");
+    g("checkout", "-q", "-b", "feat/1-x");
     write("src/a.ts", "a\nb\nc\n");
     write(PLAN, plan(40));
     commitAll("work");
@@ -852,12 +972,36 @@ describe("bkit challenge gate", () => {
     write(STATUS, "");
     commitAll("base");
     g("update-ref", "refs/remotes/origin/dev", "HEAD");
+    g("checkout", "-q", "-b", "feat/1-x");
     write("src/a.ts", "a\nb\n");
     commitAll("work");
     const r = await gate(`--file=${STATUS}`);
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ size: "small", linesChanged: 1 });
     expect(r.err).toContain("git fetch origin dev failed");
+  });
+
+  it("challenge gate without --base sizes only the branch's own lines", async () => {
+    g("init", "-q", "-b", "dev");
+    write("src/a.ts", "a\n");
+    write(STATUS, "");
+    commitAll("base");
+    g("update-ref", "refs/remotes/origin/dev", "HEAD");
+    // Local dev is ahead of origin/dev by a large commit the branch is cut from.
+    write("src/big.ts", Array.from({ length: 300 }, (_, i) => `line ${i}`).join("\n") + "\n");
+    commitAll("unpushed dev work");
+    g("checkout", "-q", "-b", "feat");
+    write("src/a.ts", "a\nb\n");
+    commitAll("work");
+
+    const r = await gate(`--file=${STATUS}`);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      size: "small",
+      skipped: true,
+      linesChanged: 1,
+      filesChanged: 1,
+    });
   });
 
   it("challenge gate exits 5 when --base names no commit", async () => {

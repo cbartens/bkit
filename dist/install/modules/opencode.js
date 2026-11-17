@@ -116,8 +116,9 @@ export function opencodeProviderEnvVar(providerKey) {
  * secret `env:` var. `bkit install --opencode=<provider>` rewrites neither; this advisory names
  * the hand-edit.
  *
- * bkit-cloud.yml runs `opencode run` against the committed `.opencode/` config and fans one
- * `OPENCODE_PROVIDER_KEY` secret out to every provider env var, so it is not checked.
+ * bkit-cloud.yml runs `opencode run` against the committed `.opencode/` config and passes
+ * the provider's `BKIT_` secret (`BKIT_OPENCODE_API_KEY`, `BKIT_OPENROUTER_API_KEY` or
+ * `BKIT_OLLAMA_API_KEY`) under its own env var name, so it is not checked.
  *
  * No-op when opencode.yml is absent. No equivalent check for claude.yml (provider-fixed to
  * Claude). Severity "advisory": never gates `bkit check`; surfaces on both check and postinstall.
@@ -174,7 +175,7 @@ export function detectOpencodeYmlProviderDrift(cwd) {
             "        model: " +
             expectedPrefix +
             "/<model>   # a model your provider serves (see .opencode/opencode.json)\n\n" +
-            "Keep opencode.yml in sync with .opencode/opencode.json on every provider switch. (bkit-cloud.yml needs no such edit: it reads .opencode/ and fans OPENCODE_PROVIDER_KEY out to every provider env var.)",
+            "Keep opencode.yml in sync with .opencode/opencode.json on every provider switch. (bkit-cloud.yml needs no such edit: it reads .opencode/ and passes the provider's BKIT_ secret under its own name.)",
     };
 }
 // Sentinel values used in the opencode.json template for tracker-filtered mcp injection.
@@ -188,10 +189,8 @@ const OPENCODE_PROVIDER_BASE_URL_SENTINEL = "@@OPENCODE_PROVIDER_BASE_URL@@";
  * and fills in provider-specific fields.
  *
  * Also injects derived **allow** rules for {@link resolveNetworkAllowlist} so
- * context-fetch / provider hosts do not prompt on either fetch surface: `curl *{domain}*` /
- * `wget *{domain}*` after the template's `curl *` / `wget *` ask (OpenCode bash is
- * last-match-wins), and `*{domain}*` into the `permission.webfetch` URL map (after its
- * `"*": "ask"`). Adds `<server>_*` allows for the consumer's `mcp-servers` block.
+ * context-fetch / provider hosts do not prompt on the fetch tool: `*{domain}*` into the
+ * `permission.webfetch` URL map (after its `"*": "ask"`); shell fetches keep asking. Adds `<server>_*` allows for the consumer's `mcp-servers` block.
  */
 export function renderOpencodeJson(templatePath, tracker, provider, cwd = process.cwd()) {
     const raw = fs.readFileSync(templatePath, "utf-8");
@@ -280,12 +279,10 @@ export function renderOpencodeJson(templatePath, tracker, provider, cwd = proces
  * last-match-wins), and one `<server>_*` allow per declared MCP server — opencode names
  * MCP tools `<server>_<tool>` and matches permission keys as globs against the tool name.
  *
- * The allowlist is applied to BOTH fetch surfaces, so an allowlisted host does not prompt
- * whichever path the agent takes:
- *   - fetch tool — `permission.webfetch` is a URL-keyed map (`{ "*": "ask" }` from the
- *     template); opencode matches the resource against the URL, so `*{base}*` allows it;
- *   - shell fetch — `permission.bash` gains `curl *{base}*` / `wget *{base}*` after the
- *     template's `curl *` / `wget *` ask.
+ * Only the fetch tool gets derived allows: `permission.webfetch` is a URL-keyed map
+ * (`{ "*": "ask" }` from the template); opencode matches the resource against the URL, so
+ * `*{base}*` allows it (accepted risk, decision 551). Shell `curl` / `wget` keep the
+ * template's ask, because a glob over the command string also matches a host in a query.
  */
 function injectOpencodeDerivedAllows(parsed, cwd) {
     const permission = parsed.permission;
@@ -295,13 +292,6 @@ function injectOpencodeDerivedAllows(parsed, cwd) {
         permission[`${server}_*`] = "allow";
     }
     const bases = networkAllowlistBases(resolveNetworkAllowlist(cwd));
-    if (typeof permission.bash === "object" && permission.bash !== null) {
-        const bash = permission.bash;
-        for (const base of bases) {
-            bash[`curl *${base}*`] = "allow";
-            bash[`wget *${base}*`] = "allow";
-        }
-    }
     // Fetch tool — opencode matches the webfetch resource against the requested URL.
     if (typeof permission.webfetch === "object" && permission.webfetch !== null) {
         const webfetch = permission.webfetch;
@@ -450,9 +440,14 @@ export function runOpencodeModule(ctx) {
             }
         }
     }
-    // --- bkit-gateguard.js / bkit-readguard.js / bkit-rules.js — Tier-2 markered-text
-    // (slash-comment); see install/manifest.ts ---
-    for (const plugin of ["bkit-gateguard.js", "bkit-readguard.js", "bkit-rules.js"]) {
+    // --- bkit-gateguard.js / bkit-readguard.js / bkit-rules.js / bkit-guardrails.js — Tier-2
+    // markered-text (slash-comment); see install/manifest.ts ---
+    for (const plugin of [
+        "bkit-gateguard.js",
+        "bkit-readguard.js",
+        "bkit-rules.js",
+        "bkit-guardrails.js",
+    ]) {
         const opencodeCore = path.join(getCoreRoot(), ".opencode", "plugin");
         const pluginSrc = path.join(opencodeCore, plugin);
         const pluginDst = `.opencode/plugin/${plugin}`;

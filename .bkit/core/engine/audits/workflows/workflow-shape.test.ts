@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { callWords, stepSections } from "../../checks/status-holes";
 import { COMMANDS } from "../../commands/registry";
 import { WORKFLOW_STEPS } from "../../commands/workflow/step-table";
+import { blockedTests } from "../../commands/workflow/tests";
 import { substituteWorkflow } from "../../render/trackers";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
@@ -33,6 +34,15 @@ function stepBody(text: string, heading: RegExp): string {
   const start = lines.findIndex((l) => /^#{2,3} /.test(l) && heading.test(l));
   expect(start, `no step matching ${heading}`).toBeGreaterThanOrEqual(0);
   const end = lines.findIndex((l, i) => i > start && /^#{2,3} (?!🔒)/.test(l));
+  return lines.slice(start, end === -1 ? undefined : end).join("\n");
+}
+
+/** One top-level `- **{label}:**` bullet with the indented lines under it, as one string. */
+function bulletBlock(text: string, label: string): string {
+  const lines = text.split("\n");
+  const start = lines.findIndex((l) => l.startsWith(`- **${label}:**`));
+  expect(start, `no ${label} bullet`).toBeGreaterThanOrEqual(0);
+  const end = lines.findIndex((l, i) => i > start && !l.startsWith(" "));
   return lines.slice(start, end === -1 ? undefined : end).join("\n");
 }
 
@@ -250,7 +260,9 @@ describe("Step 1 FID check", () => {
 describe("resume facts", () => {
   it("build resumes an open decision from `openDecision`, not a file scan", () => {
     const text = workflow("build");
-    expect(text).toContain("**If** Step 2's `workflows start` printed `openDecision` != null");
+    expect(text).toContain(
+      '**If** Step 2\'s `workflows start --session-dir="{SESSION_DIR}"` printed `openDecision` != null',
+    );
     expect(text).not.toContain("holds `Status: OPEN` → resume");
     for (const field of [
       "decision",
@@ -262,6 +274,48 @@ describe("resume facts", () => {
     ]) {
       expect(text).toContain(`\`${field}\` as`);
     }
+  });
+
+  it("build re-runs a red gate pause instead of asking it", () => {
+    const text = workflow("build");
+    const resume = bulletBlock(text, "Resume");
+    expect(resume).toContain("decisions apply --by=rerun");
+    expect(resume).toContain("`gateRerun` = true");
+    expect(resume).toContain("steps finish");
+    expect(resume.indexOf("steps finish")).toBeLessThan(
+      resume.indexOf("decisions apply --by=rerun"),
+    );
+    expect(resume).toContain("counters grant");
+  });
+
+  it("Resume asks every other open pause at Decision Pause step 3", () => {
+    const text = workflow("build");
+    const resume = bulletBlock(text, "Resume");
+    const route = resume.slice(resume.indexOf("**If** `gateRerun` = true"));
+    expect(route).toContain("Decision Pause** step 3");
+  });
+
+  it("build leaves the red-gate re-run conditions to status resume", () => {
+    const text = workflow("build");
+    const resume = bulletBlock(text, "Resume");
+    // `status resume` decides the re-run; the line restates none of its conditions.
+    expect(resume).not.toMatch(/only undecided question/);
+    expect(resume).not.toContain("OPEN_GATE");
+  });
+
+  it("bkit-build.md no longer mentions GATE_RERUN", () => {
+    expect(workflow("build")).not.toContain("GATE_RERUN");
+  });
+
+  it("the Resume rule reads gateRerun and rerunFrom from status resume", () => {
+    const line = bulletBlock(workflow("build"), "Resume");
+    expect(line).toContain('"{BKIT}" status resume --workflow=build --file="{STATUS}"');
+    expect(line).toContain("`gateRerun`");
+    expect(line).toContain("`rerunFrom`");
+    // Each place the engine can name has its own target.
+    expect(line).toMatch(/`rerunFrom` = `verify` → [^;]*Step 8 sub-step 8/);
+    expect(line).toMatch(/`rerunFrom` = `holistic` → [^;]*Step 10 sub-step 5/);
+    expect(line).toMatch(/\*\*Else\*\* → Step 12, the tests gate/);
   });
 });
 
@@ -301,6 +355,40 @@ describe("Failure Path", () => {
       expect(failure).not.toMatch(/HANDOVER_NEEDED` = true → step 4\. \*\*Else\*\* → step 6/);
     },
   );
+
+  // Debug's Loop Question points at its Failure Path's route instead of repeating it.
+  it.each([
+    ["design", 1],
+    ["plan", 1],
+    ["build", 1],
+    ["debug", 1],
+    ["ship", 1],
+  ] as const)(
+    "%s follows the handover's printed `route` and `message`, never its exit code",
+    (name, count) => {
+      const text = workflow(name);
+      const ROUTE =
+        "add `message` to the final message when it is not empty → follow `route`: `stop`";
+      const sites = text.split("\n").filter((l) => l.includes(ROUTE));
+      expect(sites.length, name).toBe(count);
+      // A handover that prints nothing (exit 80 past its own route, an engine error) has a route too.
+      expect(sites[0], name).toContain("none printed → ");
+      expect(text).not.toContain("`Record not pushed:");
+      expect(text).not.toMatch(/handover exits non-zero/);
+      expect(text).not.toMatch(/exit 9, 10 \*\*or\*\* 11/);
+    },
+  );
+
+  it("bkit-debug.md: the Loop Question's Stop takes the Failure Path's handover route, exit 80 included", () => {
+    const loop = section(workflow("debug"), /Loop Question/);
+    expect(loop).toContain(
+      "Route: as **Failure Path** step 5 routes it, with step 6 here in place of its step 6.",
+    );
+    const failure = section(workflow("debug"), /Failure Path/);
+    expect(failure).toMatch(
+      /\*\*If\*\* exit 80 → open PR on `\{BRANCH\}` via `list_pull_requests`/,
+    );
+  });
 
   it("bkit-build.md: a held run's Failure Path and Decision Pause never push the feature branch", () => {
     const build = workflow("build");
@@ -510,11 +598,11 @@ describe("build", () => {
   });
 
   it("a resumed challenge pause rebuilds CHALLENGE_TASKS from `challenge merge`, not the decision file", () => {
-    const resumeLine = build.split("\n").find((l) => l.includes("**Resume:**"))!;
+    const resumeLine = bulletBlock(build, "Resume");
     expect(resumeLine).not.toContain("the decision file's task numbers");
     expect(resumeLine).toContain("Step 11 sub-steps 2 and 5");
     expect(resumeLine).toContain("`fixTasks` as `CHALLENGE_TASKS`");
-    expect(resumeLine).toContain("NEVER sub-step 6");
+    expect(resumeLine).toContain("NEVER go on to Step 11 sub-step 6");
   });
 
   it("the decision row records its route, which `status resume` maps", () => {
@@ -543,8 +631,8 @@ describe("build", () => {
     const first = step11.slice(step11.indexOf("\n1. "), step11.indexOf("\n2. "));
     expect(first).toContain("`CHALLENGE_DONE` = true → Step 12");
     expect(first).toContain("`challengeDone`");
-    const resumeLine = build.split("\n").find((l) => l.includes("**Resume:**"))!;
-    expect(resumeLine).toContain("`CHALLENGE_DONE` = `challengeDone`");
+    const resumeLine = bulletBlock(build, "Resume");
+    expect(resumeLine).toContain("`challengeDone` as `CHALLENGE_DONE`");
   });
 
   it("challenge merge exit 23 gets the same one retry as exit 22", () => {
@@ -630,6 +718,7 @@ describe("build", () => {
       ["build-close-workflow", "build-create-pr"],
       ["build-group-gate", "build-plan-verify"],
       ["build-group-start", "build-plan-tasks", "build-plan-tests"],
+      ["build-holistic-gate", "build-plan-gaps-remediate-holistic", "build-plan-verify-holistic"],
     ]);
     // Each finish line posts the number and title of its own table row.
     expect(commentNumberProblems(build)).toEqual([]);
@@ -754,6 +843,33 @@ describe("build", () => {
     expect(step7).not.toContain("--task=");
   });
 
+  it("a re-run gate that is still red reaches the Decision Pause through the round count", () => {
+    const step8 = stepBody(build, /Step 8 — Plan Verify/);
+    const step12 = section(build, /Step 12 — Run Tests/);
+    // A re-run follows the same routes as any gate run: a used-up limit asks again.
+    for (const [name, text] of [
+      ["Step 8", step8],
+      ["Step 12", step12],
+    ] as const) {
+      expect(text, name).toMatch(
+        /(`LIMIT_ASK` = true[^\n]*exit 1|exit 1[^\n]*`LIMIT_ASK` = true)[^\n]*\*\*Decision Pause\*\*/,
+      );
+      expect(text.indexOf("`LIMIT_ASK` = true"), name).toBeGreaterThan(
+        text.indexOf("counters route"),
+      );
+    }
+  });
+
+  it("a green re-run gate continues without asking", () => {
+    const step8 = stepBody(build, /Step 8 — Plan Verify/);
+    expect(step8).toMatch(
+      /`VERIFY_VERDICT` = PASS \*\*and\*\* `GATE_VERDICT` != FAIL → Step 7 without asking/,
+    );
+    expect(section(build, /Step 12 — Run Tests/)).toContain(
+      "**If** `TEST_VERDICT` = PASS → Step 15.",
+    );
+  });
+
   it("Step 8 verifies a diff cut from the group's start commit", () => {
     const step8 = stepBody(build, /Step 8 — Plan Verify/);
     const diff = commandLines(step8, "context diff");
@@ -766,6 +882,120 @@ describe("build", () => {
     const green = commandLines(step8, "tests green");
     expect(green).toHaveLength(1);
     expect(green[0]).toContain("--group={GROUP}");
+  });
+
+  it("the Decision Pause checks a red gate against the base commit before composing", () => {
+    const pause = section(build, /Decision Pause/);
+    const base = commandLines(pause, "tests base");
+    expect(base).toHaveLength(1);
+    expect(base[0]).toContain("tests base --log=");
+    const compose = commandLines(pause, "decisions compose");
+    expect(compose).toHaveLength(1);
+    expect(compose[0]).toContain("{BASE_FLAGS}");
+    expect(pause.indexOf("tests base --log=")).toBeLessThan(pause.indexOf("decisions compose"));
+    expect(pause).toContain("GATE_LOG");
+    expect(pause).toContain("--base-check");
+    expect(pause).toContain("Gate=FAIL");
+    // The check runs only for a red-gate or TESTS_LOOP pause, and a failed check is a Failure Path.
+    expect(pause).toMatch(
+      /`GATE_VERDICT` = FAIL[^\n]*`TESTS_LOOP`|`TESTS_LOOP`[^\n]*`GATE_VERDICT` = FAIL/,
+    );
+    expect(pause).toMatch(/tests base[\s\S]{0,900}non-zero → \*\*Failure Path\*\*/);
+    // The Decision Pause gate checklist names the base check.
+    const gate = stepBody(build, /Gate — Decision Pause/);
+    expect(gate).toMatch(/base/i);
+  });
+
+  it("a red holistic gate routes to the holistic fix round with a Holistic gate Context line", () => {
+    const step10 = stepBody(build, /Step 10 — Plan Verify Holistic/);
+    // Step 11 is reached only with no red holistic gate.
+    const toStep11 = step10.split("\n").filter((l) => l.includes("→ Step 11"));
+    expect(toStep11.length).toBeGreaterThan(0);
+    for (const l of toStep11) expect(l, l).toContain("`GATE_VERDICT` != FAIL");
+    // A red gate goes to the round count, however the verify came out.
+    expect(step10).toMatch(/\*\*If\*\* `GATE_VERDICT` = FAIL[^\n]*→ sub-step \d+/);
+    expect(step10).toContain("**If** `GATE_VERDICT` = FAIL → add `Holistic gate`:");
+    expect(step10.indexOf("add `Holistic gate`")).toBeGreaterThan(
+      step10.indexOf("counters route --name=HOLISTIC_ATTEMPT"),
+    );
+  });
+
+  it("a holistic pause with a red gate asks the loop question and never routes continue", () => {
+    const step10 = stepBody(build, /Step 10 — Plan Verify Holistic/);
+    // A used-up limit with ask on pauses with the loop question.
+    expect(step10).toMatch(/`LIMIT_ASK` = true \*\*and\*\* exit 1 → `PAUSE_LOOP` = `holistic`/);
+    // A no-progress round after a red gate pauses with the loop question too.
+    const noProgress = step10.slice(step10.lastIndexOf("branches scan-diff"));
+    expect(noProgress).toMatch(/`GATE_VERDICT` = FAIL[^\n]*`PAUSE_LOOP` = `holistic`/);
+    // Step 10 sets no route of its own; the pause's continue route is the engine's.
+    expect(step10).not.toContain("`DECISION_ROUTE`");
+    const pause = section(build, /Decision Pause/);
+    expect(pause).toMatch(/\{BASE_FLAGS\}` = `--header=Gate=FAIL` when the base check ran/);
+    expect(pause).toMatch(/decisions skip[\s\S]*exit 0 → `DECISION_ROUTE` = `continue`/);
+  });
+
+  it("the Decision Pause reads a red holistic gate's log for the base check", () => {
+    const log = "{OUTBOX}/build-holistic-gate-{HOLISTIC_ATTEMPT}.log";
+    const step10 = stepBody(build, /Step 10 — Plan Verify Holistic/);
+    const gate = commandLines(step10, "tests run").filter((l) =>
+      l.includes("--step=build-holistic-gate "),
+    );
+    expect(gate).toHaveLength(1);
+    expect(gate[0]).toContain(`--log="${log}"`);
+    const pause = section(build, /Decision Pause/);
+    const gateLog = pause.split("\n").find((l) => l.includes("`GATE_LOG` ="));
+    expect(gateLog, "no GATE_LOG line").toBeDefined();
+    expect(gateLog).toContain(`\`${log}\` when \`PAUSE_STEP\` = 10`);
+  });
+
+  it("Step 10 reads no cleanBase and holds no HOLISTIC_BASE", () => {
+    const step10 = stepBody(build, /Step 10 — Plan Verify Holistic/);
+    expect(step10).not.toContain("cleanBase");
+    expect(build).not.toContain("HOLISTIC_BASE");
+    expect(commandLines(step10, "status route").filter((l) => !l.includes("--require="))).toEqual(
+      [],
+    );
+  });
+
+  it("a no-progress round after a red gate pauses with the loop question", () => {
+    const step9 = stepBody(build, /Step 9 — Plan Gaps Remediate/);
+    const route = step9.slice(step9.indexOf("5. Check that the attempt changed source files"));
+    expect(route).toContain("`GATE_VERDICT` = FAIL");
+    expect(route).toContain("`PAUSE_LOOP` = `verify`");
+    expect(route.indexOf("`PAUSE_LOOP` = `verify`")).toBeLessThan(
+      route.indexOf("**Decision Pause**"),
+    );
+  });
+
+  it("a failing gate or suite test is never a pause item", () => {
+    const pause = section(build, /Decision Pause/);
+    expect(pause).not.toContain("because it is always fixed");
+    expect(pause).not.toContain("because failing suites are always fixed");
+    expect(pause).toMatch(/group.gate[^\n]*never an item/i);
+    expect(pause).toMatch(/TESTS_LOOP[^\n]*(no items|never an item)/);
+    const step4 = pause.slice(
+      pause.indexOf("4. Ask the owner in this session"),
+      pause.indexOf("5. Apply each decision"),
+    );
+    expect(step4).toMatch(/only (the )?(file's|decision file's) options/i);
+  });
+
+  it("group-mode verify logs no gap for a test the group gate runs", () => {
+    const prompt = fs.readFileSync(
+      path.join(REPO_ROOT, ".bkit", "core", "prompts", "bkit-build-plan-verify.md"),
+      "utf-8",
+    );
+    const start = prompt.indexOf("6. **If** `Mode` = `Group`");
+    const end = prompt.indexOf("7. **If** `Mode` = `Holistic`");
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const groupStep = prompt.slice(start, end);
+    expect(groupStep).toMatch(/not a gap/);
+    expect(groupStep).toMatch(/group gate/i);
+    expect(groupStep).toMatch(/Step 12|final run|holistic/i);
+    // Holistic mode keeps logging each failing test as a gap.
+    const holistic = prompt.slice(end, end + 1500);
+    expect(holistic).not.toMatch(/not a gap/);
   });
 
   it("the execute prompt logs `DONE — TASK {N}`, the line the brief and the commit check read", () => {
@@ -784,6 +1014,93 @@ describe("build", () => {
     expect(fix).toContain('"{BKIT}" tests plan-check');
     expect(fix).toContain("**TEST FIRST:**");
     expect(pause).toContain("**TEST EXCEPTION:**");
+  });
+
+  it("a Fix now challenge task is rewritten to the owner's direction in place", () => {
+    const pause = section(build, /Decision Pause/);
+    const fixNow = pause.slice(pause.indexOf("- **Fix now**:"));
+    const start = fixNow.indexOf("**If** the item is a challenge task");
+    expect(start).toBeGreaterThanOrEqual(0);
+    const branch = fixNow.slice(start, fixNow.indexOf("**Else** → write a new task block"));
+    expect(branch).toContain("**DONE WHEN:**");
+    expect(branch).toContain("**TEST FIRST:**");
+    expect(branch).toContain("`Derived Test Matrix`");
+    expect(branch).toContain("meta line");
+    expect(branch).toContain("**Fixable:** false");
+    expect(branch).not.toContain("runs as it is");
+  });
+
+  it("a hard blocker answered Fix now with no direction is asked again", () => {
+    const pause = section(build, /Decision Pause/);
+    const from = pause.indexOf("Route — first match wins");
+    const route = pause.slice(from, pause.indexOf("5. Apply each decision"));
+    const missing = route.slice(route.indexOf("still lacks a decision"));
+    expect(missing).toMatch(/hard blocker/);
+    expect(missing).toContain("`Fix now`");
+    expect(missing).toMatch(/no direction/);
+    expect(missing).toContain("End the turn and wait");
+  });
+
+  it("each Fix now item records its Fix task line before the decision row is finished", () => {
+    const pause = section(build, /Decision Pause/);
+    const step5 = pause.slice(
+      pause.indexOf("5. Apply each decision"),
+      pause.indexOf("6. Write the decisions"),
+    );
+    expect(step5).toContain("`Fix task:`");
+    expect(step5).toMatch(/already has a `Fix task:` line/);
+    expect(step5).toMatch(/reuse/i);
+    const step6 = pause.slice(
+      pause.indexOf("6. Write the decisions"),
+      pause.indexOf("Set the route"),
+    );
+    expect(step6).toContain("Fix task: {N}");
+    expect(pause.indexOf("Fix task: {N}", pause.indexOf("6. Write the decisions"))).toBeLessThan(
+      pause.indexOf("--step=build-decision", pause.indexOf("6. Write the decisions")),
+    );
+  });
+
+  it("Decision Pause step 5 records each Fix now item's Fix task line before tests plan-check", () => {
+    const pause = section(build, /Decision Pause/);
+    const step5 = pause.slice(
+      pause.indexOf("5. Apply each decision"),
+      pause.indexOf("6. Write the decisions"),
+    );
+    expect(step5).toContain("Fix task: {N}");
+    expect(step5).toContain("tests plan-check");
+    expect(step5.indexOf("Fix task: {N}")).toBeLessThan(step5.indexOf("tests plan-check"));
+    const step6 = pause.slice(
+      pause.indexOf("6. Write the decisions"),
+      pause.indexOf("--step=build-decision", pause.indexOf("6. Write the decisions")),
+    );
+    expect(step6).toMatch(/still missing/);
+  });
+
+  it("the owner decisions contract names the task block as the Fix now carrier", () => {
+    const bullet = build.split("\n").find((l) => l.startsWith("- **Owner decisions:**"));
+    expect(bullet).toBeDefined();
+    expect(bullet).toContain("task block");
+    expect(bullet).toContain("`Fix now`");
+    expect(bullet).not.toContain("only by reading the decision file");
+    expect(bullet).toContain("NEVER restate, summarise or paraphrase an owner's answer");
+    const gate = build.slice(build.indexOf("### 🔒 Gate — Decision Pause"));
+    expect(gate.slice(0, gate.indexOf("---"))).toContain("Fix task");
+  });
+
+  it("Decision Pause step 5 writes no second acceptance for a reopened DECIDED or ASSUMED pause", () => {
+    const pause = section(build, /Decision Pause/);
+    const step5 = pause.slice(
+      pause.indexOf("5. Apply each decision"),
+      pause.indexOf("6. Write the decisions"),
+    );
+    expect(step5).toMatch(/reopened `DECIDED` \/ `ASSUMED`/);
+    expect(step5).toMatch(/no second `docs\/decisions\.jsonl` row/);
+    expect(step5).toMatch(/no second title suffix/);
+    const step6 = pause.slice(
+      pause.indexOf("6. Write the decisions"),
+      pause.indexOf("--step=build-decision", pause.indexOf("6. Write the decisions")),
+    );
+    expect(step6).toMatch(/only under an item that has none/);
   });
 
   it("an Accept replaces the task's TEST EXCEPTION field with the owner's reason and date", () => {
@@ -931,8 +1248,26 @@ describe("verdict headers re-ask on PENDING (exit 5) as well as invalid (exit 6)
   });
 });
 
+/**
+ * Each `status route --require=strategy` site of a workflow: the hold line under its
+ * code fence, and the first agent Context line after it that names `Strategy`.
+ */
+const strategySites = (name: string): Array<{ name: string; hold: string; context: string }> => {
+  const lines = workflow(name).split("\n");
+  const isStrategyContext = (l: string) =>
+    l.trimStart().startsWith("Context:") && l.includes("`Strategy`:");
+  return lines
+    .map((l, i) => ({ l, i }))
+    .filter(({ l }) => l.includes("status route") && l.includes("--require=strategy"))
+    .map(({ i }) => ({
+      name,
+      hold: lines[i + 2] ?? "",
+      context: lines.slice(i + 1).find(isStrategyContext) ?? "",
+    }));
+};
+
 describe("status route --require=strategy", () => {
-  it("is used at exactly the four strategy-routing sites", () => {
+  it("status route --require=strategy is used at exactly the four strategy-routing sites", () => {
     const sites = ["build", "debug", "ship"].flatMap((name) =>
       commandLines(workflow(name), "status route")
         .filter((l) => l.includes("--require=strategy"))
@@ -941,9 +1276,37 @@ describe("status route --require=strategy", () => {
     expect(sites.sort()).toEqual([
       "build-failure-diagnose",
       "build-plan-gaps-remediate",
+      "build-plan-gaps-remediate-holistic",
       "debug-failure-diagnose",
-      "ship-failure-remediate",
     ]);
+  });
+
+  it("every strategy route site holds repeatTests and passes Repeat tests in the agent Context", () => {
+    const sites = ["build", "debug"].flatMap(strategySites);
+    expect(sites).toHaveLength(4);
+    for (const { name, hold, context } of sites) {
+      expect(hold, name).toContain(
+        "Hold `nextStrategy` as `STRATEGY` and `repeatTests` as `REPEAT_TESTS`.",
+      );
+      expect(context, name).toContain(
+        "`Strategy`: `{STRATEGY}`. **If** `REPEAT_TESTS` is not empty → add `Repeat tests`: `{REPEAT_TESTS}`.",
+      );
+    }
+  });
+
+  it("gaps remediate and failure diagnose apply PIVOT and FINAL to Repeat tests only", () => {
+    const prompt = (name: string) =>
+      fs.readFileSync(path.join(REPO_ROOT, ".bkit", "core", "prompts", `${name}.md`), "utf-8");
+    expect(prompt("bkit-build-plan-gaps-remediate")).toContain(
+      "**If** Context names `Repeat tests` → apply `PIVOT` or `FINAL` only to the gaps of the tests it names, and give every other gap the `STANDARD` treatment.",
+    );
+    const diagnose = prompt("bkit-debug-failure-diagnose");
+    expect(diagnose).toContain(
+      "**If** Context names `Repeat tests` → apply `PIVOT` or `FINAL` only to the failures of the tests it names, and give every other failure the `STANDARD` treatment.",
+    );
+    expect(diagnose).toContain(
+      "[Under `PIVOT` or `FINAL`: the tests `Repeat tests` names, then what was tried for them and why it failed.",
+    );
   });
 });
 
@@ -969,7 +1332,11 @@ describe("diff per reader", () => {
   // Every agent that reads the run's diff gets a fresh `tmp/bkit-diff-{FID}.md`,
   // written by `context diff` in the same sub-step, just before the agent.
   // Debug runs on dev, so its diff names the base the run started from.
-  const BASE_FLAG: Record<string, string> = { build: "", debug: " --base={DIFF_BASE}", ship: "" };
+  const BASE_FLAG: Record<string, string> = {
+    build: "",
+    debug: " {BASE_FLAG}",
+    ship: " --base=origin/dev",
+  };
   const READERS: Array<[string, RegExp, string, string[]]> = [
     ["build", /Failure Path/, "abort-handover", ["bkit-debug-abort-handover"]],
     ["build", /Step 10 — /, "build-plan-verify-holistic", ["bkit-build-plan-verify"]],
@@ -1034,15 +1401,35 @@ describe("diff per reader", () => {
 describe("ship", () => {
   const ship = workflow("ship");
 
+  it("ship has no Failure Diagnose or Failure Remediate step and runs Steps 1-12", () => {
+    expect(ship).not.toContain("Failure Diagnose");
+    expect(ship).not.toContain("Failure Remediate");
+    expect(ship).not.toContain("ship-failure");
+    const numbers = ship
+      .split("\n")
+      .filter((l) => /^## \S+ Step \d+ — /.test(l))
+      .map((l) => Number(/Step (\d+) —/.exec(l)![1]));
+    expect(numbers).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    expect(section(ship, /Step 12 — /)).toContain("Close Workflow");
+    expect(section(ship, /Step 11 — /)).toContain("Update Local Dev");
+  });
+
   it("post-merge check reads the capstone job alone, at the squash commit", () => {
-    const close = section(ship, /Step 14 — Close Workflow/);
+    const close = section(ship, /Step 12 — Close Workflow/);
     expect(close).toContain(
-      '"{BKIT}" runs gate --squash-of="{PR_NUMBER}" --repo="{OWNER_REPO}" --capstone-only --record="{STATUS}"',
+      '"{BKIT}" runs gate --squash-of="{PR_NUMBER}" --repo="{OWNER_REPO}" --capstone-only --record="{STATUS}" --wait',
     );
   });
 
+  it("the post-merge gate does its own wait: one command, no separate probe or wait", () => {
+    const close = section(ship, /Step 12 — Close Workflow/);
+    expect(close.match(/"\{BKIT\}" runs gate /g)).toHaveLength(1);
+    expect(close).not.toContain("runs wait");
+    expect(close).not.toContain("prs probe");
+  });
+
   it("the close removes the worktree and deletes the branch through the command, then leaves it", () => {
-    const close = section(ship, /Step 14 — Close Workflow/);
+    const close = section(ship, /Step 12 — Close Workflow/);
     expect(close).toContain('--branch="{SHIP_BRANCH}"');
     expect(close).toContain('cd "{REPO_ROOT}"; exit $rc');
     expect(ship).not.toContain('"{BKIT}" worktrees remove');
@@ -1052,9 +1439,9 @@ describe("ship", () => {
   });
 
   it("brings local dev level through `branches sync-dev`, never a checkout", () => {
-    const step13 = section(ship, /Step 13 — Update Local Dev/);
-    expect(step13).toContain('"{BKIT}" branches sync-dev || exit 1');
-    expect(step13).not.toContain('cd "{REPO_ROOT}"');
+    const step11 = section(ship, /Step 11 — Update Local Dev/);
+    expect(step11).toContain('"{BKIT}" branches sync-dev || exit 1');
+    expect(step11).not.toContain('cd "{REPO_ROOT}"');
   });
 
   it("skill prune warns and carries on rather than stopping the ship", () => {
@@ -1076,7 +1463,7 @@ describe("ship", () => {
   });
 
   it("closes through `workflows close --flush`", () => {
-    const close = section(ship, /Step 14 — Close Workflow/);
+    const close = section(ship, /Step 12 — Close Workflow/);
     expect(close).toContain('"{BKIT}" workflows close --workflow=ship');
     expect(close).toContain('--flush --token="{LOCK_TOKEN}"');
     expect(close).not.toContain("gh pr create");
@@ -1267,6 +1654,27 @@ describe("design and plan close", () => {
       expect(text).not.toContain("Skipped: comments did not parse.");
     },
   );
+
+  it.each(["design", "plan"])("%s close names the file that holds the open questions", (name) => {
+    const lines = section(workflow(name), /Close Workflow/).split("\n");
+    const file = `\`## Open Questions\` in \`docs/plans/{YYYYMM}/logs/{FID}/${name}-summary.md\``;
+    const offer = lines.filter((l) => l.includes("open questions one by one"));
+    expect(offer, name).toHaveLength(2);
+    for (const l of offer) expect(l, name).toContain(file);
+  });
+});
+
+describe("PR fallback", () => {
+  it.each(ALL)("%s: every create_pull_request step passes the printed bodyFile", (name) => {
+    const lines = workflow(name)
+      .split("\n")
+      .filter((l) => l.includes("`create_pull_request`"))
+      .filter((l) => l.includes("printed"));
+    for (const l of lines) {
+      expect(l, name).toContain("the content of the printed `bodyFile` as `body`");
+      expect(l, name).not.toMatch(/printed `title`(?: \/|,) `body`/);
+    }
+  });
 });
 
 describe("highest-version lookups", () => {
@@ -1463,7 +1871,9 @@ const blockerBlocks = (step1: string[]): TrackerBlock[] =>
 
 /** Line indexes of `branches push` fences. */
 const pushFences = (lines: string[]): number[] =>
-  lines.flatMap((l, i) => (/^\s*"\{BKIT\}" branches push\b/.test(l) ? [i] : []));
+  lines.flatMap((l, i) =>
+    /^\s*(?:BKIT_PR_CONFLICT_CHECK=false )?"\{BKIT\}" branches push\b/.test(l) ? [i] : [],
+  );
 
 describe("issue-less runs", () => {
   it.each(PHASES)(
@@ -1586,7 +1996,7 @@ describe("issue-less runs", () => {
       const recover = trackerBlocks(step1)
         .filter((b) => b.kind === "true")
         .map((b) => step1.slice(b.start, b.end + 1).join("\n"))
-        .filter((t) => t.includes("fids parse"));
+        .filter((t) => t.includes("fids parse --branch"));
       expect(recover, name).toHaveLength(1);
       const t = recover[0]!;
       expect(t).toContain('"{BKIT}" fids parse --branch="feat/{FID}"');
@@ -1595,10 +2005,10 @@ describe("issue-less runs", () => {
       expect(t).toContain("→ as exit 0 with `issueId` null");
       expect(t).toContain("NEVER create a tracker issue");
       expect(t.indexOf("fids parse")).toBeLessThan(t.indexOf("no-issue warning"));
-      // A branch suffix that is not a slug stops the run before anything starts.
+      // A branch suffix that is not a slug asks the owner to rename it before anything starts.
       const stop = t.split("\n").find((l) => l.includes("**If** exit 3"));
-      expect(stop, name).toContain("**STOP**");
-      expect(stop).toContain("rename `BRANCH` to `feat/{lowercase-slug}` or name an issue");
+      expect(stop, name).toContain("**Action needed — Branch name:**");
+      expect(stop).toContain("rename `BRANCH` to `feat/{lowercase-slug}`, or name an issue");
       expect(stop).toContain("never the **Failure Path**");
       // The route ends in a Failure Path for any other exit.
       expect(t).toContain("**Else** → **Failure Path**");
@@ -1636,12 +2046,17 @@ describe("issue-less runs", () => {
     },
   );
 
-  it("ship's merge MCP fallback asserts base.ref = dev before merging", () => {
-    const line = workflow("ship")
-      .split("\n")
-      .find((l) => l.includes("`pull_request_read` (`get`) and assert `base.ref` = `dev`"));
-    expect(line).toBeDefined();
-    expect(line!.indexOf("assert")).toBeLessThan(line!.indexOf("merge_pull_request"));
+  it("ship's merge MCP fallback proves the scoped dev base through the engine before merging", () => {
+    const ship = workflow("ship");
+    const baseProof = ship.indexOf("The engine must establish `base.ref` = `dev`");
+    const mergeProof = ship.indexOf("run that engine gate again before mutation");
+    const mutation = ship.indexOf("Only exit 0 authorizes `merge_pull_request`");
+    expect(baseProof).toBeGreaterThan(-1);
+    expect(mergeProof).toBeGreaterThan(baseProof);
+    expect(mutation).toBeGreaterThan(mergeProof);
+    expect(ship.slice(baseProof, mergeProof)).toContain(
+      '--facts-file="{OUTBOX}/ship-gate-facts.json"',
+    );
   });
 
   it.each(PHASES)("%s: Placeholders rule lets ISSUE_ID be empty in every workflow", (name) => {
@@ -1667,7 +2082,7 @@ describe("issue-less runs", () => {
     const items = workflow(name)
       .split("\n")
       .filter((l) =>
-        /^- \[ \] (?:Issue update attempted|Artifact link list|Blocker check attempted|Kill-switch propagation|Auto-label presence|Marker `bkit \[auto route\]`)/.test(
+        /^- \[ \] (?:Issue update attempted|Artifact link list|Blocker check attempted|Labels re-read after the push|Auto-label presence|Marker `bkit \[auto route\]`)/.test(
           l,
         ),
       );
@@ -1692,14 +2107,34 @@ describe("issue-less runs", () => {
     }
   });
 
-  it("build 16.9 and debug 11.9 kill-switch checks skip when ISSUE_ID is empty", () => {
+  it.each(PHASES)("%s: the no-issue warning flag sits outside every issue-only span", (name) => {
+    const lines = workflow(name).split("\n");
+    const blocks = trackerBlocks(lines);
+    const at = lines
+      .map((l, i) => [l, i] as const)
+      .filter(([l]) => l.includes("the no-issue warning was emitted → add `--warning="))
+      .map(([, i]) => i);
+    expect(at.length, name).toBeGreaterThan(0);
+    for (const i of at) {
+      const block = innermostBlock(blocks, i);
+      expect(block, `${name}:${i + 1}`).toBeDefined();
+      expect(
+        lines.slice(block!.start, i).some((l) => l.includes(SKIP_NO_ISSUE)),
+        `${name}:${i + 1}: the warning flag follows a Skip if ISSUE_ID empty line`,
+      ).toBe(false);
+    }
+  });
+
+  it("build 16.9 and debug 11.9 post-push label re-reads skip when ISSUE_ID is empty", () => {
     for (const [name, step] of [
       ["build", /Step 16 — Close Workflow/],
       ["debug", /Step 11 — Close Workflow/],
     ] as const) {
       const lines = section(workflow(name), step).split("\n");
-      const at = lines.findIndex((l) => /^9\. .*(?:post-push|kill-switch)/i.test(l));
-      expect(at, `${name}: kill-switch sub-step 9`).toBeGreaterThanOrEqual(0);
+      const at = lines.findIndex((l) =>
+        /^9\. .*re-read the issue's labels after the push/i.test(l),
+      );
+      expect(at, `${name}: post-push label re-read sub-step 9`).toBeGreaterThanOrEqual(0);
       const [from, to] = itemRange(lines, at);
       const blocks = blocksWithin(lines, from, to);
       expect(blocks.length, name).toBeGreaterThan(0);
@@ -1709,6 +2144,22 @@ describe("issue-less runs", () => {
           `${name} sub-step 9: ${b.kind} block at line ${b.start + 1} has no Skip if ISSUE_ID empty`,
         ).toBe(true);
       }
+    }
+  });
+
+  it("build 16.9 and debug 11.9 report a removed bkit:auto and stop nothing", () => {
+    for (const [name, step] of [
+      ["build", /Step 16 — Close Workflow/],
+      ["debug", /Step 11 — Close Workflow/],
+    ] as const) {
+      const lines = section(workflow(name), step).split("\n");
+      const at = lines.findIndex((l) => /^9\. /.test(l));
+      const [from, to] = itemRange(lines, at);
+      const item = lines.slice(from, to).join("\n");
+      expect(item, name).not.toMatch(/terminate|kill switch active/i);
+      expect(item, name).toContain(
+        "**If** `bkit:auto` not in `LABELS` → the run ends as it would anyway, because its push is done → add the line `Label bkit:auto removed during this run: the cloud gate starts no new run on this issue until it is added back` after `{FINAL_RETURN}` in the final message.",
+      );
     }
   });
 
@@ -1807,13 +2258,32 @@ describe("workflow routing", () => {
 describe("debug on dev", () => {
   const debug = workflow("debug");
 
-  it("debug diffs against DIFF_BASE on dev", () => {
+  it("debug passes --base only when it runs in place on dev, outside the no-leak scan", () => {
     expect(debug).not.toContain("origin/dev..HEAD");
-    for (const line of commandLines(debug, "context diff"))
-      expect(line).toContain("--base={DIFF_BASE}");
+    expect(debug).not.toContain("DIFF_BASE");
+    for (const line of commandLines(debug, "context diff")) expect(line).toContain("{BASE_FLAG}");
+    for (const line of commandLines(debug, "branches scan-diff").filter(
+      (l) => !l.includes('--marker="[DEBUG-OBSERVE]"'),
+    ))
+      expect(line).toContain("{BASE_FLAG}");
     const step2 = section(debug, /Step 2 — Worktree Setup/);
-    expect(step2).toContain("`startSha` as `DIFF_BASE`");
-    expect(step2).toContain("`origin/dev` when null");
+    expect(step2).toContain("`{BASE_FLAG}` = `--base={startSha}` when `startSha` is present");
+    expect(step2).not.toContain("`origin/dev` when null");
+  });
+
+  it("build migration scan and debug off-dev no-leak scan pass --base=origin/dev", () => {
+    const migration = commandLines(workflow("build"), "branches scan-diff").filter((l) =>
+      l.includes("--paths="),
+    );
+    expect(migration.length).toBeGreaterThan(0);
+    for (const line of migration) expect(line).toContain("--base=origin/dev");
+    const noLeak = commandLines(debug, "branches scan-diff").filter((l) =>
+      l.includes('--marker="[DEBUG-OBSERVE]"'),
+    );
+    expect(noLeak.length).toBeGreaterThan(0);
+    for (const line of noLeak) expect(line).not.toContain("{BASE_FLAG}");
+    expect(debug).toContain("--base=origin/dev");
+    expect(debug).toContain("--base={startSha}");
   });
 
   it("debug Steps 9 and 10 push nothing on dev", () => {
@@ -1847,11 +2317,22 @@ describe("debug on dev", () => {
   });
 
   it("debug stops and asks on a foreign path", () => {
-    const line = debug.split("\n").find((l) => l.includes("**Foreign path:**"));
-    expect(line, "no Foreign path line").toBeDefined();
+    const line = bulletBlock(debug, "Foreign path");
     expect(line).toContain("**STOP**");
-    expect(line).toContain("ask the human");
+    expect(line).toContain("**Action needed — Foreign path:**");
     expect(line).not.toMatch(/→ \*\*Failure Path\*\*/);
+  });
+});
+
+describe("ship deferred sweep base", () => {
+  it("ship sweep and Failure Path context diff lines pass --base=origin/dev", () => {
+    const ship = workflow("ship");
+    const lines = commandLines(ship, "context diff");
+    for (const step of ["ship-deferred-sweep", "abort-handover"]) {
+      const hit = lines.filter((l) => l.includes(`--step=${step}`));
+      expect(hit.length, step).toBeGreaterThan(0);
+      for (const line of hit) expect(line, step).toContain("--base=origin/dev");
+    }
   });
 });
 
@@ -1906,10 +2387,35 @@ describe("fix loops ask only when the last round made no progress", () => {
     expect(step3).toContain("`LOOP_POINT` = `soak`, `LOOP_FIX` = `debug-failure-soak`");
   });
 
-  it("ship takes a merge fix round without asking when the diagnosis found the cause", () => {
-    const step11 = section(workflow("ship"), /Step 11 — Failure Diagnose/);
-    expect(step11).toContain("Hold `verdict` as `DIAGNOSE_VERDICT`");
-    expect(step11).toContain("**If** `MERGE_ASK` = false **or** `DIAGNOSE_VERDICT` = PASS →");
+  it("debug Loop Question states the engine's trend line, never a fixed claim", () => {
+    const loop = section(workflow("debug"), /Loop Question/);
+    expect(loop).toContain("`trendLine` as `LOOP_TREND_LINE`");
+    const questions = loop.split("\n").filter((l) => l.includes("**Q1 — "));
+    expect(questions.length).toBeGreaterThanOrEqual(4);
+    for (const q of questions) {
+      expect(q, q).toContain("{LOOP_TREND_LINE}");
+      expect(q, q).not.toContain("left no fewer failures");
+    }
+    expect(loop).toMatch(/taken without asking \([^\n]*\{LOOP_TREND_LINE\}/);
+    expect(loop).not.toContain("left no fewer failures");
+  });
+
+  it("debug Loop Question at the used-up soak limit states the trend line", () => {
+    const loop = section(workflow("debug"), /Loop Question/);
+    expect(loop).toMatch(
+      /`LOOP_LIMIT` = true.*\*\*Q1 — Soak:\*\* The soak attempts are used up[^\n]*\{LOOP_TREND_LINE\}/,
+    );
+    expect(loop).toContain("`Recommended: A) Stop — the attempts set aside for this are used up`");
+  });
+
+  it("ship asks the Merge Question only when the merge attempts are used up", () => {
+    const question = section(workflow("ship"), /Merge Question/);
+    expect(question).toContain("when `ship.merge.maxAttempts` is used up");
+    expect(question).not.toContain("diagnosis");
+    expect(question).not.toContain("Step 11");
+    expect(question).not.toContain("return to the calling step");
+    expect(question).not.toMatch(/`Try again`\s+\*\*and\*\*\s+`LIMIT_NEXT`/);
+    expect(question).toContain("counters grant");
   });
 });
 
@@ -1966,7 +2472,7 @@ describe("build publish ending", () => {
     expect(text.indexOf("status route --workflow=build")).toBeGreaterThan(
       text.indexOf("runtime row"),
     );
-    expect(build).toMatch(/Steps 1-2 always run again/i);
+    expect(build).toMatch(/Steps 1-2 run again on every resume/);
   });
 
   it("warns when a non-LOCAL run resolves publish false", () => {
@@ -2031,5 +2537,313 @@ describe("build publish ending", () => {
     expect(gate).toMatch(
       /\*\*If\*\* `PUBLISH` = false → tick only[^\n]*\n\*\*Else\*\* → tick every item\./,
     );
+  });
+});
+
+describe("build Decision Pause continue route", () => {
+  const pause = () => section(workflow("build"), /Decision Pause/);
+  /** The line number and text of the rule that sets `DECISION_ROUTE` to `route`. */
+  const routeRule = (text: string, route: string) => {
+    const lines = text.split("\n");
+    const at = lines.findIndex((l) => l.includes(`\`DECISION_ROUTE\` = \`${route}\``));
+    expect(at, `no rule setting DECISION_ROUTE = ${route}`).toBeGreaterThanOrEqual(0);
+    return { at, line: lines.at(at) ?? "" };
+  };
+  /** The routing lines of step 7 that mention `continue`, continuation lines joined. */
+  const continueRoutes = (text: string) =>
+    text
+      .slice(text.indexOf("7. Route"))
+      .replace(/\\\n\s*/g, " ")
+      .split("\n")
+      .filter((l) => l.includes("`continue`"));
+
+  it("a verify or holistic pause routes continue before the verify and holistic re-runs", () => {
+    const text = pause();
+    const cont = routeRule(text, "continue");
+    expect(cont.at).toBeGreaterThan(routeRule(text, "retry").at);
+    expect(cont.at).toBeLessThan(routeRule(text, "holistic").at);
+    expect(cont.at).toBeLessThan(routeRule(text, "verify").at);
+  });
+
+  it("the Decision Pause continue route is taken only through decisions skip", () => {
+    const text = pause();
+    const skip = commandLines(text, "decisions skip");
+    expect(skip).toHaveLength(1);
+    expect(skip[0]).toContain(
+      'decisions skip --file="docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-{DECISION}.md"',
+    );
+    const lines = text.split("\n");
+    const call = lines.findIndex((l) => l.includes('"{BKIT}" decisions skip'));
+    const cont = routeRule(text, "continue");
+    // The route is set on the skip's exit 0, right below the call.
+    expect(cont.at).toBeGreaterThan(call);
+    expect(cont.line).toMatch(/exit 0 → `DECISION_ROUTE` = `continue`/);
+    expect(lines.slice(call, call + 8).join("\n")).toMatch(/exit 1 →[^\n]*re-run/);
+    // The conditions live in the engine, not in the prose.
+    expect(text).not.toContain("Accept (assumed)`, the loop question");
+    expect(text).not.toMatch(/no `Gate: FAIL` header/);
+    expect(text).not.toMatch(/holds `Source changed: false` \(read from the file/);
+  });
+
+  it("continue sends holistic to Step 11 and verify to the decision tick then Step 7", () => {
+    const routes = continueRoutes(pause()).join("\n");
+    expect(routes).toMatch(/holistic[^\n]*Step 11/);
+    expect(routes).toMatch(/verify[^\n]*"\{BKIT\}" tasks tick[^\n]*--decision=[^\n]*Step 7/);
+  });
+
+  it("the continue decision tick runs before the build-decision row is recorded", () => {
+    const lines = pause().split("\n");
+    const tick = lines.findIndex((l) => /tasks tick[^\n]*--decision=/.test(l));
+    const record = lines.findIndex((l) =>
+      l.includes("steps finish --workflow=build --step=build-decision"),
+    );
+    expect(tick, "no tasks tick --decision line").toBeGreaterThanOrEqual(0);
+    expect(record, "no build-decision steps finish line").toBeGreaterThanOrEqual(0);
+    expect(tick).toBeLessThan(record);
+  });
+
+  it("the holistic continue tick runs without --group before the build-decision row is recorded", () => {
+    const lines = pause().split("\n");
+    const tick = lines.findIndex((l) => /"\{BKIT\}" tasks tick --plan="[^"]*" --decision=/.test(l));
+    const record = lines.findIndex((l) =>
+      l.includes("steps finish --workflow=build --step=build-decision"),
+    );
+    expect(tick, "no holistic tasks tick --decision line").toBeGreaterThanOrEqual(0);
+    expect(tick).toBeLessThan(record);
+    expect(lines.slice(Math.max(0, tick - 4), tick).join("\n")).toContain("From: holistic");
+  });
+
+  it("both VERIFY_GAPS lists title an item Task {N} for the decision tick", () => {
+    const text = pause();
+    expect(text).not.toContain("For the verify list, title each item");
+    expect(text).toMatch(
+      /For either `VERIFY_GAPS` list:\n\s+- Title each item `Task \{N\}` from its `TASK \{N\}` gap line/,
+    );
+  });
+
+  it("a verify or holistic decision file records Source changed and a resume holds it", () => {
+    const text = pause().replace(/\\\n\s*/g, " ");
+    expect(text).toContain('--header="Source changed={SOURCE_CHANGED}"');
+    const headerLines = text
+      .split("\n")
+      .filter((l) => l.includes('--header="Source changed={SOURCE_CHANGED}"'));
+    expect(headerLines.join("\n")).toMatch(/verify/);
+    expect(headerLines.join("\n")).toMatch(/holistic/);
+    const resume = bulletBlock(workflow("build"), "Resume");
+    expect(resume).toMatch(/`sourceChanged` as `SOURCE_CHANGED`/);
+  });
+
+  it("the continue decision tick routes a non-zero exit to the Failure Path", () => {
+    const verifyRoute = continueRoutes(pause())
+      .filter((l) => /From: verify/.test(l))
+      .join("\n");
+    expect(verifyRoute).not.toBe("");
+    expect(verifyRoute).toMatch(/non-zero|exit/i);
+    expect(verifyRoute).toContain("Failure Path");
+  });
+});
+
+describe("questions never re-run a check without a change", () => {
+  it("debug and ship questions offer no answer that re-runs a check without a change", () => {
+    const allowed = new Set(["Stop", "Try again", "Confirm", "Reject"]);
+    for (const name of ["debug", "ship"]) {
+      // Each option of a mid-run question sits on its own line: `{L}) {name} — {effect}`.
+      const offered = [...workflow(name).matchAll(/^[ \t]*[A-Z]\) ([^\n]+?) — /gm)].map((m) =>
+        String(m[1]).trim(),
+      );
+      expect(offered.length, `${name} has no option lines`).toBeGreaterThan(0);
+      expect(
+        offered.filter((o) => !allowed.has(o)),
+        `${name} offers an unexpected answer`,
+      ).toEqual([]);
+    }
+  });
+});
+
+describe("planned tests a code step changed", () => {
+  const prompt = (name: string) =>
+    fs.readFileSync(path.join(REPO_ROOT, ".bkit", "core", "prompts", `${name}.md`), "utf-8");
+  /** A BLOCKED test line form (`{N}`, `{file}`, `{name}`, `{why}`) filled in the way an agent fills it. */
+  const filled = (form: string) =>
+    form
+      .replaceAll("{N}", "1")
+      .replaceAll("{file}", "src/a.test.ts")
+      .replaceAll("{name}", "adds a row")
+      .replaceAll("{why}", "the new setup line");
+  const FORM = (kind: "TASK" | "Gap") =>
+    new RegExp(`BLOCKED — ${kind} \\{N\\}: test \`\\{file\\}\` \`\\{name\\}\` — \\{why\\}`);
+  /** The line holding the keep-and-log case (a correct code change forces a planned-test edit), with the lines under it. */
+  const keepCase = (text: string) => {
+    const lines = text.split("\n");
+    const at = lines.findIndex((l) => /\bkeep\b/i.test(l) && /\bforces?\b|\bforced\b/i.test(l));
+    expect(
+      at,
+      "no line says a code change that forces a planned-test edit keeps the edit",
+    ).toBeGreaterThanOrEqual(0);
+    return lines.slice(at, at + 5).join("\n");
+  };
+
+  it("an exit 11 re-ask offers the BLOCKED test line the engine reads", () => {
+    const reasks = workflow("build")
+      .split("\n")
+      .filter((l) => l.includes("**If** exit 11 →"))
+      .filter((l) => l.includes("planned test case"));
+    expect(reasks).toHaveLength(3);
+    const kinds = ["TASK", "Gap", "Gap"] as const;
+    /** The task a filled line names: `TASK {N}` names task 1, a `Gap {N}` line names none. */
+    const taskOf = { TASK: 1, Gap: null } as const;
+    reasks.forEach((line, i) => {
+      const kind = kinds[i]!;
+      const form = FORM(kind).exec(line.replaceAll("``", ""));
+      expect(form, `exit 11 re-ask ${i + 1} offers no ${kind} test line form`).not.toBeNull();
+      expect(blockedTests(filled(form![0]))).toEqual([
+        {
+          test: "src/a.test.ts",
+          name: "adds a row",
+          reason: "the new setup line",
+          task: taskOf[kind],
+        },
+      ]);
+      // The agent appends its DONE line again after the BLOCKED one.
+      const after = line.slice(line.indexOf(form![0]) + form![0].length);
+      expect(after).toMatch(new RegExp(`DONE — ${kind} \\{N\\}`));
+      expect(after).toMatch(/again/);
+    });
+  });
+
+  it("Step 15 asks once about planned tests a code step changed, before the unproven ones", () => {
+    const step = stepBody(workflow("build"), /Step 15 — Summary/);
+    const skip = step.split("\n").find((l) => l.includes("**Skip if**"))!;
+    expect(skip).toContain("`Question: CHANGED_TESTS`");
+    expect(skip).toContain("`Question: UNPROVEN`");
+    expect(step).toMatch(/Hold `changed` as `CHANGED_TESTS`/);
+    const changedAt = step.indexOf("`PAUSE_QUESTION` = `CHANGED_TESTS`");
+    const unprovenAt = step.indexOf("`PAUSE_QUESTION` = `UNPROVEN`");
+    expect(changedAt).toBeGreaterThanOrEqual(0);
+    expect(unprovenAt).toBeGreaterThan(changedAt);
+    // A CHANGED_TESTS answer alone never skips `tests green`: the opening skip needs both answers.
+    expect(skip).toMatch(/both/i);
+  });
+
+  it("a changed-test item offers Accept or Stop, recommended Accept", () => {
+    const pause = section(workflow("build"), /Decision Pause/);
+    const rule = pause.split("\n").find((l) => l.includes("`PAUSE_QUESTION` = `CHANGED_TESTS`"));
+    expect(rule, "§ Decision Pause has no CHANGED_TESTS item rule").toBeDefined();
+    expect(rule).toContain("Options `Accept` and `Stop`");
+    expect(rule).toMatch(/recommended `Accept`/);
+  });
+
+  it("the execute prompt's BLOCKED test line is one the engine reads", () => {
+    const text = keepCase(prompt("bkit-build-plan-tasks"));
+    const form = FORM("TASK").exec(text.replaceAll("``", ""));
+    expect(form, "the keep-and-log case has no TASK test line form").not.toBeNull();
+    expect(blockedTests(filled(form![0]))).toHaveLength(1);
+    expect(text).toMatch(/DONE/);
+    expect(text).toMatch(/prettier/);
+  });
+
+  it("the remediate prompt's BLOCKED test line is one the engine reads", () => {
+    const whole = prompt("bkit-build-plan-gaps-remediate");
+    const text = keepCase(whole);
+    const form = FORM("Gap").exec(text.replaceAll("``", ""));
+    expect(form, "the keep-and-log case has no Gap test line form").not.toBeNull();
+    expect(blockedTests(filled(form![0]))).toHaveLength(1);
+    expect(text).toMatch(/DONE/);
+    expect(text).toMatch(/prettier/);
+    const log = whole.slice(whole.indexOf("## Remediation Log"));
+    expect(FORM("Gap").test(log.replaceAll("``", ""))).toBe(true);
+  });
+
+  it("a changed-test item shows the test's line diff since its baseline", () => {
+    const pause = section(workflow("build"), /Decision Pause/);
+    const rule = pause.split("\n").find((l) => l.includes("`PAUSE_QUESTION` = `CHANGED_TESTS`"));
+    expect(rule, "§ Decision Pause has no CHANGED_TESTS item rule").toBeDefined();
+    expect(rule).toMatch(/\bdiff\b/);
+    expect(rule).toMatch(/baseline/);
+  });
+
+  it("the code prompts say a BLOCKED line lets through only a change that adds lines", () => {
+    for (const name of ["bkit-build-plan-tasks", "bkit-build-plan-gaps-remediate"]) {
+      const text = keepCase(prompt(name));
+      expect(text, `${name}: no add-only guidance`).toMatch(/adds? lines|only adds|additive/i);
+      expect(text, `${name}: no refusal of removed lines`).toMatch(
+        /(removes?|rewrites?)[^.\n]*(planned test's lines|lines)[^.\n]*refused|refused[^.\n]*(removes?|rewrites?)/i,
+      );
+    }
+  });
+
+  it("the verify prompt notes a planned test a code step changed and raises no gap", () => {
+    const lines = prompt("bkit-build-plan-verify").split("\n");
+    const at = lines.findIndex((l) => l.includes("`Changed by a code step` section"));
+    expect(at, "no `Changed by a code step` section rule").toBeGreaterThanOrEqual(0);
+    const rule = lines.slice(at, at + 2).join("\n");
+    expect(rule).toContain("`Notes`");
+    expect(rule).toMatch(/No gap/);
+    expect(rule).not.toMatch(/append ``?TASK/);
+  });
+
+  it("the verify prompt reads a changed test's added lines for a skip, an early return or a reassignment", () => {
+    const lines = prompt("bkit-build-plan-verify").split("\n");
+    const at = lines.findIndex((l) => l.includes("`Changed by a code step` section"));
+    expect(at, "no `Changed by a code step` section rule").toBeGreaterThanOrEqual(0);
+    const rule = lines
+      .slice(at)
+      .join("\n")
+      .split(/\n {3}- `Updated tests`/)[0]!;
+    expect(rule).toMatch(/added lines?/);
+    expect(rule).toMatch(/\bdiff\b/);
+    expect(rule).toMatch(/early `?return/);
+    expect(rule).toMatch(/skip/);
+    expect(rule).toMatch(/reassign/);
+    expect(rule).toContain("test-loosened");
+  });
+});
+
+describe("build planned-test takeovers", () => {
+  const build = workflow("build");
+  /** The lines of the build that start a given route, continuation lines not joined. */
+  const routes = (start: string) => build.split("\n").filter((l) => l.includes(start));
+
+  it("the build routes a tests-step exit 11 once, and leaves the takeover write to the engine", () => {
+    // A tests step that edits an earlier task's planned test is re-asked once, then fails.
+    const testsStep = routes("**If** exit 11 →").filter((l) =>
+      l.includes("@bkit-build-plan-tests"),
+    );
+    expect(testsStep).toHaveLength(1);
+    expect(testsStep[0]).toContain("<tests>");
+    expect(testsStep[0]).toMatch(/\*\*Failure Path\*\*/);
+    // Step 9's restore routes its exits the same way, by pointing at Step 7 sub-step 5.
+    expect(stepBody(build, /Step 9 — Plan Gaps Remediate/)).toContain(
+      "Route exit 15 and exit 11 as Step 7 sub-step 5 routes them",
+    );
+    // `steps finish` adds the takeover task itself: no step routes on `contradicts` or
+    // writes a takeover, and the only `tasks takeover` call reads the pending group.
+    expect(build).not.toContain("`contradicts`");
+    expect(commandLines(build, "tasks takeover")).toEqual([
+      expect.stringContaining("tasks takeover --pending"),
+    ]);
+  });
+
+  it("Step 8 runs pending takeovers first, and a holistic fix goes back through Step 7", () => {
+    const pending = section(build, /Pending takeovers/);
+    expect(pending).toContain('"{BKIT}" tasks takeover --pending');
+    expect(pending).toMatch(/Step 7 sub-steps 3-6/);
+    const step8 = stepBody(build, /Step 8 — Plan Verify/);
+    const first = step8.split("\n").findIndex((l) => /^1\. /.test(l));
+    expect(step8.split("\n").slice(0, first).join("\n")).toContain("§ Pending takeovers");
+    // Step 7 runs a takeover group the holistic fix added: its code, verify and tick.
+    const step10 = stepBody(build, /Step 10 — Plan Verify Holistic/);
+    expect(step10).not.toContain("§ Pending takeovers");
+    const [fixed] = step10.split("\n").filter((l) => l.includes("**If** exit 0 → Step 7"));
+    expect(fixed).toContain("goes straight to Step 10 when no group is open");
+    expect(step10).not.toContain("re-run Step 10");
+    expect(build).toContain(
+      "- **If** `DECISION_ROUTE` = `holistic` → Step 7, which runs a takeover group",
+    );
+    // A resumed gate re-run records the pending takeover's tests before the gate runs.
+    const resume = bulletBlock(build, "Resume");
+    const rerun = resume.slice(resume.indexOf("`gateRerun` = true"));
+    expect(rerun.indexOf("§ Pending takeovers")).toBeGreaterThan(-1);
+    expect(rerun.indexOf("§ Pending takeovers")).toBeLessThan(rerun.indexOf("decisions apply"));
   });
 });

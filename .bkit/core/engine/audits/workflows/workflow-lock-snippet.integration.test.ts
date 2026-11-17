@@ -174,6 +174,22 @@ describe("every phase takes its feature lock through bkit locks acquire", () => 
   });
 });
 
+describe("a start refused by a live lock stops without the Failure Path", () => {
+  // `locks acquire` prints the route: `go` for a taken lock, `stop` for a live holder (the other
+  // run is healthy, so this start writes no failed run, label or comment). An error prints none.
+  it.each(PHASES)("%s", (file) => {
+    const lines = fs.readFileSync(path.join(WORKFLOWS_DIR, file), "utf-8").split("\n");
+    const at = lines.findIndex((l) => l.includes('"{BKIT}" locks acquire --kind=workflow'));
+    expect(at).toBeGreaterThan(-1);
+    const after = lines.slice(at + 1, at + 4).map((l) => l.trim());
+    const route = after.find((l) => l.startsWith("Route:"));
+    expect(route).toBe(
+      "Route: hold `token` as `LOCK_TOKEN`, `month` as `YYYYMM`. Follow `route`: `go` → next sub-step; `stop` → tell the owner `message` → **STOP**, with no **Failure Path**, label, comment or status row, because the other run is healthy and keeps its lock; no `route` → **Failure Path**.",
+    );
+    expect(after.join("\n")).not.toMatch(/\*\*If\*\* exit [08] →/);
+  });
+});
+
 describe("no workflow guesses FID from a leftover lock or the newest bucket", () => {
   it.each(workflowFiles.map((f) => ({ file: path.basename(f), f })))("$file", ({ f }) => {
     const content = fs.readFileSync(f, "utf-8");

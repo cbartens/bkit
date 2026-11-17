@@ -4,6 +4,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { readPackageJson } from "../../shared/package-json.js";
+import { readTextFile } from "../../shared/json.js";
+import { getPkgRoot } from "../../shared/package-roots.js";
+import { PROJECT_DOC_TOPICS, PROJECT_INDEX_PATH, findIndexedEquivalent, listIndexedEquivalents, inspectRepoFile, isInTreePath, legacyStarterTopic, normalizeLegacyText, projectDocPath, readProjectIndex, starterPath, } from "../../install/project-docs.js";
+import { stripManagedWrapper } from "../../install/managed-block.js";
 import { ciWorkflowPath, readBkitConfig } from "../../shared/settings.js";
 import { DEP_UPDATER_NAMES, findDepUpdaterConfigs, } from "../../shared/dep-updater.js";
 /** True when `cmd --version` runs (binary on PATH, exits 0). */
@@ -218,7 +222,7 @@ export function detectBkitStubs(cwd) {
             severity: "advisory",
             detect: `${ciRel} contains the bkit-stub:${stub.id} sentinel — a commented-in block shipped disabled by default.`,
             action: `${stub.description}\n\n` +
-                `Before enabling a CI lane, read docs/testing.md § CI test tiers and docs/deployments.md (one run per branch, push base, promote after the capstone). The FULL CI SCAFFOLD REFERENCE in ${ciRel} is the job graph: needs, if, step names. Write the job from that graph and from those docs. Uncomment only a block that is already commented YAML or shell.\n\n` +
+                `Before enabling a CI lane, read docs/testing.md § CI test tiers and docs/deployments.md (one run per branch, push base). The FULL CI SCAFFOLD REFERENCE in ${ciRel} is the job graph: needs, if, step names. Write the job from that graph and from those docs. Uncomment only a block that is already commented YAML or shell.\n\n` +
                 `Decide with the user: (a) enable — uncomment the YAML/shell block AND delete the \`# bkit-stub:${stub.id} — ...\` header line; (b) customise — adjust paths/secrets/conditions before uncommenting; (c) dismiss — delete the entire stub block (header + commented body).\n\n` +
                 `Until the sentinel is removed, this advisory fires every install / check.`,
         });
@@ -332,4 +336,223 @@ export function buildDepUpdaterSetupAdvisory(cwd) {
             `  ${UPDATER_EXAMPLE_PATHS}\n\n` +
             'Use one updater, not both, and set `bkit.dependencies.updater` to its name (`"renovate"` or `"dependabot"`) in package.json. To silence this advisory, set it to `"none"`. See .bkit/templates.md.',
     };
+}
+// ---------------------------------------------------------------------------
+// Project documentation adoption and population
+// ---------------------------------------------------------------------------
+/**
+ * `docs/components.md` is checked beside the ten topics, at its own path only: an indexed
+ * equivalent does not count for it, and `bkit upgrade` adds no index row for it.
+ */
+const COMPONENTS_DOC = "components";
+const COMPONENTS_DOC_PATH = `docs/${COMPONENTS_DOC}.md`;
+/** How every hand-filled starter's introduction opens. A filled document no longer has it. */
+const STARTER_OPENER = "> Starter document.";
+/** Text of a starter: the package copy first, then the consumer's own copy. */
+function readStarterText(cwd, name) {
+    const rel = name === COMPONENTS_DOC ? `.bkit/templates/${COMPONENTS_DOC_PATH}` : starterPath(name);
+    for (const base of [getPkgRoot(), cwd]) {
+        const read = readTextFile(path.join(base, rel));
+        if (read.ok)
+            return read.text;
+    }
+    return null;
+}
+/**
+ * Mechanical read of a project document: empty, an untouched starter, a document that still
+ * opens with the starter's introduction, headings only, or a candidate.
+ */
+function assessDocText(cwd, name, text) {
+    if (text.trim() === "")
+        return "empty";
+    const normalized = normalizeLegacyText(text);
+    const legacy = legacyStarterTopic(text);
+    if (legacy === name)
+        return "unpopulated";
+    const starter = readStarterText(cwd, name);
+    if (starter !== null && normalizeLegacyText(starter) === normalized)
+        return "unpopulated";
+    if (normalized.startsWith(STARTER_OPENER))
+        return "unpopulated";
+    // Headings, comments and rules only: nothing a project wrote.
+    const meaningful = normalized
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l !== "" && !l.startsWith("#") && !/^<!--.*-->$/.test(l) && !/^[-*_|: ]+$/.test(l));
+    return meaningful.length === 0 ? "unpopulated" : "candidate";
+}
+/**
+ * Report the state of the ten project documents (`docs/architecture.md` ... `docs/setup.md`):
+ * the index missing, a document absent, empty, an untouched starter, still opening with the
+ * starter's introduction, present but unindexed, or unreadable. A document the index lists at
+ * another path (same basename, or a Scope cell `Equivalent to docs/<topic>.md`) counts for its
+ * topic. `docs/components.md` is reported too when it is absent or unfilled. Findings are
+ * advisories only and read no file outside the repository. A document that differs from every
+ * starter is a candidate for the agent to assess; the mechanical read makes no claim about
+ * what it covers.
+ */
+export function detectProjectDocs(cwd) {
+    const index = readProjectIndex(cwd);
+    const rows = index.status === "ok" ? index.rows : [];
+    const indexedPaths = new Set(rows.map((r) => r.path));
+    const missing = [];
+    const unpopulated = [];
+    const unindexed = [];
+    const unindexedWrapped = [];
+    const unindexedBlocked = [];
+    const duplicates = [];
+    const ambiguous = [];
+    const cleanup = [];
+    const componentsState = inspectRepoFile(cwd, COMPONENTS_DOC_PATH);
+    if (componentsState === "absent")
+        missing.push(COMPONENTS_DOC_PATH);
+    else if (componentsState !== "regular") {
+        ambiguous.push(`${COMPONENTS_DOC_PATH} (${componentsState.unsafe})`);
+    }
+    else {
+        const read = readTextFile(path.join(cwd, COMPONENTS_DOC_PATH));
+        if (!read.ok)
+            ambiguous.push(`${COMPONENTS_DOC_PATH} (it could not be read)`);
+        else if (assessDocText(cwd, COMPONENTS_DOC, read.text) !== "candidate") {
+            unpopulated.push(COMPONENTS_DOC_PATH);
+        }
+    }
+    for (const topic of PROJECT_DOC_TOPICS) {
+        const recommended = projectDocPath(topic);
+        const isUsableRow = (row) => isInTreePath(row) && inspectRepoFile(cwd, row) === "regular";
+        // The first valid same-topic row wins; when none is valid every candidate row is named.
+        const equivalent = findIndexedEquivalent(rows, topic, isUsableRow);
+        const candidates = listIndexedEquivalents(rows, topic);
+        const defaultState = inspectRepoFile(cwd, recommended);
+        let target = recommended;
+        if (defaultState === "absent") {
+            if (equivalent === null) {
+                if (candidates.length > 0) {
+                    ambiguous.push(`${candidates.join(", ")} (${recommended}: every indexed row for it is unusable)`);
+                }
+                else {
+                    missing.push(recommended);
+                }
+                continue;
+            }
+            target = equivalent;
+        }
+        if (!isInTreePath(target)) {
+            ambiguous.push(`${target} (${recommended}: it resolves outside the repository)`);
+            continue;
+        }
+        const state = target === recommended ? defaultState : inspectRepoFile(cwd, target);
+        if (state === "absent") {
+            missing.push(recommended);
+            continue;
+        }
+        if (state !== "regular") {
+            ambiguous.push(`${target} (${state.unsafe})`);
+            continue;
+        }
+        const read = readTextFile(path.join(cwd, target));
+        if (!read.ok) {
+            ambiguous.push(`${target} (it could not be read)`);
+            continue;
+        }
+        const wrapper = stripManagedWrapper(read.text);
+        if (wrapper.status === "ambiguous")
+            cleanup.push(`${target} (${wrapper.problem})`);
+        const assessed = assessDocText(cwd, topic, read.text);
+        if (assessed === "empty" || assessed === "unpopulated")
+            unpopulated.push(target);
+        else if (index.status === "ok" && !indexedPaths.has(target)) {
+            const covering = findIndexedEquivalent(rows, topic, (row) => isInTreePath(row) && inspectRepoFile(cwd, row) === "regular");
+            if (covering !== null && target === recommended)
+                duplicates.push(`${target} (beside ${covering})`);
+            else if (wrapper.status === "ambiguous")
+                unindexedWrapped.push(target);
+            else if ((index.unparsed ?? []).length > 0)
+                unindexedBlocked.push(target);
+            else
+                unindexed.push(target);
+        }
+    }
+    const findings = [];
+    if (index.status === "missing") {
+        findings.push({
+            id: "project-docs-index-missing",
+            severity: "advisory",
+            detect: `${PROJECT_INDEX_PATH} is absent, so agents have no list of the project's own documents to consult.`,
+            action: `Run \`bkit install\` to write ${PROJECT_INDEX_PATH}, then add a row under \`## Project Documents\` for each project document you keep. Until then agents warn and fall back to repository evidence.`,
+        });
+    }
+    else if (index.status === "unreadable") {
+        ambiguous.push(`${PROJECT_INDEX_PATH} (${index.reason})`);
+    }
+    else {
+        for (const row of index.unparsed ?? []) {
+            ambiguous.push(`${PROJECT_INDEX_PATH} (unreadable table row: ${row.slice(0, 80)})`);
+        }
+    }
+    if (missing.length > 0) {
+        findings.push({
+            id: "project-docs-missing",
+            severity: "advisory",
+            detect: `No project document covers: ${missing.join(", ")}.`,
+            action: `Copy the starter for each topic you want from \`.bkit/templates/docs/\` into \`docs/\`, fill it in from the repository, and add its row to \`## Project Documents\` in ${PROJECT_INDEX_PATH}. A document you already keep elsewhere counts: index it with \`Equivalent to <recommended path>\` in its Scope cell. Skip topics that do not apply. Fill the docs in the order of .bkit/templates.md § Project docs — adoption order.`,
+        });
+    }
+    if (unpopulated.length > 0) {
+        findings.push({
+            id: "project-docs-unpopulated",
+            severity: "advisory",
+            detect: `These project documents are empty, still hold only the shipped starter text, or still open with the starter's introduction: ${unpopulated.join(", ")}.`,
+            action: `Replace the placeholders in ${unpopulated.join(", ")} with project facts taken from the repository, then delete the introduction above the title. Or index an equivalent document that already holds the facts (\`Equivalent to <recommended path>\` in the Scope cell of ${PROJECT_INDEX_PATH}). Agents warn about these topics until the text changes. Fill the docs in the order of .bkit/templates.md § Project docs — adoption order.`,
+        });
+    }
+    if (unindexed.length > 0) {
+        findings.push({
+            id: "project-docs-unindexed",
+            severity: "advisory",
+            detect: `These project documents exist but ${PROJECT_INDEX_PATH} does not list them: ${unindexed.join(", ")}.`,
+            action: `Add a row for each to \`## Project Documents\` in ${PROJECT_INDEX_PATH}, or run \`bkit upgrade\` to register the default paths.`,
+        });
+    }
+    if (unindexedWrapped.length > 0) {
+        findings.push({
+            id: "project-docs-unindexed",
+            severity: "advisory",
+            detect: `These project documents exist but ${PROJECT_INDEX_PATH} does not list them, and bkit will not register them while their ownership wrapper stays: ${unindexedWrapped.join(", ")}.`,
+            action: `Remove the wrapper as the cleanup advisory describes, then add a row for each to \`## Project Documents\` in ${PROJECT_INDEX_PATH} (or run \`bkit upgrade\` once the wrapper is gone).`,
+        });
+    }
+    if (unindexedBlocked.length > 0) {
+        findings.push({
+            id: "project-docs-unindexed",
+            severity: "advisory",
+            detect: `These project documents exist but ${PROJECT_INDEX_PATH} does not list them, and bkit will not register them while a row of \`## Project Documents\` is unreadable: ${unindexedBlocked.join(", ")}.`,
+            action: `Repair or remove the unreadable row named in the ambiguous advisory, then add a row for each to \`## Project Documents\` in ${PROJECT_INDEX_PATH} (or run \`bkit upgrade\` once the row is repaired).`,
+        });
+    }
+    if (duplicates.length > 0) {
+        findings.push({
+            id: "project-docs-unindexed",
+            severity: "advisory",
+            detect: `These project documents exist but ${PROJECT_INDEX_PATH} lists another document for the same topic: ${duplicates.join(", ")}.`,
+            action: `bkit does not register them while the other document is indexed. Keep one: delete the unused file, or add a row for the second one by hand under \`## Project Documents\` in ${PROJECT_INDEX_PATH}.`,
+        });
+    }
+    if (cleanup.length > 0) {
+        findings.push({
+            id: "project-docs-cleanup",
+            severity: "advisory",
+            detect: `These project documents still carry a bkit ownership wrapper (\`<!-- bkit:start -->\` / \`<!-- bkit:end -->\` lines or the \`bkit:managed\` notice) that bkit could not remove safely: ${cleanup.join("; ")}.`,
+            action: `Edit each file by hand: delete the \`<!-- bkit:start -->\` and \`<!-- bkit:end -->\` lines and the \`bkit:managed\` notice line, keeping the text between them. These documents belong to the project now; bkit changes none of them itself.`,
+        });
+    }
+    if (ambiguous.length > 0) {
+        findings.push({
+            id: "project-docs-ambiguous",
+            severity: "advisory",
+            detect: `bkit did not read these project documents or the index: ${ambiguous.join("; ")}.`,
+            action: `Replace each with a regular file inside the repository (no symbolic link, no \`..\` path), or repair the \`## Project Documents\` table in ${PROJECT_INDEX_PATH}. bkit changes none of them itself.`,
+        });
+    }
+    return findings;
 }

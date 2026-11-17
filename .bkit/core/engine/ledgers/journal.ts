@@ -17,7 +17,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { parseJson } from "../shared/json.js";
-import { appendLine, statusTimestamp } from "./status.js";
+import { appendLine, appendLocked, statusTimestamp, type AppendCheckpoint } from "./status.js";
 import {
   APPEND_LEDGERS,
   SCHEMA,
@@ -28,7 +28,8 @@ import {
   writerProblem,
 } from "./telemetry.js";
 
-export type JournalResult = { ok: true } | { ok: false; error: string };
+export type JournalResult =
+  { ok: true; receipt?: { offset: number; bytes: number } } | { ok: false; error: string };
 
 /** The kill switch: `BKIT_ENGINE_JOURNAL=off` keeps the seam from writing any row. */
 export function journalEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -225,22 +226,29 @@ export function appendJournalRow(file: string, row: EngineCallRow): JournalResul
  * `recurrenceCount` raised by one and `lastConfirmed` = that `ts`. No line is
  * ever rewritten, so a row another writer appends meanwhile is kept.
  */
-export function appendFrictionRow(bookRoot: string, row: Record<string, unknown>): JournalResult {
+export function appendFrictionRow(
+  bookRoot: string,
+  row: Record<string, unknown>,
+  options: { checkpoint?: AppendCheckpoint } = {},
+): JournalResult {
   const checked = validate(row);
   if (!checked.ok) return { ok: false, error: checked.reason ?? "invalid friction row" };
   const who = writerProblem(row);
   if (who !== undefined) return { ok: false, error: who };
   const file = path.join(bookRoot, APPEND_LEDGERS.friction.file);
   try {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    const text = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
-    const prior = latestSameKey(text, row["key"]);
-    const next = prior === undefined ? { ...row, recurrenceCount: 1 } : recurrence(prior, row);
-    fs.appendFileSync(
+    // The recurrence is computed from the text read under the target lock, so a
+    // competing writer can never invalidate the prepared offset or count.
+    const landed = appendLocked(
       file,
-      `${text !== "" && !text.endsWith("\n") ? "\n" : ""}${JSON.stringify(next)}\n`,
+      (text) => {
+        const prior = latestSameKey(text, row["key"]);
+        const next = prior === undefined ? { ...row, recurrenceCount: 1 } : recurrence(prior, row);
+        return `${JSON.stringify(next)}\n`;
+      },
+      { checkpoint: options.checkpoint },
     );
-    return { ok: true };
+    return { ok: true, receipt: { offset: landed.offset, bytes: landed.bytes } };
   } catch (err) {
     return { ok: false, error: (err as Error).message };
   }

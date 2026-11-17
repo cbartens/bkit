@@ -96,7 +96,7 @@ Each phase has its own command. Start where your work needs it. [Full workflow, 
 
 ## What comes with it?
 
-Installation provides the agents, workflows, rules, guardrails, audit checklists and project-document structure. It also supplies [optional templates](DETAILS.md#templates) for CI, code search, quality checks, cloud agents, service connectors and dependency updates. Copy the templates you want and adapt them to your project.
+Installation provides the agents, workflows, rules, guardrails and audit checklists, plus starter templates for ten project documents that you copy, fill in and own. bkit warns, without blocking, when a document your agents need is missing or still the starter. It also supplies [optional templates](DETAILS.md#templates) for CI, code search, quality checks, cloud agents, service connectors and dependency updates. Copy the templates you want and adapt them to your project.
 
 See [other capabilities](DETAILS.md#what-else-you-get) for switching tools, running features in parallel and keeping your tracker organised.
 

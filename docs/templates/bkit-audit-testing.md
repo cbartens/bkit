@@ -1,8 +1,8 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.2.0 — do not edit; run `bkit upgrade` to refresh -->
 
-<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. -->
+<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. When you edit this template, follow `.bkit/authoring.md` § Doc Templates. -->
 
 # Testing Audit
 
@@ -39,7 +39,8 @@ A green suite means the tests passed. It does not mean they could fail, that eve
 - Test-smell catalogue (e.g., xUnit Test Patterns, Meszaros 2007).
 - Test lint (e.g., `@vitest/eslint-plugin`, `eslint-plugin-playwright`, `eslint-plugin-testing-library`, or Oxlint's `vitest` + `typescript` plugins); record each version. typescript-eslint type-aware rules need a TypeScript version it supports; newer → Oxlint `--type-aware` (oxlint-tsgolint).
 - Network mock that fails closed (e.g., MSW); record the major read.
-- bkit block of `docs/testing.md` (bkit version from `.bkit/version`): § Validated means executed, not "didn't fail"; § A guard asserts the rule, not the sentence that explains it; § Which tier does a behaviour need?; § Test first; § Tests lock; § Local test sleep prevention; § What each tier must do; § Design assertions are a dimension, not a lane; § Schema-invariant DB checks (e.g. RLS coverage); § Provision backing services fresh; § Optional hardening (adopt when the cost is justified); § Coverage on PRs
+- bkit block of `docs/testing.md` (bkit version from `.bkit/version`): § Validated means executed, not "didn't fail"; § A guard asserts the rule, not the sentence that explains it; § Which tier does a behaviour need?; § What each tier must do; § Test first; § Design assertions are a dimension, not a lane; § Schema-invariant DB checks (e.g. RLS coverage); § Provision backing services fresh; § Optional hardening (adopt when the cost is justified); § Coverage on PRs
+- `.bkit/workflows.md` § Test and release mechanics (Tests lock; Local test sleep prevention); `.bkit/workflows.md` § Test-first
 
 ### Scope
 
@@ -307,7 +308,7 @@ PENDING
 ## Project Instructions
 
 - **Permissions:** Bash probes this audit needs: `./node_modules/.bin/vitest run`, `bats tests/shell/*.bats`, `node <file>.test.mjs`, `git log` / `git grep` / `git ls-files` / `git worktree add|remove`, `gh run list` / `gh run view` (read-only), `cmp`, `/usr/bin/time -l`, `jq` (ledger append). WebFetch `registry.npmjs.org`, `api-security.owasp.org`, `github.com`, `kentcdodds.com`.
-- **Pre-Flight / Test Runner:** Vitest config `vitest.config.ts` (include = `.bkit/core/engine/**`), worker setup `vitest.setup.ts`, load-scaled timeouts `vitest.timeout-budget.ts`. Tier rubric and per-file tier labels → `docs/testing.md` § Tiers and § Key test files. Shell tier = `tests/shell/*.bats`. Copy-and-own CI script tests (`.bkit/templates/scripts/ci/**/*.test.mjs`, `scripts/ci/**/*.test.mjs`) sit outside the Vitest include; run each with `node <file>`.
+- **Pre-Flight / Test Runner:** Vitest config `vitest.config.ts` (include = `.bkit/core/engine/**`), worker setup `vitest.setup.ts`, fixed CI / local timeouts `vitest.timeout-budget.ts`. Tier rubric and per-file tier labels → `docs/testing.md` § Tiers and § Key test files. Shell tier = `tests/shell/*.bats`. Copy-and-own CI script tests (`.bkit/templates/scripts/ci/**/*.test.mjs`, `scripts/ci/**/*.test.mjs`) sit outside the Vitest include; run each with `node <file>`.
 - **Pre-Flight / Mutation Tool:** none installed. Hand-break in a throwaway detached worktree: `git worktree add --detach .worktrees/<name> HEAD`, symlink `node_modules` from the main checkout, `mkdir tmp`; runner script in repo-root `tmp/` that asserts the find string matches once, writes the mutant, runs `./node_modules/.bin/vitest run <files> --reporter=json --outputFile=tmp/<out>.json`, restores the original bytes in `finally` and checks sha256. Re-run every survivor with no file filter (full suite). Remove the `node_modules` symlink and `tmp/` before `git worktree remove .worktrees/<name>`.
 - **Pre-Flight / Language Server:** TypeScript 7 (Go port) exposes no JS compiler API — syntax-tree scans need a text / brace-matching script; Serena TypeScript works for symbol lookups.
 - **Step 3 — Behaviours:** promise sources = `docs/security.md`, `docs/testing.md`, `docs/architecture.md` § Consumer Integration Model (host list); fixed rows in `docs/failures.jsonl` — check each by a revert-the-fix mutant, not by test names.

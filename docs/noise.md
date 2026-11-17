@@ -1,7 +1,3 @@
-<!-- bkit:start -->
-
-<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
-
 # Noise
 
 > [!CAUTION]
@@ -16,5 +12,3 @@
 > - Record the trigger, not just the verdict.
 > - Never silence a signal at its source. Log it at a lower level instead.
 > - Archive or mute an issue only when it is captured here.
-
-<!-- bkit:end -->

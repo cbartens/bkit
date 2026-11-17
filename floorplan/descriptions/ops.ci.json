@@ -1,0 +1,36 @@
+{
+  "files": {
+    "scripts/ci/bkit-check-capstone.mjs": {
+      "name": "Combined check result",
+      "description": "Decides whether the required automated checks completed successfully."
+    },
+    "scripts/ci/bkit-check-dependency-audit.mjs": {
+      "name": "Dependency security check",
+      "description": "Compares dependency security findings with explicit, time-limited acceptances."
+    },
+    "scripts/ci/bkit-machine-lock.sh": {
+      "name": "Shared machine lock",
+      "description": "Prevents competing test and maintenance jobs from using the same machine resources at once."
+    },
+    "scripts/ci/bkit-test-awake.mjs": {
+      "name": "Keep test runs awake",
+      "description": "Keeps macOS awake while a command runs and releases the sleep protection afterward."
+    },
+    "scripts/ci/bkit-test-file.mjs": {
+      "name": "Single-file test runner",
+      "description": "Selects the appropriate runner for an individual test file in this repository."
+    },
+    "scripts/ci/lanes/bkit-resolve-push-base.mjs": {
+      "name": "Change comparison base",
+      "description": "Finds the previous relevant revision so automated checks can identify changed files."
+    },
+    "scripts/gate/bkit-gate-changed.mjs": {
+      "name": "Changed-file checks",
+      "description": "Runs the repository's static checks on the supplied changed files."
+    },
+    "scripts/slop/bkit-slop-type-suppression.mjs": {
+      "name": "Suppressed-check detection",
+      "description": "Flags code patterns that bypass type checks or weaken quality gates."
+    }
+  }
+}

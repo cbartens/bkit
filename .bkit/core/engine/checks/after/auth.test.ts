@@ -255,6 +255,154 @@ describe("detectCiRouterSecrets", () => {
 });
 
 // ---------------------------------------------------------------------------
+// detectCiRouterSecrets — per-variant, per-tracker secret findings (TASK 14)
+// ---------------------------------------------------------------------------
+
+describe("detectCiRouterSecrets per variant", () => {
+  const CURRENT =
+    "name: bkit-cloud\n  K: ${{ secrets.BKIT_X }}\n  anthropic_federation_rule_id: x\n";
+  const LEGACY =
+    "name: bkit-cloud\n  K: ${{ secrets.ANTHROPIC_API_KEY }}\n  anthropic_federation_rule_id: x\n";
+
+  function setup(opts: {
+    agent: string;
+    tracker?: string;
+    provider?: string;
+    router?: string;
+  }): void {
+    const bkit: Record<string, unknown> = {
+      cloud: { agent: opts.agent },
+      tracker: { default: opts.tracker ?? "github" },
+    };
+    if (opts.provider)
+      bkit.providers = { opencode: { default: opts.provider, installed: [opts.provider] } };
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "c", version: "1.0.0", bkit }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
+      opts.router ?? CURRENT,
+    );
+  }
+  const text = (f: { detect: string; action: string }) => `${f.detect}\n${f.action}`;
+
+  it("%s tracker without its BKIT_ secret gives cloud-router-tracker-secret-missing naming it", () => {
+    const keys: Record<string, string> = {
+      linear: "BKIT_LINEAR_API_KEY",
+      jira: "BKIT_JIRA_API_KEY",
+    };
+    for (const tracker of ["linear", "jira"]) {
+      setup({ agent: "claude", tracker });
+      mockGhNames({ secret: ["BKIT_ANTHROPIC_API_KEY"], variable: [] });
+      const finding = detectCiRouterSecrets(tmpDir).find(
+        (f) => f.id === "cloud-router-tracker-secret-missing",
+      );
+      expect(finding, tracker).toBeDefined();
+      expect(text(finding!), tracker).toContain(keys[tracker]!);
+      for (const other of Object.keys(keys).filter((k) => k !== tracker))
+        expect(text(finding!), tracker).not.toContain(keys[other]!);
+    }
+  });
+
+  it("cloud.agent codex without BKIT_OPENAI_API_KEY gives codex-api-key-secret-missing", () => {
+    setup({ agent: "codex" });
+    mockGhNames({ secret: [], variable: [] });
+    const findings = detectCiRouterSecrets(tmpDir);
+    const finding = findings.find((f) => f.id === "codex-api-key-secret-missing");
+    expect(finding).toBeDefined();
+    expect(text(finding!)).toContain("BKIT_OPENAI_API_KEY");
+    expect(findings.map((f) => f.id)).not.toContain("anthropic-api-key-secret-missing");
+  });
+
+  it("anthropic findings fire only for cloud.agent claude, under BKIT_ANTHROPIC_API_KEY", () => {
+    const anthropicIds = [
+      "anthropic-api-key-secret-missing",
+      "anthropic-api-key-shadows-federation",
+      "anthropic-federation-template-stale",
+    ];
+    setup({ agent: "codex" });
+    mockGhNames({ secret: [], variable: [] });
+    for (const f of detectCiRouterSecrets(tmpDir)) expect(anthropicIds).not.toContain(f.id);
+    setup({ agent: "opencode", provider: "openrouter" });
+    mockGhNames({ secret: [], variable: [] });
+    for (const f of detectCiRouterSecrets(tmpDir)) expect(anthropicIds).not.toContain(f.id);
+    setup({ agent: "claude" });
+    mockGhNames({ secret: [], variable: [] });
+    const missing = detectCiRouterSecrets(tmpDir).find(
+      (f) => f.id === "anthropic-api-key-secret-missing",
+    );
+    expect(missing).toBeDefined();
+    expect(missing!.action).toContain("gh secret set BKIT_ANTHROPIC_API_KEY");
+    expect(missing!.action).not.toContain("gh secret set ANTHROPIC_API_KEY");
+  });
+
+  it("legacy ANTHROPIC_API_KEY without BKIT_ANTHROPIC_API_KEY gives cloud-router-secret-renamed", () => {
+    setup({ agent: "claude" });
+    mockGhNames({ secret: ["ANTHROPIC_API_KEY"], variable: [] });
+    const finding = detectCiRouterSecrets(tmpDir).find(
+      (f) => f.id === "cloud-router-secret-renamed",
+    );
+    expect(finding).toBeDefined();
+    expect(finding!.action).toContain("gh secret set BKIT_ANTHROPIC_API_KEY");
+    expect(finding!.action).toContain("gh secret delete ANTHROPIC_API_KEY");
+  });
+
+  it("legacy OPENCODE_PROVIDER_KEY without the provider key gives cloud-router-secret-renamed naming that key", () => {
+    setup({ agent: "opencode", provider: "opencode-go" });
+    mockGhNames({ secret: ["OPENCODE_PROVIDER_KEY"], variable: [] });
+    const finding = detectCiRouterSecrets(tmpDir).find(
+      (f) => f.id === "cloud-router-secret-renamed",
+    );
+    expect(finding).toBeDefined();
+    expect(finding!.action).toContain("gh secret set BKIT_OPENCODE_API_KEY");
+    expect(finding!.action).toContain("gh secret delete OPENCODE_PROVIDER_KEY");
+    setup({ agent: "opencode", provider: "openrouter" });
+    const other = detectCiRouterSecrets(tmpDir).find((f) => f.id === "cloud-router-secret-renamed");
+    expect(other!.action).toContain("gh secret set BKIT_OPENROUTER_API_KEY");
+    expect(other!.action).not.toContain("BKIT_OPENCODE_API_KEY");
+  });
+
+  it("adopted copy still reading legacy secret names gets legacy-name findings and no cloud-router-secret-renamed", () => {
+    setup({ agent: "claude", router: LEGACY });
+    mockGhNames({ secret: ["ANTHROPIC_API_KEY"], variable: [] });
+    expect(detectCiRouterSecrets(tmpDir).map((f) => f.id)).not.toContain(
+      "cloud-router-secret-renamed",
+    );
+    setup({ agent: "claude", router: CURRENT });
+    const renamed = detectCiRouterSecrets(tmpDir).find(
+      (f) => f.id === "cloud-router-secret-renamed",
+    );
+    expect(renamed).toBeDefined();
+    expect(renamed!.action).toContain("gh secret set BKIT_ANTHROPIC_API_KEY");
+    expect(renamed!.action).toContain("gh secret delete ANTHROPIC_API_KEY");
+    setup({ agent: "claude", router: LEGACY });
+    mockGhNames({ secret: [], variable: [] });
+    const missing = detectCiRouterSecrets(tmpDir).find(
+      (f) => f.id === "anthropic-api-key-secret-missing",
+    );
+    expect(missing).toBeDefined();
+    expect(missing!.action).toContain("gh secret set ANTHROPIC_API_KEY");
+    expect(missing!.action).not.toContain("BKIT_ANTHROPIC_API_KEY");
+  });
+
+  it("dashboards router section names the recorded variant's BKIT_ secret", () => {
+    const cases: Array<[Parameters<typeof setup>[0], string]> = [
+      [{ agent: "claude" }, "BKIT_ANTHROPIC_API_KEY"],
+      [{ agent: "codex" }, "BKIT_OPENAI_API_KEY"],
+      [{ agent: "opencode", provider: "openrouter" }, "BKIT_OPENROUTER_API_KEY"],
+    ];
+    for (const [opts, secret] of cases) {
+      setup(opts);
+      const action = buildCloudDashboardsAdvisory(tmpDir)!.action;
+      expect(action, opts.agent).toContain(secret);
+      expect(action, opts.agent).not.toContain("gh secret set ANTHROPIC_API_KEY");
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // buildCloudDashboardsAdvisory
 // ---------------------------------------------------------------------------
 

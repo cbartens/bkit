@@ -1,0 +1,12 @@
+{
+  "files": {
+    "scripts/harvest/bkit-harvest.mjs": {
+      "name": "Workflow evidence collection",
+      "description": "Collects local workflow and conversation measurements into cross-project reports."
+    },
+    "scripts/harvest/ledgers.ts": {
+      "name": "Durable evidence storage",
+      "description": "Stores collected workflow records before removing eligible originals from consumer repositories."
+    }
+  }
+}

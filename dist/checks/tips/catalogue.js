@@ -14,7 +14,7 @@
 // Text rules: `line`, `why`, `caution` and `ask` are for the person, in plain English, and
 // never name an outside service — examples of specific services go in `steps`, which is
 // for the agent. A template's benefit reads the same here, in its `.bkit/templates.md`
-// section opener and in the README's "Templates ready to adopt" row; change all three in
+// section opener and in `DETAILS.md` § Templates ready to adopt; change all three in
 // the same commit.
 //
 // Detection rules: every `fires` is local (files, settings, environment) — no network. The
@@ -30,15 +30,43 @@ import { detectContextFetchMissing } from "../before/context-fetch.js";
 import { detectBlankDotenvKeys, detectDirenvMissing, detectDirenvNotAllowed, detectMissingDotenv, isCloudOrCi, } from "../before/env.js";
 import { detectGhMcpToken, hasGithubMcpServer } from "../after/auth.js";
 import { buildTrackerSetupAdvisory } from "../after/github.js";
-import { buildDepUpdaterSetupAdvisory } from "../after/tools.js";
+import { buildDepUpdaterSetupAdvisory, detectProjectDocs } from "../after/tools.js";
 import { detectInstalledHostModules } from "../../install/hosts.js";
 import { readBkitConfig } from "../../shared/settings.js";
-import { anyWorkflowMentions, claudeSettingsHas, codexTopLevelHas, exists, hasJsTestRunner, hasLintStagedConfig, hasMcpServer, hasNewerBkit, hasTestLinter, hasUnsharedFriction, readsBkitText, unlockedMcpServers, } from "./detect.js";
+import { anyWorkflowMentions, claudeSettingsHas, codexTopLevelHas, exists, hasJsTestRunner, hasLintStagedConfig, hasMcpServer, hasNoProjectGoals, hasProjectGoalsHeading, hasNewerBkit, hasTestLinter, hasUnsharedFriction, readsBkitText, unlockedMcpServers, } from "./detect.js";
 const hosts = (cwd) => detectInstalledHostModules(cwd);
 /** Every phase workflow. A value import of `COMPLY_PHASES` would cycle through cli.ts. */
 export const ALL_WORKFLOWS = ["design", "plan", "build", "debug", "ship"];
 /** Every `bkit tips --workflow=` context: the phase workflows, then the two agent closes. */
 export const EVERY_CONTEXT = [...ALL_WORKFLOWS, "audit", "utility"];
+const CLOUD_STEPS = "`.bkit/cloud.md`; `.bkit/templates.md` § Cloud-agent workflow and § Cursor.";
+/** The `cloud` tip's `ask` / `steps` for the recorded `bkit.cloud.agent`. */
+function cloudTipText(agent) {
+    const copy = "copy .bkit/templates/.github/workflows/bkit-cloud.yml to .github/workflows/bkit-cloud.yml";
+    const tail = "then tell me which dashboard settings are left.";
+    switch (agent) {
+        case "claude":
+            return {
+                ask: `Check my cloud-agent setup against .bkit/cloud.md: install the Claude GitHub App on the repo, ${copy} and .bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh to .claude/hooks/, run \`gh secret set BKIT_ANTHROPIC_API_KEY\` (or, keyless, \`gh variable set\` ANTHROPIC_FEDERATION_RULE_ID and ANTHROPIC_ORGANIZATION_ID from a Claude Console federation rule), ${tail}`,
+                steps: CLOUD_STEPS,
+            };
+        case "codex":
+            return {
+                ask: `Check my cloud-agent setup against .bkit/cloud.md: confirm bkit was installed with --codex, ${copy}, run \`gh secret set BKIT_OPENAI_API_KEY\`, ${tail}`,
+                steps: CLOUD_STEPS,
+            };
+        case "opencode":
+            return {
+                ask: `Check my cloud-agent setup against .bkit/cloud.md: ${copy}, set the opencode provider's BKIT_ API key as a repo secret (the name is in .bkit/cloud.md), ${tail}`,
+                steps: CLOUD_STEPS,
+            };
+        default:
+            return {
+                ask: `Check my cloud-agent setup against .bkit/cloud.md: copy .bkit/templates/.cursor/environment.json and .bkit/templates/.cursor/Dockerfile to .cursor/, ${tail}`,
+                steps: CLOUD_STEPS,
+            };
+    }
+}
 export const SETUP_TIPS = [
     // --- current: is bkit itself up to date ---------------------------------------------
     {
@@ -75,7 +103,9 @@ export const SETUP_TIPS = [
         steps: "`.bkit/install.md` § Local env setup. The `github` server entry belongs in `.mcp.json` / `.cursor/mcp.json` (`.bkit/cloud.md` § MCP issue-tracker integration).",
         advisories: ["gh-mcp-token-unset-shell", "gh-mcp-token-empty-shell"],
         fires: (cwd) => readBkitConfig(cwd).issueTracker === "github" &&
-            (!hasGithubMcpServer(cwd) || detectGhMcpToken(cwd) !== null),
+            (!hasGithubMcpServer(cwd) ||
+                // The pre-push hook's inner run unsets the .bkit/.env keys on purpose, so a missing token there is not real.
+                (!process.env.BKIT_PRE_PUSH_LOGGED && detectGhMcpToken(cwd) !== null)),
     },
     {
         id: "bkit-env",
@@ -148,7 +178,7 @@ export const SETUP_TIPS = [
         title: "Consistent formatting",
         line: "There's no shared formatting setup, so reviews fill up with spacing changes that hide the real ones. Add Prettier with bkit's ignore file.",
         why: "Prettier (a code formatter) makes every file follow the same layout. bkit's ignore file stops it reformatting bkit's own files, which would otherwise show up as false changes every time bkit updates.",
-        ask: 'Copy .bkit/templates/.prettierignore to .prettierignore first, then run `pnpm add -D prettier` and add `"format:check": "prettier --check ."` to the package.json scripts.',
+        ask: 'Copy .bkit/templates/prettierignore.example to .prettierignore first, then run `pnpm add -D prettier` and add `"format:check": "prettier --check ."` to the package.json scripts.',
         steps: "`.bkit/templates.md` § Prettier.",
         fires: (cwd) => !exists(cwd, ".prettierignore"),
     },
@@ -188,7 +218,7 @@ export const SETUP_TIPS = [
         title: "Quick tidy-up on commit",
         line: "The commit check has nothing to run. Add lint-staged so it tidies just the files you're committing.",
         why: "It formats only the handful of files in each change, in about a second. Without it the commit check either does nothing or is slow enough that people start skipping it.",
-        ask: "Run `pnpm add -D lint-staged prettier` and copy .bkit/templates/.lintstagedrc.json to .lintstagedrc.json.",
+        ask: "Run `pnpm add -D lint-staged prettier` and copy .bkit/templates/lintstagedrc.example.json to .lintstagedrc.json.",
         steps: "`.bkit/templates.md` § lint-staged.",
         fires: (cwd) => !hasLintStagedConfig(cwd),
     },
@@ -199,8 +229,9 @@ export const SETUP_TIPS = [
         title: "Finish cloud setup",
         line: "You've turned on cloud agents, but setup isn't finished, so cloud runs will stop partway. Finish the remaining steps.",
         why: "With cloud agents, bkit runs on its own: a change that passes its checks gets shipped and one that fails gets investigated, with nobody at the keyboard. That only works once every piece is in place.",
-        ask: "Check my cloud-agent setup against .bkit/cloud.md: copy .bkit/templates/.github/workflows/bkit-cloud.yml to .github/workflows/bkit-cloud.yml and .bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh to .claude/hooks/ (for Cursor: .bkit/templates/.cursor/environment.json and .bkit/templates/.cursor/Dockerfile to .cursor/), run `gh secret set ANTHROPIC_API_KEY` (or, keyless, `gh variable set` ANTHROPIC_FEDERATION_RULE_ID and ANTHROPIC_ORGANIZATION_ID from a Claude Console federation rule), then tell me which dashboard settings are left.",
+        ask: "Check my cloud-agent setup against .bkit/cloud.md: copy .bkit/templates/.github/workflows/bkit-cloud.yml to .github/workflows/bkit-cloud.yml, set the agent's credential as a repo secret under its BKIT_ name, then tell me which dashboard settings are left.",
         steps: "`.bkit/cloud.md`; `.bkit/templates.md` § Cloud-agent workflow and § Cursor.",
+        resolve: (cwd) => cloudTipText(readBkitConfig(cwd).cloudAgents),
         fires: (cwd) => {
             const cloud = readBkitConfig(cwd).cloudAgents;
             if (cloud === "none")
@@ -292,6 +323,34 @@ export const SETUP_TIPS = [
         fires: (cwd) => !exists(cwd, "scripts/graphify"),
     },
     {
+        id: "project-docs",
+        workflows: ["design", "plan", "build"],
+        title: "Project docs",
+        line: "Fill the project docs in waves, because each doc reads facts the earlier ones record.",
+        why: "Agents read your architecture, testing and security docs before they plan and build. A doc that is missing or still holds the starter text gives them nothing to go on, so they guess from the code each time.",
+        caution: "Ignoring either the missing-doc advisory or the unfilled-doc advisory also silences this tip and the other advisory.",
+        ask: "Fill in my project docs in the order of .bkit/templates.md § Project docs — adoption order: copy each missing starter from .bkit/templates/docs/ to docs/, fill it from the repository, and add its row to .agents/docs.md.",
+        steps: "`.bkit/templates.md` § Project docs — adoption order.",
+        advisories: ["project-docs-missing", "project-docs-unpopulated"],
+        fires: (cwd) => detectProjectDocs(cwd).some((f) => f.id === "project-docs-missing" || f.id === "project-docs-unpopulated"),
+    },
+    {
+        id: "project-goals",
+        workflows: ["design", "plan"],
+        title: "Project goals",
+        line: "Agents have rules but no goals, so when two options both fit the rules they choose by guesswork. Write down what this project optimises for.",
+        why: "Design and plan agents choose between options on every run. The rules say what is allowed, not what matters most here, so each agent weighs speed, cost and polish its own way.",
+        ask: "Add a `## Project Goals` section to .agents/rules.md, between Project Rules and Project Settings, with a few goals in priority order. Ask me what this project optimises for first.",
+        steps: "`.bkit/prompts.md` § Special Behaviors, where the Project Goals row sits.",
+        resolve: (cwd) => ({
+            ask: hasProjectGoalsHeading(cwd)
+                ? "Fill the `## Project Goals` section that already exists in .agents/rules.md instead of adding a second one, with a few goals in priority order. Ask me what this project optimises for first."
+                : "Add a `## Project Goals` section to .agents/rules.md, between Project Rules and Project Settings, with a few goals in priority order. Ask me what this project optimises for first.",
+            steps: "`.bkit/prompts.md` § Special Behaviors, where the Project Goals row sits.",
+        }),
+        fires: hasNoProjectGoals,
+    },
+    {
         id: "dependabot-renovate",
         workflows: ["ship", "audit"],
         title: "Automatic updates",
@@ -359,6 +418,36 @@ export const SETUP_TIPS = [
         },
     },
     {
+        id: "pre-push-pr-conflict",
+        workflows: ["plan", "ship"],
+        title: "Stop a push whose PR no longer merges",
+        line: "Your pre-push hook runs the whole gate even when the branch's open PR conflicts with its base, and CI never starts.",
+        why: "The newer hook looks up the open PR once, fetches its base and trial-merges the pushed commit. A conflict stops the push in seconds and names the files; a lookup or fetch that cannot answer only warns.",
+        ask: "Paste the `Open-PR lookup` block (above the CI-suppressor guard, which now reads the PR number from it) and the `PR conflict` block (before `pnpm bkit check`) of .bkit/templates/.husky/pre-push into .husky/pre-push, and add the `PUSH_BRANCH_SHA` line of its stdin loop: without it the check never runs.",
+        steps: "`.bkit/templates.md` § Git hooks.",
+        fires: (cwd) => {
+            if (!exists(cwd, ".husky/pre-push"))
+                return false;
+            const hook = fs.readFileSync(path.join(cwd, ".husky/pre-push"), "utf-8");
+            return !hook.includes("merge-tree") || !hook.includes("PUSH_BRANCH_SHA=");
+        },
+    },
+    {
+        id: "pre-push-direnv",
+        workflows: ["plan", "ship"],
+        title: "Load .envrc when the pre-push hook runs",
+        line: "Your pre-push hook runs the gate without your .envrc variables when the shell that pushed never loaded them.",
+        why: "The newer hook runs its logged inner run through `direnv exec .`, so the gate always sees the repo's variables, and an untrusted .envrc stops the push in seconds with the fix instead of failing deep in the gate. The unset loops right after that block keep the fixed list of bkit tooling keys (BKIT_GH_TOKEN, ...), and every key `.bkit/.env` names, out of the gate and its log, however they were loaded.",
+        ask: "Replace the log block of .husky/pre-push (the `BKIT_PRE_PUSH_LOGGED` block) and the `.bkit/.env` unset block that follows it with the ones in .bkit/templates/.husky/pre-push.",
+        steps: "`.bkit/templates.md` § Git hooks.",
+        fires: (cwd) => {
+            if (!exists(cwd, ".husky/pre-push") || !exists(cwd, ".envrc"))
+                return false;
+            const hook = fs.readFileSync(path.join(cwd, ".husky/pre-push"), "utf-8");
+            return !hook.includes("direnv exec");
+        },
+    },
+    {
         id: "disk-prune",
         workflows: ALL_WORKFLOWS,
         title: "Keep enough disk free for new worktrees",
@@ -373,10 +462,10 @@ export const SETUP_TIPS = [
     {
         id: "share-friction",
         title: "Tell bkit what slowed you down",
-        line: "Your workflows have noted problems with bkit itself that its makers never see. Send them, with your stats, as one issue on bkit's issue page.",
+        line: "Your workflows logged problems its makers never see. Send them with your stats as one issue.",
         why: "Workflows note every place bkit got in the way: a command that failed, rework, a manual step. Those notes stay in this repo, so the people who fix bkit never learn about them. One report from you is how they reach the fix list.",
-        caution: "bkit's issue page is public. Your agent removes project names, paths and links first, and shows you the exact text before anything is posted.",
-        ask: "Share this repo's bkit friction and stats with bkit's makers as one new issue: follow the paste block in .bkit/README.md § Share friction with bkit, show me the exact title and text, and post only after I say yes.",
+        caution: "bkit's issues are public. Your agent strips project names, paths and links first.",
+        ask: "Share this repo's bkit friction and stats as one issue per .bkit/README.md § Share friction with bkit. Show me the exact text; post only after I say yes.",
         steps: "`.bkit/README.md` § Share friction with bkit.",
         fires: hasUnsharedFriction,
     },

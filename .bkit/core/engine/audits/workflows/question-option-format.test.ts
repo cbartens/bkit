@@ -73,7 +73,9 @@ const OPTIONS_WORD = /\boptions\b/i;
 /** An option entry that carries its letter. */
 const LETTER = /[A-Z]\)/;
 /** A recommendation tail that opens on its letter, after an optional `{` or bold marker. */
-const RECOMMENDED_LETTER = /^[*{\s]*[A-Z]\)/;
+const RECOMMENDED_LETTER = /^[*{\s]*(?:[A-Z]\)|none — )/;
+/** One option on its own line: `A) {option} — {effect}`, optionally bulleted. */
+const OPTION_LINE = /^\s*(?:[-*]\s+)?([A-Z])\) (.*)$/;
 /**
  * The sentence every step routing on the owner's answer carries, so a reply by
  * letter reaches the option it labels instead of the `**Else**` branch.
@@ -152,6 +154,38 @@ function optionLists(text: string): OptionList[] {
 }
 
 /**
+ * The per-line option blocks of one text: each run of consecutive lines opening
+ * on a letter and `)`, as the shared question shape writes them.
+ */
+function optionLineBlocks(text: string): Array<{ no: number; lines: string[] }> {
+  const out: Array<{ no: number; lines: string[] }> = [];
+  let open = false;
+  text.split("\n").forEach((line, i) => {
+    if (OPTION_LINE.test(line)) {
+      if (!open) out.push({ no: i + 1, lines: [] });
+      out.at(-1)!.lines.push(line.trim().replace(/^[-*]\s+/, ""));
+      open = true;
+    } else open = false;
+  });
+  return out;
+}
+
+/** Why a per-line option block misses its letter or its effect. */
+function optionLineViolations(file: string, text: string, offset = 0): string[] {
+  return optionLineBlocks(text).flatMap(({ no, lines }) =>
+    lines.flatMap((entry, i) => {
+      const want = String.fromCharCode("A".charCodeAt(0) + i);
+      const at = no + i + offset;
+      if (!entry.startsWith(`${want}) `))
+        return [`${file}:${at}: \`${entry}\` — write \`${want}) {option} — {effect}\``];
+      return /\S\s+—\s+\S/.test(entry)
+        ? []
+        : [`${file}:${at}: \`${entry}\` — say what happens if it is picked, after a \`—\``];
+    }),
+  );
+}
+
+/**
  * The `Recommended:` tails, empty where the line only names the label. Every
  * label on the line is read; a tail runs to the next backtick or the next label.
  */
@@ -172,14 +206,17 @@ function recommendationTails(text: string): Hit[] {
 
 /** Why one file's `Options:` lines do not letter every entry, in line order. */
 function optionViolations(file: string, text: string, offset = 0): string[] {
-  return optionLists(text).flatMap(({ no, entries }) =>
-    entries.flatMap((entry, i) => {
-      const want = String.fromCharCode("A".charCodeAt(0) + i);
-      return new RegExp(`^${want}\\)`).test(entry)
-        ? []
-        : [`${file}:${no + offset}: \`${entry}\` — write \`${want}) {option}\``];
-    }),
-  );
+  return [
+    ...optionLists(text).flatMap(({ no, entries }) =>
+      entries.flatMap((entry, i) => {
+        const want = String.fromCharCode("A".charCodeAt(0) + i);
+        return new RegExp(`^${want}\\)`).test(entry)
+          ? []
+          : [`${file}:${no + offset}: \`${entry}\` — write \`${want}) {option}\``];
+      }),
+    ),
+    ...optionLineViolations(file, text, offset),
+  ];
 }
 
 /** Why one file's `Recommended:` lines do not name the letter they recommend. */
@@ -255,7 +292,10 @@ function scanCounts(): Array<{ dir: string; files: number; optionLines: number }
     return {
       dir,
       files: files.length,
-      optionLines: files.flatMap((f) => optionLists(f.text)).length,
+      optionLines: files.reduce(
+        (n, f) => n + optionLists(f.text).length + optionLineBlocks(f.text).length,
+        0,
+      ),
     };
   });
 }
@@ -328,8 +368,8 @@ describe("question option format: one layout across the corpus", () => {
   });
 
   it("the canonical layout letters every option and recommendation", () => {
-    expect(layoutBullet(), `no \`Options: A) … / B) …\` in ${CANONICAL}`).toContain("Options: A)");
-    expect(layoutBullet(), `no \`Recommended: A) X — {reason}\` in ${CANONICAL}`).toContain(
+    expect(humanQuestions(), `no lettered option line in ${AUTHORING_DOC}`).toMatch(/^\s*A\) /m);
+    expect(humanQuestions(), `no \`Recommended: A) X — {reason}\` in ${AUTHORING_DOC}`).toContain(
       "Recommended: A)",
     );
   });
@@ -422,10 +462,11 @@ describe("question option format: one layout across the corpus", () => {
   it("the plan template letters every option of its Open Questions placeholder", () => {
     const open = planTemplateOpenQuestions();
     expect(
-      optionLists(open.text).length,
-      `no \`Options:\` list in the ${PLAN_TEMPLATE} placeholder`,
+      optionLineBlocks(open.text).length,
+      `no per-line option block in the ${PLAN_TEMPLATE} placeholder`,
     ).toBeGreaterThan(0);
     expect(optionViolations(PLAN_TEMPLATE, open.text, open.offset)).toEqual([]);
+    expect(optionLineViolations(PLAN_TEMPLATE, open.text, open.offset)).toEqual([]);
   });
 });
 
@@ -503,5 +544,476 @@ describe("question option format: the rules fire on a synthetic list", () => {
       "`Options: A) Accept / B) Fix now`, then `Recommended: A) Accept — {reason}` and `No recommendation — {why}`.";
     expect(optionViolations("synthetic.md", line)).toEqual([]);
     expect(recommendationViolations("synthetic.md", line)).toEqual([]);
+  });
+});
+
+const AUTHORING_DOC = ".bkit/core/.bkit/authoring.md";
+const PHASE_WORKFLOWS = ["bkit-design", "bkit-plan", "bkit-build", "bkit-debug", "bkit-ship"];
+const DEFAULT_SET = [
+  "the run waits for you",
+  "taken as A when nobody can be asked",
+  "the run stops when nobody can be asked",
+  "the plan assumes A",
+  "the plan stops at Gate 1 until you answer",
+  "the design assumes A",
+  "written as a needs-decision deferral",
+];
+
+/** The `Human questions` bullet of the authoring doc, with its sub-bullets and code block. */
+function humanQuestions(): string {
+  const lines = read(AUTHORING_DOC).split("\n");
+  const start = lines.findIndex((l) => l.startsWith("- **Human questions:**"));
+  if (start < 0) return "";
+  const end = lines.findIndex((l, i) => i > start && /^- \*\*/.test(l));
+  return lines.slice(start, end === -1 ? undefined : end).join("\n");
+}
+
+describe("question option format: the shared shape in § Human questions", () => {
+  it("the canonical shape puts each option on its own line with its effect", () => {
+    const doc = humanQuestions();
+    expect(doc, "§ Human questions still shows the inline Options line").not.toMatch(
+      /^\s*Options: A\)/m,
+    );
+    expect(doc).toMatch(/^\s*A\) \{option\} — \{what happens if you pick it\}$/m);
+    expect(doc).toMatch(/^\s*B\) \{option\} — \{what happens if you pick it\}$/m);
+  });
+
+  it("the canonical shape carries a Default if unanswered line from the fixed set", () => {
+    const doc = humanQuestions();
+    expect(doc).toContain("Default if unanswered:");
+    expect(DEFAULT_SET.filter((phrase) => !doc.includes(phrase))).toEqual([]);
+  });
+
+  it("the canonical shape gives a hard blocker Recommended: none", () => {
+    const doc = humanQuestions();
+    expect(doc).toContain("Recommended: none — ");
+    expect(doc).not.toContain("No recommendation");
+  });
+
+  it("the canonical shape ends a message with the reply line and the one-by-one offer", () => {
+    const doc = humanQuestions();
+    expect(doc).toContain(
+      'Reply with a letter per question, or "yes" to take every recommendation.',
+    );
+    expect(doc).toContain('Or say "one by one" and I\'ll ask them one at a time.');
+  });
+
+  it("the canonical shape keeps the plain-English rule for the question, each option and the recommendation's reason", () => {
+    const doc = humanQuestions();
+    expect(doc).toContain("the reason for the recommendation");
+    expect(doc).toContain("in plain English");
+  });
+
+  it("the Question layout bullet points to § Human questions", () => {
+    const bullet = layoutBullet();
+    expect(bullet).toContain("Human questions");
+    expect(bullet).not.toContain("Options: A)");
+    expect(bullet).not.toContain("Reply per question.");
+  });
+
+  it("RED-PROOF: an option line with no effect fires the option-line rule", () => {
+    expect(
+      optionViolations("synthetic.md", "A) Accept\nB) Fix now — the fix runs again").length,
+    ).toBeGreaterThan(0);
+    expect(
+      optionViolations(
+        "synthetic.md",
+        "A) Accept — the item stays\nB) Fix now — the fix runs again",
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("question option format: the reply-line clauses reach the workflows", () => {
+  it("no workflow carries the retired reply wording", () => {
+    const hits = mdFiles(WORKFLOWS).flatMap((f) =>
+      ['"stop" writes a handover', 'Reply per question. "yes" takes every recommendation.']
+        .filter((wording) => f.text.includes(wording))
+        .map((wording) => `${f.file}: ${wording}`),
+    );
+    expect(hits).toEqual([]);
+  });
+
+  it("bkit-build: the Decision Pause yes line uses the shared reply wording", () => {
+    const text = read(`${WORKFLOWS}/bkit-build.md`);
+    expect(text).toContain(
+      'Reply with a letter per question, or "yes" to take every recommendation.',
+    );
+    expect(text).not.toContain('"yes" takes every recommendation; it never answers');
+  });
+
+  it("every workflow that asks the owner states the question, each option and the recommendation's reason in plain English", () => {
+    const sentence =
+      "State what the owner must decide, what each option does and the reason for the recommendation, in plain English, before naming any file, test or identifier.";
+    const missing = PHASE_WORKFLOWS.filter(
+      (name) => read(`${WORKFLOWS}/${name}.md`).split(sentence).length - 1 < 1,
+    );
+    expect(missing).toEqual([]);
+  });
+});
+
+/** A workflow's text, read from the workflows directory. */
+const workflow = (name: string) => read(`${WORKFLOWS}/${name}.md`);
+
+/** One numbered step of a section: its first line to the line before the next top-level number. */
+function numberedStep(sectionText: string, n: number): string {
+  const lines = sectionText.split("\n");
+  const start = lines.findIndex((l) => l.startsWith(`${n}. `));
+  if (start < 0) return "";
+  const end = lines.findIndex((l, i) => i > start && /^\d+\. /.test(l));
+  return lines.slice(start, end === -1 ? undefined : end).join("\n");
+}
+
+/** A bullet at one indent: from its first line to the line before the next sibling bullet. */
+function bulletFrom(text: string, start: RegExp, indent: number): string {
+  const lines = text.split("\n");
+  const at = lines.findIndex((l) => start.test(l));
+  if (at < 0) return "";
+  const sibling = new RegExp(`^ {${indent}}- `);
+  const end = lines.findIndex((l, i) => i > at && sibling.test(l));
+  return lines.slice(at, end === -1 ? undefined : end).join("\n");
+}
+
+const countOf = (text: string, needle: string) => text.split(needle).length - 1;
+const STOP_EFFECT = "Stop — the run ends here with a handover; the next run resumes here";
+
+describe("question option format: the build Decision Pause in the shared shape", () => {
+  const pause = () => section(workflow("bkit-build"), /Decision Pause/);
+
+  it("bkit-build: every decision item option carries an effect", () => {
+    const step = numberedStep(pause(), 2);
+    expect(step).toContain('{"name", "effect"}');
+    expect(step).toContain(STOP_EFFECT);
+    expect(step, "a bare-string option list is still named").not.toMatch(/\["Accept", "Fix now"/);
+  });
+
+  it("bkit-build: the pause message shows the default line and Recommended: none", () => {
+    const step = numberedStep(pause(), 4);
+    expect(step).toContain("Default if unanswered:");
+    expect(step).toContain("Recommended:");
+    expect(step).toContain("Recommended: none");
+    expect(step).not.toContain("No recommendation");
+  });
+
+  it("bkit-build: a one-by-one reply asks the questions one at a time", () => {
+    const step = numberedStep(pause(), 4);
+    expect(step).toContain("one by one");
+    expect(step).toMatch(/one by one[^\n]*(?:its own message|one at a time)/);
+  });
+
+  it("bkit-build: the one-by-one offer follows the asked count", () => {
+    const step = numberedStep(pause(), 4);
+    expect(step).toMatch(/one by one[^\n]*3 or more questions|3 or more questions[^\n]*one by one/);
+  });
+});
+
+describe("question option format: the debug questions in the shared shape", () => {
+  const loop = () => numberedStep(section(workflow("bkit-debug"), /Loop Question/), 3);
+  const step1 = () => section(workflow("bkit-debug"), /Step 1 — Start Workflow/);
+  const step2 = () => section(workflow("bkit-debug"), /Step 2 — Worktree Setup/);
+  const branchQuestion = () => bulletFrom(step1(), /Q1 — Branch/, 0) || step1();
+
+  it("bkit-debug: the loop question gives each option its effect and the recommendation a reason", () => {
+    const step = loop();
+    expect(step).not.toContain("Options: A) Stop / B) Try again");
+    expect(step).toContain(`A) ${STOP_EFFECT}`);
+    expect(step).toMatch(/B\) Try again — \S/);
+    expect(step).toMatch(/Recommended: A\) Stop — \S/);
+  });
+
+  it("bkit-debug: the loop question's recommendation reason matches its trigger", () => {
+    const step = loop();
+    expect(step).toMatch(
+      /`LOOP_LIMIT` = true[\s\S]{0,300}?Recommended: A\) Stop — the attempts set aside for this are used up/,
+    );
+    expect(step).toContain(
+      "Recommended: A) Stop — the attempts so far have not brought the failures down through a code change",
+    );
+    expect(step).not.toContain("left no fewer failures");
+  });
+
+  it("bkit-debug: every question shows a Default if unanswered line", () => {
+    expect(loop()).toContain("Default if unanswered: the run waits for you");
+  });
+
+  it("bkit-debug: the branch check asks a formatted question", () => {
+    const text = step1();
+    expect(text).toContain("**Q1 — Branch:**");
+    expect(text).toContain("Name another branch");
+    expect(text).toContain("Stop — nothing changes; the run can be started again");
+    expect(text, "the branch route is still a bare STOP").not.toMatch(
+      /Exit 3 or 8 → \*\*STOP\*\* with the missing or ambiguous branch/,
+    );
+  });
+
+  it("bkit-debug: the CI-run stop asks a formatted question", () => {
+    const text = step2();
+    expect(text).toContain("**Q1 — CI run:**");
+    expect(text).toContain(
+      "Use local discovery — debug runs the tests itself instead of reading CI",
+    );
+    expect(text).toContain(STOP_EFFECT);
+    expect(text).toContain("owner-pause --field=reason=decision");
+  });
+
+  it("bkit-debug: the branch check and CI-run question show Recommended: none and a Default if unanswered line", () => {
+    expect(step1()).toContain("Recommended: none — only you know which branch you meant");
+    expect(step2()).toContain("Recommended: none — only you know which run you meant");
+    const fallback =
+      "Default if unanswered: the run waits for you; the run stops when nobody can be asked";
+    expect(step1()).toContain(fallback);
+    expect(step2()).toContain(fallback);
+  });
+
+  it("bkit-debug: the CI-run question releases the lock only on Stop", () => {
+    const route = bulletFrom(step2(), /\*\*If\*\* exit 8 or 82/, 3);
+    expect(route, "no exit 8 or 82 route found").not.toBe("");
+    const [beforeStop, afterStop] = route.split(/answer is `Stop`/);
+    expect(afterStop, "the route has no Stop answer").toBeDefined();
+    expect(beforeStop).not.toMatch(/release the workflow lock|locks release/);
+    expect(afterStop).toMatch(/locks release/);
+  });
+
+  it("bkit-debug: the foreign-path stop shows the Action needed line", () => {
+    expect(workflow("bkit-debug")).toContain(
+      '**Action needed — Foreign path:** commit or revert {file}. Then say "continue".',
+    );
+  });
+
+  it("bkit-debug: every question message ends with the reply line its point uses", () => {
+    const step1Text = step1();
+    expect(step1Text).toContain(
+      'Reply with a letter per question. "stop" ends here; nothing has changed yet, so the run can be started again.',
+    );
+    expect(step2()).toContain(
+      'Reply with a letter per question. "stop" ends here with a handover; the next run resumes here.',
+    );
+    expect(branchQuestion()).not.toContain('or "yes" to take every recommendation');
+    expect(step2()).not.toContain('or "yes" to take every recommendation');
+    expect(loop()).toContain(
+      'Reply with a letter per question, or "yes" to take every recommendation.',
+    );
+  });
+});
+
+describe("question option format: the ship questions in the shared shape", () => {
+  const assumed = () => section(workflow("bkit-ship"), /Confirm Assumed Items/);
+  const merge = () => section(workflow("bkit-ship"), /Merge Question/);
+
+  it("bkit-ship: the assumed-item question gives each option its effect", () => {
+    const text = assumed();
+    expect(text).not.toContain("Options: A) Confirm / B) Reject");
+    expect(text).toMatch(/A\) Confirm — \S/);
+    expect(text).toMatch(/B\) Reject — \S/);
+  });
+
+  it("bkit-ship: an assumed item is a hard blocker with Recommended: none", () => {
+    const text = assumed();
+    expect(text).toContain("Recommended: none — only you can accept it");
+    expect(text).not.toContain("No recommendation");
+  });
+
+  it("bkit-ship: every question shows a Default if unanswered line", () => {
+    expect(assumed()).toContain("Default if unanswered: written as a needs-decision deferral");
+    expect(merge()).toContain("Default if unanswered: the run waits for you");
+  });
+
+  it("bkit-ship: the merge question gives each option its effect", () => {
+    const text = merge();
+    expect(text).not.toContain("Options: A) Stop / B) Try again");
+    expect(text).toContain(`A) ${STOP_EFFECT}`);
+    expect(text).toMatch(/B\) Try again — \S/);
+  });
+
+  it("bkit-ship: every question message ends with the reply line its point uses", () => {
+    expect(assumed()).not.toContain("Reply per question. Ship merges either way");
+    expect(assumed()).toContain("Reply with a letter per question");
+    expect(merge()).toContain(
+      'Reply with a letter per question, or "yes" to take every recommendation.',
+    );
+  });
+});
+
+describe("question option format: the design questions in the shared shape", () => {
+  const grill = () => section(workflow("bkit-design"), /Step 3 — Grill/);
+  const oneByOneLine = (name: string) =>
+    workflow(name)
+      .split("\n")
+      .find((l) => /^7\. \*\*If\*\* user requests the open questions one by one/.test(l)) ?? "";
+
+  it("bkit-design: the grill question gives each option its effect and the recommendation a reason", () => {
+    const text = grill();
+    expect(text).toMatch(/A\) \{[^}]*\} — \{[^}]*\}/);
+    expect(text).toContain("Recommended: A) {answer} — {why}");
+  });
+
+  it("bkit-design: the draft-scenario question gives each option its effect", () => {
+    const text = grill();
+    expect(text).not.toContain("Options: A) yes / B) no");
+    expect(text).toContain("A) Yes — the draft becomes the design's starting point");
+    expect(text).toContain("B) No — the draft is revised from your reply before the design starts");
+    expect(text).toMatch(/Recommended: A\) Yes — \S/);
+  });
+
+  it("bkit-design: every question shows a Default if unanswered line", () => {
+    expect(countOf(grill(), "Default if unanswered: the design assumes A")).toBeGreaterThanOrEqual(
+      2,
+    );
+  });
+
+  it("bkit-design: the grill message ends with the reply line and the one-by-one offer", () => {
+    const text = grill();
+    expect(text).toMatch(/Reply with a letter per question[^\n]*"stop"/);
+    expect(text).toContain("one by one");
+  });
+
+  it("bkit-design: a one-by-one grill round counts as one grill turn", () => {
+    expect(grill()).toMatch(/one by one[^\n]*GRILL_TURNS|GRILL_TURNS[^\n]*one by one/);
+  });
+
+  it("the one-by-one open-questions pass forbids the host question tool in design and plan", () => {
+    for (const name of ["bkit-design", "bkit-plan"]) {
+      const line = oneByOneLine(name);
+      expect(line, `${name}: no one-by-one step found`).not.toBe("");
+      expect(line, `${name} does not forbid the host question tool`).toContain(
+        "not through a host question tool",
+      );
+      expect(line, `${name} still asks the item verbatim`).not.toContain("verbatim");
+      expect(line).toContain(
+        "keeping its options, `Recommended` and `Default if unanswered` as written",
+      );
+    }
+  });
+});
+
+describe("question option format: the Step 1 issue-and-branch stops in the shared shape", () => {
+  const step1 = (name: string) => section(workflow(name), /Step 1/);
+  const SLUG_WORKFLOWS = ["bkit-design", "bkit-plan", "bkit-build", "bkit-ship"];
+  const BARE_NUMBER_WORKFLOWS = ["bkit-build", "bkit-ship"];
+
+  it("every workflow's Step 1 ambiguous-issue stop asks a formatted question", () => {
+    for (const name of PHASE_WORKFLOWS) {
+      const text = step1(name);
+      expect(text, `${name}: no Q1 — Issue question`).toContain("**Q1 — Issue:**");
+      expect(text, `${name}: no Use {issue} option`).toContain(
+        "Use {issue} — the run works on {issue}",
+      );
+      expect(text, `${name}: no Stop option`).toContain(
+        "Stop — nothing changes; the run can be started again",
+      );
+      expect(text, `${name}: the exit 8 route is still a bare STOP`).not.toMatch(
+        /exit 8 → \*\*STOP\*\*; tell the user the prompt names more than one issue/,
+      );
+    }
+  });
+
+  it("every workflow's Step 1 issue question shows Recommended: none and a Default if unanswered line", () => {
+    for (const name of PHASE_WORKFLOWS) {
+      const text = step1(name);
+      expect(text, `${name}: no Recommended: none`).toContain(
+        "Recommended: none — only you know which issue you meant",
+      );
+      expect(text, `${name}: no Default if unanswered line`).toContain(
+        "Default if unanswered: the run waits for you; the run stops when nobody can be asked",
+      );
+    }
+  });
+
+  it("every workflow's Step 1 slug and bare-number stops show the Action needed line", () => {
+    for (const name of SLUG_WORKFLOWS) {
+      const text = step1(name);
+      expect(text, `${name}: no slug Action needed line`).toContain(
+        '**Action needed — Branch name:** rename `BRANCH` to `feat/{lowercase-slug}`, or name an issue. Then say "continue".',
+      );
+      expect(text, `${name}: the exit 3 route is still a bare STOP`).not.toContain(
+        "tell the user to rename `BRANCH`",
+      );
+    }
+    for (const name of BARE_NUMBER_WORKFLOWS) {
+      const text = step1(name);
+      expect(text, `${name}: no bare-number Action needed line`).toContain(
+        '**Action needed — Issue reference:** name the issue as `#N`, its key or its URL. Then say "continue".',
+      );
+      expect(text, `${name}: the exit 9 route is still a bare STOP`).not.toContain(
+        "the prompt holds only a bare number and to name the issue",
+      );
+    }
+  });
+
+  it("the Step 1 issue question re-runs fids parse on the owner's answer file", () => {
+    for (const name of PHASE_WORKFLOWS) {
+      const text = step1(name);
+      expect(text, `${name}: no owner-answer.md write`).toContain("{SESSION_DIR}/owner-answer.md");
+      expect(text, `${name}: no fids parse re-run on the answer file`).toContain(
+        'fids parse --prompt-file="{SESSION_DIR}/owner-answer.md"',
+      );
+    }
+  });
+});
+
+describe("question option format: open questions one option per line, in plain English", () => {
+  const INLINE_OPTIONS = "`Options: A) {option} — {trade-off} · B) …`";
+  const INDEX_INLINE = "the lettered `Options: A) …`";
+
+  it("the plan template puts each open-question option on its own line", () => {
+    const open = planTemplateOpenQuestions().text;
+    expect(open, "the placeholder still shows the inline · B) list").not.toMatch(/· B\)/);
+    expect(open).toMatch(/^\s*(?:[-*]\s+)?A\) \[option\] — \[trade-off\]$/m);
+    expect(open).toMatch(/^\s*(?:[-*]\s+)?B\) /m);
+    expect(open).toContain("the plan assumes A");
+    expect(open).toContain("the plan stops at Gate 1 until you answer");
+  });
+
+  it("every open-question rule in the prompts asks for one option per line", () => {
+    const rules = openQuestionRules();
+    expect(rules.length, "the prompts state no open-question rule").toBeGreaterThanOrEqual(6);
+    const inline = rules.filter((r) => r.text.includes(INLINE_OPTIONS));
+    const notPerLine = rules.filter((r) => !/one (?:lettered )?option per line/.test(r.text));
+    const bad = [...inline, ...notPerLine].map((r) => `${r.file}:${r.no}: ${r.text.trim()}`);
+    expect(bad).toEqual([]);
+  });
+
+  it("the design review flags an open question whose options share one line", () => {
+    const rule = read(DESIGN_REVIEW_2);
+    expect(rule, `${DESIGN_REVIEW_2} names no one-per-line check`).toMatch(
+      /options? (?:that )?share (?:one|a) line|one option per line/,
+    );
+  });
+
+  it("the prompts index describes one option per line", () => {
+    const rows = indexOpenQuestionRules(PROMPTS_INDEX);
+    expect(rows.length, "the prompts index states no open-question rule").toBeGreaterThanOrEqual(5);
+    const bad = rows
+      .filter((row) => row.text.includes(INDEX_INLINE))
+      .map((row) => `${PROMPTS_INDEX}:${row.no}: ${row.text.trim()}`);
+    expect(bad).toEqual([]);
+    expect(rows.filter((row) => !/one (?:lettered )?option per line/.test(row.text))).toEqual([]);
+  });
+
+  it("no workflow, prompt, template or authoring doc carries an inline Options: list", () => {
+    const files = SCAN_DIRS.flatMap(mdFiles);
+    expect(files.length).toBeGreaterThan(0);
+    const bad = files.flatMap((f) =>
+      f.text
+        .split("\n")
+        .map((line, i) => ({ line, at: `${f.file}:${i + 1}` }))
+        .filter(({ line }) => /(?<![-\w])Options: A\)/.test(line))
+        .map(({ line, at }) => `${at}: ${line.trim().slice(0, 120)}`),
+    );
+    expect(bad).toEqual([]);
+  });
+
+  it("every open-question writer asks for plain English", () => {
+    for (const name of [
+      "bkit-plan-generate",
+      "bkit-plan-update",
+      "bkit-design-generate",
+      "bkit-design-update",
+    ]) {
+      const text = read(`${PROMPTS}/${name}.md`);
+      expect(text, `${name} names no plain-English rule for open questions`).toMatch(
+        /open question[^\n]*in plain English|in plain English[^\n]*open question/i,
+      );
+    }
   });
 });

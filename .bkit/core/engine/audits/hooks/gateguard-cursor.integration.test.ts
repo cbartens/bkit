@@ -192,3 +192,69 @@ describe("gateguard managed-block parity — cursor vs claude", () => {
     expect(src.split("process.stdout.write").length - 1).toBe(1);
   });
 });
+
+describe("cursor gateguard — delete and shell advice", () => {
+  const GUARD = path.join(GENERATED, "guardrails.cjs");
+  fs.writeFileSync(
+    GUARD,
+    readTemplate(path.resolve(".bkit/core/.cursor/hooks/bkit-guardrails.cjs")),
+  );
+
+  function runShell(command: string, session: string) {
+    const res = spawnSync("node", [GUARD], {
+      cwd: workspace,
+      input: JSON.stringify({
+        command,
+        cwd: workspace,
+        conversation_id: session,
+        session_id: session,
+        workspace_roots: [workspace],
+        hook_event_name: "beforeShellExecution",
+      }),
+      encoding: "utf-8",
+      env: { ...process.env, BKIT_GATEGUARD: undefined },
+    });
+    return JSON.parse(res.stdout.trim()) as { permission?: string; agent_message?: string };
+  }
+
+  it("routes Cursor delete and shell targets without replacing its driver", () => {
+    // Matcher and payload agree: the registered edit surface names Delete.
+    const hooks = JSON.parse(
+      fs.readFileSync(path.resolve(".bkit/shared/.cursor/hooks.json"), "utf-8"),
+    ) as { hooks: { preToolUse: { command: string; matcher?: string }[] } };
+    const gate = hooks.hooks.preToolUse.find((h) => h.command.includes("bkit-gateguard.cjs"));
+    expect(String(gate?.matcher).split("|")).toEqual(expect.arrayContaining(["Write", "Delete"]));
+
+    // A Delete payload reaches the shared advice with the same allow envelope.
+    fs.mkdirSync(path.join(workspace, "docs"));
+    fs.writeFileSync(path.join(workspace, "docs", "gone.md"), "x\n", "utf-8");
+    const session = newSession();
+    const del = run({
+      ...writePayload("docs/gone.md", session),
+      tool_name: "Delete",
+      tool_input: { file_path: "docs/gone.md" },
+    });
+    expect(del.out["permission"]).toBe("allow");
+    expect(String(del.out["additional_context"])).toContain("gone.md");
+    expect(String(del.out["additional_context"])).toContain("First edit to");
+
+    // A shell edit gets the per-file checklist and the general reminder in agent_message,
+    // still an allow, and shares the warning record with the edit tools.
+    const shell = runShell("sed -i s/a/b/ docs/shell.md", session);
+    expect(shell.permission).toBe("allow");
+    expect(String(shell.agent_message)).toContain("edits files through the shell");
+    expect(String(shell.agent_message)).toContain("First edit to");
+    expect(String(shell.agent_message)).toContain("Which Sections Apply");
+    const after = run(writePayload("docs/shell.md", session));
+    expect(after.out["additional_context"]).toBeUndefined();
+
+    // The outer driver is untouched: still the single emitter and the same envelope.
+    const src = fs.readFileSync(HOOK, "utf-8");
+    const driver = src.slice(src.indexOf("// bkit:end"));
+    expect(driver).toContain("resolveAgainstWorkspace(");
+    expect(driver).toContain(
+      'emit(\n        result.mode === "deny"\n          ? { permission: "deny", agent_message: result.context, user_message: result.context }',
+    );
+    expect(src.split("process.stdout.write").length - 1).toBe(1);
+  });
+});

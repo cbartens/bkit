@@ -13,7 +13,7 @@ import { BKIT_GATE_SCRIPTS } from "../../install/manifest";
 import { getBkitDocsRoot } from "../../shared/package-roots";
 
 const CONSUMER_CI_TEMPLATE = path.resolve(".bkit/templates/.github/workflows/bkit-ci.yml");
-const CONSUMER_PRETTIERIGNORE_TEMPLATE = path.resolve(".bkit/templates/.prettierignore");
+const CONSUMER_PRETTIERIGNORE_TEMPLATE = path.resolve(".bkit/templates/prettierignore.example");
 const CONSUMER_RENOVATE_TEMPLATE = path.resolve(".bkit/templates/.github/renovate.json5");
 const OXLINT_TEMPLATE = path.resolve(".bkit/templates/.oxlintrc.json");
 
@@ -289,8 +289,8 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     );
   });
 
-  it("rebases a Renovate PR only when it conflicts (no CI re-run on every base move)", () => {
-    expect(content).toMatch(/rebaseWhen:\s*"conflicted"/);
+  it("never rebases a Renovate PR by itself (no CI re-run when another PR merges)", () => {
+    expect(content).toMatch(/rebaseWhen:\s*"never"/);
   });
 
   it("does not extend a renovate-local preset (the copy is the whole config)", () => {
@@ -629,6 +629,10 @@ describe("example dependabot template (.bkit/templates/.github/dependabot.yml)",
   it("holds new releases behind a 7-day cooldown", () => {
     expect(content).toMatch(/cooldown:\s*\n\s+default-days:\s*7/);
   });
+
+  it("never rebases a Dependabot PR by itself (no CI re-run when another PR merges)", () => {
+    expect(content).toMatch(/^ {4}rebase-strategy:\s*disabled$/m);
+  });
 });
 
 describe(".bkit/.env.example keys are BKIT_-prefixed (direnv isolation)", () => {
@@ -653,6 +657,7 @@ describe(".bkit/.env.example keys are BKIT_-prefixed (direnv isolation)", () => 
       "BKIT_LINEAR_API_KEY",
       "BKIT_JIRA_API_KEY",
       "BKIT_ANTHROPIC_API_KEY",
+      "BKIT_OPENAI_API_KEY",
       "BKIT_CURSOR_API_KEY",
       "BKIT_OPENCODE_API_KEY",
       "BKIT_OPENROUTER_API_KEY",
@@ -664,11 +669,12 @@ describe(".bkit/.env.example keys are BKIT_-prefixed (direnv isolation)", () => 
     expect(assigned).not.toContain("LINEAR_API_KEY");
     expect(assigned).not.toContain("JIRA_API_TOKEN");
     expect(assigned).not.toContain("ANTHROPIC_API_KEY");
+    expect(assigned).not.toContain("OPENAI_API_KEY");
     expect(assigned).not.toContain("OPENCODE_API_KEY");
   });
 });
 
-describe("consumer .prettierignore template (.bkit/templates/.prettierignore)", () => {
+describe("consumer .prettierignore template (.bkit/templates/prettierignore.example)", () => {
   const content = fs.readFileSync(CONSUMER_PRETTIERIGNORE_TEMPLATE, "utf-8");
 
   it("template file exists", () => {
@@ -707,7 +713,7 @@ describe("templates", () => {
     expect(templates).toContain(path.join(".github", "workflows", "bkit-ci.yml"));
     for (const rel of templates) {
       const text = fs.readFileSync(path.join(root, rel), "utf-8");
-      expect(text, rel).toMatch(/Example/);
+      expect(text, rel).toMatch(/Example|Starter document\.|Generated document\./);
       expect(text, rel).toMatch(/does not write this file|does not write it/);
     }
   });

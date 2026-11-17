@@ -40,8 +40,8 @@ set -euo pipefail
 # `.bkit/templates/.cursor/Dockerfile`. bkit needs Node >=24 and the base image ships
 # older majors, so this one goes into /usr/local and leads PATH for every step below.
 # renovate: datasource=node-version depName=node
-NODE_VERSION="24.22.1"
-NODE_SHA256="6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6"
+NODE_VERSION="24.22.2"
+NODE_SHA256="48cc0e21e048790e54c0cf5749c2725005313d652651c40b7a21feb9697aaf75"
 if [ "$(/usr/local/bin/node --version 2>/dev/null || true)" != "v${NODE_VERSION}" ]; then
   command -v xz >/dev/null 2>&1 || { apt-get update && apt-get install -y --no-install-recommends xz-utils; }
   cd /tmp
@@ -54,8 +54,8 @@ export PATH="/usr/local/bin:$PATH"
 hash -r
 
 # renovate: datasource=github-releases depName=errata-ai/vale
-VALE_VERSION="3.24.0"
-VALE_SHA256="867534ddb678abca7f214bc4706ead0922bd5252ffe8035fc227013f66c8b214"
+VALE_VERSION="3.26.0"
+VALE_SHA256="22aa69a556558e4a9dfc63c17030777383d8d3c48dcdfad655fa98e839d666ed"
 if ! command -v vale >/dev/null 2>&1; then
   cd /tmp
   curl -fsSLO --retry 3 --retry-all-errors "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz"
@@ -65,8 +65,8 @@ if ! command -v vale >/dev/null 2>&1; then
 fi
 
 # renovate: datasource=github-releases depName=cli/cli
-GH_VERSION="2.103.0"
-GH_SHA256="fdd768eb70f6409f80fcfa9f3a1c0adf0fc98d827ab3ce0bed2ac22762c5d786"
+GH_VERSION="2.103.3"
+GH_SHA256="4c806978ffce1cec70853302a56d70ac6da4f19bae7adca4e1a8ab00633dd91d"
 if ! command -v gh >/dev/null 2>&1; then
   cd /tmp
   # Pinned release tarball from github.com (same host + install style as vale above),
@@ -126,7 +126,7 @@ per line):
 node --version && vale --version && gh --version && jq --version && pnpm -v
 ```
 
-`node --version` must print `v24.22.1`. An older version means the session `PATH`
+`node --version` must print `v24.22.2`. An older version means the session `PATH`
 puts the image's own Node ahead of `/usr/local/bin`.
 
 Then confirm workspace trust. Unset, Claude Code ignores every `permissions.allow`

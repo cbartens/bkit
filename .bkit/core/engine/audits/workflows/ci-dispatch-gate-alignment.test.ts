@@ -96,9 +96,15 @@ describe("selected CI evidence routing", () => {
     expect(debugStep(4)).toMatch(/ciReproduced|CI_REPRODUCED/);
     expect(debugStep(4)).toMatch(/REPRO[\s\S]*Step 5/);
     expect(debugStep(5)).toMatch(/steps finish[^\n]*--field=ciGeneration=/);
-    expect(debugStep(5)).toMatch(/YES[^\n]*(?:CI|ci)[^\n]*Step (?:6|8)/);
+    // The CI YES branch routes in the sub-bullets right under it.
+    expect(debugStep(5)).toMatch(
+      /YES[^\n]*(?:CI|ci)[^\n]*:\n(?: {5,}- [^\n]*\n)*? {5,}- [^\n]*`DEBUG_MODE` = SOAK → Step 8/,
+    );
+    expect(debugStep(5)).toMatch(
+      /YES[^\n]*(?:CI|ci)[^\n]*:\n(?: {5,}- [^\n]*\n)*? {5,}- \*\*Else\*\* → Step 6/,
+    );
     expect(debugStep(5)).toMatch(/NO[^\n]*(?:CI|ci)[^\n]*(?:Failure Path|STOP|blocker)/);
-    expect(debugStep(5)).toMatch(/(?:local|LOCAL)[^\n]*Step 3/);
+    expect(debugStep(5)).toMatch(/`REPRODUCED` = YES → Step 3/);
     expect(debugStep(4)).not.toMatch(/(?:CI|ci)[^\n]*REPRO[^\n]*(?:false|FALSE)/);
   });
 
@@ -137,9 +143,14 @@ describe.each([
 
   it("passes the held PR number, so a runtime without gh never needs it to find the PR", () => {
     // Without --pr, runs dispatch asks gh for the PR and exits 80 before it
-    // reads the turn loop's --poll-result, so every re-entry exits 80 again.
+    // resumes from the turn loop's saved polls, so every re-entry exits 80 again.
     const f = dispatchFences(md)[0]!;
     expect(f).toMatch(/"\{BKIT\}" runs dispatch [^\n]*--pr="?\{PR_NUMBER\}"?/);
+  });
+
+  it("passes the run's invocation, without which runs dispatch refuses to start", () => {
+    const f = dispatchFences(md)[0]!;
+    expect(f).toMatch(/"\{BKIT\}" runs dispatch [^\n]*--invocation="\{INVOCATION\}"/);
   });
 
   it("names the status file and the step whose row records the ciDispatch verdict", () => {
@@ -258,8 +269,9 @@ describe("bkit-ship.md — Step 10 gate-refusal re-entry is a bounded poll", () 
     const blocks = fences(shipMd).filter((f) =>
       /"\{BKIT\}" counters route --name=MERGE_ATTEMPT\b/.test(f),
     );
-    // Step 10: the poll re-entry, the regenerate round and the non-merged route.
-    expect(blocks.length, "MERGE_ATTEMPT routing blocks").toBe(3);
+    // Step 9: late-code reconciliation. Step 10: stale-base and late-code
+    // reconciliation, polling, regeneration and both merge transports.
+    expect(blocks.length, "MERGE_ATTEMPT routing blocks, including two late-code routes").toBe(7);
     for (const block of blocks) {
       expect(block).toContain("--of=ship-merge-pr:count --rows=ship-gate-refusal:count");
       expect(block).not.toMatch(/MERGE_ATTEMPT=|\bjq\b/);

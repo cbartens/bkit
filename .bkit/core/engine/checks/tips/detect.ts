@@ -132,11 +132,17 @@ const LINT_STAGED_CONFIGS = [
   ".lintstagedrc.yaml",
   ".lintstagedrc.yml",
   ".lintstagedrc.mjs",
-  ".lintstagedrc.cjs",
+  ".lintstagedrc.mts",
   ".lintstagedrc.js",
+  ".lintstagedrc.ts",
+  ".lintstagedrc.cjs",
+  ".lintstagedrc.cts",
   "lint-staged.config.mjs",
-  "lint-staged.config.cjs",
+  "lint-staged.config.mts",
   "lint-staged.config.js",
+  "lint-staged.config.ts",
+  "lint-staged.config.cjs",
+  "lint-staged.config.cts",
 ];
 
 /** True when any `.github/workflows/*.yml` / `*.yaml` contains `needle`. */
@@ -149,9 +155,11 @@ export function anyWorkflowMentions(cwd: string, needle: string): boolean {
     .some((f) => readText(cwd, path.join(".github", "workflows", f)).includes(needle));
 }
 
-/** True when lint-staged is configured: any of its config files, or `package.json` `lint-staged`. */
+/** True when lint-staged is configured: any of its config files, `package.json` or `package.yaml` / `package.yml` `lint-staged` key. */
 export function hasLintStagedConfig(cwd: string): boolean {
   if (LINT_STAGED_CONFIGS.some((rel) => exists(cwd, rel))) return true;
+  if (["package.yaml", "package.yml"].some((rel) => /^lint-staged\s*:/m.test(readText(cwd, rel))))
+    return true;
   const pkg = readPackageJson(cwd);
   return pkg.ok && pkg.pkg["lint-staged"] !== undefined;
 }
@@ -221,6 +229,31 @@ export function readsBkitText(cwd: string): string[] {
     const text = readText(cwd, rel);
     return text.split("\n").some((line) => READS_BKIT_TEXT.some((re) => re.test(line)));
   });
+}
+
+/** `.agents/rules.md` below `<!-- bkit:end -->` with HTML comments removed; null without the file. */
+function rulesBelowEnd(cwd: string): string | null {
+  const text = readText(cwd, ".agents/rules.md");
+  if (!text) return null;
+  const end = text.indexOf("<!-- bkit:end -->");
+  return (end === -1 ? text : text.slice(end)).replace(/<!--[\s\S]*?-->/g, "");
+}
+
+/** True when the rules file already has a `## Project Goals` heading below `<!-- bkit:end -->`. */
+export function hasProjectGoalsHeading(cwd: string): boolean {
+  return /^## Project Goals/m.test(rulesBelowEnd(cwd) ?? "");
+}
+
+/**
+ * True when `.agents/rules.md` exists and no `## Project Goals` section, read below
+ * `<!-- bkit:end -->`, holds a list item (`-`, `*`, `+` or `1.` / `1)`) once HTML comments
+ * are removed.
+ */
+export function hasNoProjectGoals(cwd: string): boolean {
+  const below = rulesBelowEnd(cwd);
+  if (below === null) return false;
+  const sections = [...below.matchAll(/^## Project Goals[^\n]*\n([\s\S]*?)(?=^## |(?![\s\S]))/gm)];
+  return !sections.some((m) => /^\s*(?:[-*+]|\d+[.)])\s/m.test(m[1] ?? ""));
 }
 
 /**

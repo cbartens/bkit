@@ -2,7 +2,7 @@
 
 {{BKIT_MANAGED_MARKER}}
 
-<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. -->
+<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. When you edit this template, follow `.bkit/authoring.md` § Doc Templates. -->
 
 # CI Performance Audit
 
@@ -124,7 +124,7 @@ CI time gets re-argued from impressions, and two mistakes recur. First, a lane's
 <!-- prettier-ignore -->
 | Severity | Use |
 | --- | --- |
-| `CRITICAL` | There is no green path through the pipeline. A job with no timeout can bill the host maximum on every run |
+| `CRITICAL` | The pipeline has no green path. A job with no timeout can bill the host maximum on every run |
 | `HIGH` | The dominating segment is the one a proposal would not touch. Latency is described as cost savings, or the reverse, on that segment |
 | `MEDIUM` | A cache miss on a lane that should cache. Shard imbalance that holds a lane open. Setup cost paid again on every split. Re-run minutes that rival the critical path |
 | `LOW` | A slow lane that does not hold the run open. Artifact size that is not on the critical path |

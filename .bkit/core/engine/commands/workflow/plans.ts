@@ -249,7 +249,7 @@ export const plansCommand: CommandSpec = {
           month: String(ctx.flags.month),
           fid: String(ctx.flags.fid),
         });
-        ctx.emit({ comment: body, commentFile: commentFileOf(ctx.cwd, body), plans });
+        ctx.emit({ comment: body, commentFile: commentFileOf(ctx.cwd, body, ctx), plans });
         return EXIT.OK;
       },
     },

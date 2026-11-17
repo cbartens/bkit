@@ -1,7 +1,3 @@
-<!-- bkit:start -->
-
-<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
-
 # Design
 
 > [!CAUTION]
@@ -34,8 +30,6 @@ An example shape follows. Choose your own columns, then pin them, because the he
 | Primary (`--primary`) | `#2563EB` | `#2563EB` | Aligned L+D — buttons / active. **Transcribed-not-ratified**: read from source, pending human confirmation |
 
 Lane map, tagging, cache rules: `testing.md` § "Design assertions are a dimension, not a lane".
-
-<!-- bkit:end -->
 
 ## Visual palette
 

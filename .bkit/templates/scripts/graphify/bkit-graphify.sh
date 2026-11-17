@@ -104,7 +104,8 @@ Usage: pnpm bkit:graph[:clean|:update|:rollup|:refresh|:check|:graphml|:tree|:sc
                   the register. Writes nothing tracked. Reads uncommitted
                   edits — `check-at` does not.
   bkit:graph:refresh Rebuild the register in a clean checkout of the STAGED
-                  files (the index), copy it over docs/capabilities.md, and
+                  files (the index), take its generated region (between
+                  the graphify marker lines) into docs/capabilities.md, and
                   rewrite the GRAPH_EMBED_DOCS copies. Stage your change
                   first. Fixes a red gate; commit it.
   check-at <rev>  `check` in a throwaway checkout of <rev>. Pre-push runs it
@@ -180,7 +181,7 @@ require_graph() {
 # and in CI (installs `$(bash scripts/graphify/bkit-graphify.sh spec)`). Another release draws
 # different edges → drift no one else can reproduce. PyPI `graphifyy`, CLI `graphify`.
 # renovate: datasource=pypi depName=graphifyy
-GRAPHIFY_SPEC="graphifyy[sql]==0.9.93"
+GRAPHIFY_SPEC="graphifyy[sql]==0.9.111"
 if [ "${1:-}" = "spec" ]; then
   printf '%s\n' "$GRAPHIFY_SPEC"
   exit 0
@@ -234,10 +235,11 @@ repair() {
 # throwaway copy. Everything else written here ($REPORTS/*.json, the two .mmd)
 # is gitignored scratch in both modes, so one code path serves both.
 #
-# `check`'s copy must be SEEDED from the tracked doc. bkit-graphify-rollup.py reads
-# the hand-maintained Overrides block back out of the very file it is about to
-# overwrite (read_overrides(args.capabilities_doc)), so writing into an empty
-# path silently drops every override and reports the loss as drift.
+# `check`'s copy must be SEEDED from the tracked doc. bkit-graphify-rollup.py rewrites
+# only the text between the doc's two graphify marker lines, and reads the
+# hand-maintained Overrides block out of the same file
+# (read_overrides(args.capabilities_doc)), so writing into an empty path builds
+# the starter's text and default overrides, and reports the difference as drift.
 capabilities() {
   local doc="$1"
   require_graph
@@ -283,6 +285,51 @@ embed() {
   local docs
   read -r -a docs <<< "$GRAPH_EMBED_DOCS"
   python3 "$EMBED_PY" "$CAPABILITIES_DOC" "${docs[@]}" "$@"
+}
+
+# Take the generated region of the built doc $1 (its two graphify marker lines and
+# the text between them) into the working doc $2, and leave the rest of $2 as it
+# is. A working doc without exactly one marker pair is absent, or generated from
+# top to bottom, so the built doc replaces it whole.
+adopt_region() {
+  python3 - "$1" "$2" <<'PYEOF'
+import os
+import re
+import sys
+
+START, END = "<!-- graphify:start -->", "<!-- graphify:end -->"
+
+
+def frame(path):
+    if not os.path.exists(path):
+        return None
+    lines = open(path, encoding="utf-8").read().split("\n")
+    starts = [i for i, line in enumerate(lines) if line.strip() == START]
+    ends = [i for i, line in enumerate(lines) if line.strip() == END]
+    if len(starts) != 1 or len(ends) != 1 or starts[0] > ends[0]:
+        return None
+    return lines, starts[0], ends[0]
+
+
+def overrides(lines):
+    m = re.search(r"<!-- overrides:start -->.*?<!-- overrides:end -->", "\n".join(lines), re.S)
+    return m.group(0) if m else ""
+
+
+built_path, work_path = sys.argv[1:3]
+built, work = frame(built_path), frame(work_path)
+if built and work:
+    b, b_start, b_end = built
+    w, w_start, w_end = work
+    text = "\n".join(w[:w_start] + b[b_start:b_end + 1] + w[w_end + 1:])
+    if overrides(b) != overrides(w):
+        print(f"[graph] {work_path}: the Overrides block has unstaged edits, and the register "
+              "was built without them. Stage the file and run refresh again.", file=sys.stderr)
+else:
+    text = open(built_path, encoding="utf-8").read()
+with open(work_path, "w", encoding="utf-8") as fh:
+    fh.write(text)
+PYEOF
 }
 
 # Run this script's subcommands in a throwaway checkout of ONE commit: graphify reads the
@@ -403,13 +450,14 @@ case "${1:-build}" in
     at_commit "${2:-HEAD}" check
     ;;
   refresh)
-    # Rebuild the register in a clean checkout of the staged files → copy over the tracked
-    # file here. Staged = the commit about to be made, so running it before that commit
-    # rebuilds the new state; unstaged edits stay out, as `bkit:graph:update && bkit:graph:rollup`
-    # would not. Fixes a `check` / `check-at` red. Commit the result.
+    # Rebuild the register in a clean checkout of the staged files → take its generated
+    # region into the tracked file here. Staged = the commit about to be made, so running it
+    # before that commit rebuilds the new state; unstaged edits stay out of the build, as
+    # `bkit:graph:update && bkit:graph:rollup` would not, and an unstaged edit outside the
+    # region stays in the file. Fixes a `check` / `check-at` red. Commit the result.
     staged=$(git write-tree) || { echo "[graph] the index has unmerged paths — resolve them first" >&2; exit 1; }
     at_commit HEAD --tree="$staged" build register
-    cp "$AT_DIR/$CAPABILITIES_DOC" "$CAPABILITIES_DOC"
+    adopt_region "$AT_DIR/$CAPABILITIES_DOC" "$CAPABILITIES_DOC"
     embed
     echo "[graph] $CAPABILITIES_DOC rebuilt from the staged files on $(git rev-parse --short HEAD) — commit it"
     ;;

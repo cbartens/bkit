@@ -1,7 +1,3 @@
-<!-- bkit:start -->
-
-<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
-
 # Data Schema
 
 > [!CAUTION]
@@ -12,5 +8,3 @@
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
 > - Give each table one section, holding a `Field | Type | Unique | Notes` table, `Indices` and `Pending`.
 > - For a field whose existence is a decision, link its ADR in `decisions.jsonl`, and do not restate the rationale.
-
-<!-- bkit:end -->

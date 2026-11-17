@@ -1,0 +1,104 @@
+{
+  "files": {
+    ".bkit/core/engine/commands/install/check.ts": {
+      "name": "Installation drift command",
+      "description": "Checks installed content without performing a fresh installation."
+    },
+    ".bkit/core/engine/commands/install/doctor.ts": {
+      "name": "Installation diagnosis",
+      "description": "Reports setup advice and assistant configuration without rewriting managed files."
+    },
+    ".bkit/core/engine/commands/install/install.ts": {
+      "name": "Installation coordinator",
+      "description": "Runs readiness checks, installs selected modules and checks the resulting setup."
+    },
+    ".bkit/core/engine/commands/install/uninstall.ts": {
+      "name": "Installation removal",
+      "description": "Removes bkit-owned content while preserving project-owned files and settings."
+    },
+    ".bkit/core/engine/commands/install/upgrade.ts": {
+      "name": "Installation upgrade",
+      "description": "Compares installed content with the package and updates managed files."
+    },
+    ".bkit/core/engine/install/cloud-env.ts": {
+      "name": "Cloud environment preparation",
+      "description": "Builds cloud setup instructions from the project's environment-loading rules."
+    },
+    ".bkit/core/engine/install/context-ci-workflow.ts": {
+      "name": "Automation evidence lookup",
+      "description": "Points evidence instructions at the project's selected automated test workflow."
+    },
+    ".bkit/core/engine/install/hosts.ts": {
+      "name": "Installed assistant discovery",
+      "description": "Identifies the coding-assistant modules installed in the project."
+    },
+    ".bkit/core/engine/install/managed-block.ts": {
+      "name": "Managed section reader",
+      "description": "Finds bkit-owned sections inside files that also contain project-owned text."
+    },
+    ".bkit/core/engine/install/manifest.ts": {
+      "name": "Installation ownership list",
+      "description": "Defines which files and sections each installation module owns."
+    },
+    ".bkit/core/engine/install/modules/antigravity.ts": {
+      "name": "Antigravity installation",
+      "description": "Writes the Google Antigravity setup from shared package sources."
+    },
+    ".bkit/core/engine/install/modules/claude.ts": {
+      "name": "Claude installation",
+      "description": "Writes Claude agents, commands, permissions and the selected tracker connection."
+    },
+    ".bkit/core/engine/install/modules/cloud.ts": {
+      "name": "Cloud routing setup",
+      "description": "Records the selected cloud assistant and reports remaining routing setup."
+    },
+    ".bkit/core/engine/install/modules/codex.ts": {
+      "name": "Codex installation",
+      "description": "Writes Codex agents and skills from shared instruction sources."
+    },
+    ".bkit/core/engine/install/modules/core.ts": {
+      "name": "Core installation",
+      "description": "Writes shared instructions, reference documents and gate commands, then records the installed version."
+    },
+    ".bkit/core/engine/install/modules/cursor.ts": {
+      "name": "Cursor installation",
+      "description": "Writes Cursor agents, commands and assistant settings."
+    },
+    ".bkit/core/engine/install/modules/index.ts": {
+      "name": "Installation module order",
+      "description": "Runs selected assistant modules in order and records metadata after they finish."
+    },
+    ".bkit/core/engine/install/modules/opencode.ts": {
+      "name": "OpenCode installation",
+      "description": "Writes OpenCode agents, commands and the selected provider configuration."
+    },
+    ".bkit/core/engine/install/network-allowlist.ts": {
+      "name": "Network permission file",
+      "description": "Combines built-in destinations with project-approved domains for assistant safety checks."
+    },
+    ".bkit/core/engine/install/payload-links.ts": {
+      "name": "Browsable package sources",
+      "description": "Links installed workflows, prompts and hooks into the project for browsing."
+    },
+    ".bkit/core/engine/install/placeholders.ts": {
+      "name": "Project-specific template values",
+      "description": "Resolves project values once and substitutes them into installed templates."
+    },
+    ".bkit/core/engine/install/template-copies.ts": {
+      "name": "Starter template updates",
+      "description": "Refreshes starter-template copies and reports adopted tools that may need attention."
+    },
+    ".bkit/core/engine/install/template-notes.ts": {
+      "name": "Retired template note cleanup",
+      "description": "Removes recognized obsolete package notes from installed document templates."
+    },
+    ".bkit/core/engine/install/version-file.ts": {
+      "name": "Installation version record",
+      "description": "Stores installation versions and content fingerprints used to detect project modifications."
+    },
+    ".bkit/core/engine/install/write.ts": {
+      "name": "Ownership-aware file writes",
+      "description": "Writes managed content and merges settings while preserving project-owned sections."
+    }
+  }
+}

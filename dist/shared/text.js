@@ -16,6 +16,19 @@ const isScalar = (v) => v === null || typeof v === "string" || typeof v === "num
 const isRecord = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 /** Escape backslashes and line breaks so a value stays on one line. */
 const escapeLine = (s) => s.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+/**
+ * A free-text value for one line of Markdown: each run of line breaks, tabs and other
+ * control characters becomes one space, and the ends are trimmed. With `max`, a longer
+ * result is cut to `max` characters, the last one `…`.
+ */
+export function oneLine(value, max) {
+    const isControl = (ch) => ch < " " || ch === "\u007f";
+    const folded = Array.from(value, (ch) => (isControl(ch) ? "\n" : ch))
+        .join("")
+        .replace(/\n+/g, " ")
+        .trim();
+    return max !== undefined && folded.length > max ? `${folded.slice(0, max - 1)}…` : folded;
+}
 const scalarText = (v) => (v === null ? "null" : String(v));
 const NUMBER = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 const LITERALS = new Set(["null", "true", "false", "[]", "{}"]);

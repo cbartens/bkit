@@ -84,19 +84,23 @@ describe("bkit-rules-sync — managed block byte-equality gate (WS7-T1, D3)", ()
     expect(block).toContain("Use the narrowest-scoped token");
   });
 
-  it("the docs/security.md threat-model section exists in both the repo doc and the template", () => {
-    // `.agents/docs.md`'s scope cell and `.bkit/prompts.md`'s doctrine row both
-    // point consumers at this section. Deleting it must fail here, not six
-    // months from now when someone follows the pointer.
-    for (const securityPath of [
-      path.join(pkgRoot, "docs", "security.md"),
-      path.join(pkgRoot, ".bkit", "shared", "docs", "security.md"),
-    ]) {
-      const block = extractManagedBlock(securityPath, fs.readFileSync(securityPath, "utf-8"));
-      expect(block, `dangling pointer: ${securityPath}`).toContain(
-        "## Untrusted Content & Prompt Injection",
-      );
-    }
+  it("the untrusted-content threat model sits in the managed prompts guide and the rule stays in the managed block", () => {
+    // The project's `docs/security.md` is an optional, copy-and-own document, so the threat
+    // model every workflow depends on lives in the managed `.bkit/prompts.md` § Special
+    // Behaviors. Deleting it must fail here, not when someone follows a pointer to it.
+    const promptsGuide = fs.readFileSync(
+      path.join(pkgRoot, ".bkit", "core", ".bkit", "prompts.md"),
+      "utf-8",
+    );
+    expect(promptsGuide).toContain("### Untrusted Content & Prompt Injection");
+    expect(promptsGuide).toContain("**Threat model.**");
+    // The rule the guide describes stays in the managed rules block.
+    const block = extractManagedBlock(
+      templateRulesPath,
+      fs.readFileSync(templateRulesPath, "utf-8"),
+    );
+    expect(block).toContain("**External input:**");
+    expect(block).toContain("**External skills:**");
   });
 
   it("the template ships NO project rules below bkit:end — only the empty group scaffold", () => {
@@ -106,11 +110,51 @@ describe("bkit-rules-sync — managed block byte-equality gate (WS7-T1, D3)", ()
     const belowManaged = templateContent.slice(
       templateContent.indexOf("<!-- bkit:end -->") + "<!-- bkit:end -->".length,
     );
-    const bullets = [...belowManaged.matchAll(/^-\s*\*\*([^*]+):\*\*/gm)].map((m) => m[1]);
+    const withoutComments = belowManaged.replace(/<!--[\s\S]*?-->/g, "");
+    const bullets = [...withoutComments.matchAll(/^-\s*\*\*([^*]+):\*\*/gm)].map((m) => m[1]);
 
     expect(
       bullets,
       ".bkit/core/.agents/rules.md must carry no project rules below bkit:end",
     ).toEqual([]);
+  });
+
+  it("the template holds an empty Project Goals section between Project Rules and Project Settings", () => {
+    const templateContent = fs.readFileSync(templateRulesPath, "utf-8");
+    const belowManaged = templateContent.slice(
+      templateContent.indexOf("<!-- bkit:end -->") + "<!-- bkit:end -->".length,
+    );
+    const headings = [...belowManaged.matchAll(/^## (.+)$/gm)].map((m) => m[1]);
+    expect(headings.filter((h) => h.startsWith("Project "))).toEqual([
+      "Project Rules",
+      "Project Goals",
+      "Project Settings",
+    ]);
+
+    const goalsStart = belowManaged.indexOf("## Project Goals");
+    const settingsStart = belowManaged.indexOf("## Project Settings");
+    const section = belowManaged
+      .slice(goalsStart + "## Project Goals".length, settingsStart)
+      .replace(/<!--[\s\S]*?-->/g, "");
+    expect(
+      [...section.matchAll(/^\s*[-*]\s+\S/gm)],
+      "no goal bullet may sit outside an HTML comment",
+    ).toEqual([]);
+  });
+});
+
+describe("Tracker work comments rule", () => {
+  it("the Tracker work comments rule posts through the tracker MCP, never bkit issues comment", () => {
+    const templateRulesPath = path.join(getPkgRoot(), ".bkit", "core", ".agents", "rules.md");
+    const bullet = fs
+      .readFileSync(templateRulesPath, "utf-8")
+      .split("\n")
+      .filter((line) => line.startsWith("- **Tracker work comments:**"))
+      .join("\n");
+    expect(bullet.length).toBeGreaterThan(0);
+    expect(bullet).toContain("plain markdown with the tracker MCP's comment tool");
+    expect(bullet).toContain("never through `bkit issues comment`");
+    expect(bullet).toContain("workflow steps only");
+    expect(bullet).toContain("###### bkit:generated");
   });
 });

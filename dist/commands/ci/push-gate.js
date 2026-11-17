@@ -1,15 +1,14 @@
 // Local full-gate receipts, shared by linked worktrees and bound to committed trees.
-import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { gitEnv } from "../../ledgers/telemetry.js";
 import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readPackageJson } from "../../shared/package-json.js";
-import { scriptCommand, testCommand } from "../../shared/package-manager.js";
-import { EXIT, git, outboxRoot, runGit } from "../lib.js";
-import { changedOutside } from "../workflow/ledgers.js";
+import { scriptCommand } from "../../shared/package-manager.js";
+import { EXIT, git, LOCK_STATUS_FILE_ENV, outboxRoot, runGit } from "../lib.js";
+import { pidAlive } from "../workflow/disk.js";
+import { runGateUnderLock } from "../workflow/junit.js";
 const UNIT = "bkit:gate:static-unit";
 const INTEGRATION = "bkit:gate:static-unit-integration";
 const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
@@ -42,29 +41,48 @@ const receiptPath = (cwd, sha) => {
     const outbox = outboxRoot(cwd);
     return outbox ? path.join(outbox, "push-gates", `${sha}.json`) : null;
 };
-function cleanHead(cwd) {
-    const status = git(cwd, [
-        "status",
-        "--porcelain",
-        "--untracked-files=all",
-        "--ignore-submodules=none",
-    ]);
-    if (status !== "")
+const STATUS = [
+    "status",
+    "--porcelain",
+    "--no-renames",
+    "--untracked-files=all",
+    "--ignore-submodules=none",
+];
+const lineCount = (text) => text === null ? -1 : text === "" ? 0 : text.split("\n").length;
+/** HEAD when every uncommitted path lies inside `tolerated` (none given: the tree must be clean). */
+function cleanHead(cwd, tolerated = []) {
+    const all = lineCount(git(cwd, STATUS));
+    if (all < 0)
         return null;
+    if (all > 0) {
+        if (tolerated.length === 0)
+            return null;
+        if (lineCount(git(cwd, [...STATUS, "--", ...tolerated])) !== all)
+            return null;
+    }
     const sha = git(cwd, ["rev-parse", "--verify", "HEAD^{commit}"]);
     const tree = git(cwd, ["rev-parse", "--verify", "HEAD^{tree}"]);
     return sha && tree ? { sha, tree } : null;
 }
-/** Execute a consumer gate; only a successful deepest full gate on an unchanged clean tree earns proof. */
-export function runPushGate(cwd, gate, log) {
+/** The recorded runner's process id of a `.running` attempt file; null when unreadable. */
+function attemptPid(file) {
+    const read = readJsonFile(file);
+    if (!read.ok || !read.value || typeof read.value !== "object")
+        return null;
+    const pid = read.value.pid;
+    return typeof pid === "number" && Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+/**
+ * Run a gate through `run` and record its receipt: the `.running` marker while it runs, a
+ * `.failed` marker when it fails, the before/after HEAD and fingerprint check, and the
+ * receipt write. An attempt on the same commit whose runner process is gone counts as a
+ * failed run and is cleared. Uncommitted paths in `tolerated` do not block the receipt; a
+ * lock wait (`waited`, default never) leaves the receipt and markers as they were.
+ */
+export function runWithReceipt(cwd, gate, tolerated, run, log, waited = () => false) {
     const pkg = readPackageJson(cwd);
-    const script = pkg.ok ? scriptsOf(pkg.pkg)?.[gate] : null;
-    if (typeof script !== "string" || script.trim() === "") {
-        log(`package.json must declare a non-empty ${gate} script`);
-        return EXIT.USAGE;
-    }
     const definition = pkg.ok ? gateDefinition(pkg.pkg) : null;
-    const before = cleanHead(cwd);
+    const before = cleanHead(cwd, tolerated);
     const head = git(cwd, ["rev-parse", "--verify", "HEAD^{commit}"]);
     const file = head ? receiptPath(cwd, head) : null;
     const attempt = file && definition?.gate === gate ? path.join(`${file}.running`, randomUUID()) : null;
@@ -76,33 +94,30 @@ export function runPushGate(cwd, gate, log) {
         fs.rmSync(file, { force: true });
     };
     if (attempt) {
-        fs.mkdirSync(path.dirname(attempt), { recursive: true });
+        const dir = path.dirname(attempt);
+        fs.mkdirSync(dir, { recursive: true });
+        for (const entry of fs.readdirSync(dir)) {
+            const pid = attemptPid(path.join(dir, entry));
+            if (pid === null || pidAlive(pid))
+                continue;
+            fs.rmSync(path.join(dir, entry), { force: true });
+            fail();
+        }
         fs.writeFileSync(attempt, JSON.stringify({ pid: process.pid, sha: head }) + "\n");
-        fail();
     }
     const finish = (code) => {
         if (attempt)
             fs.rmSync(attempt, { force: true });
         return code;
     };
-    const argv = testCommand(scriptCommand(gate));
-    log(`running ${scriptCommand(gate).join(" ")}`);
-    const result = spawnSync(argv[0], argv.slice(1), {
-        cwd,
-        env: gitEnv(),
-        stdio: ["ignore", 2, 2],
-    });
-    const status = result.error
-        ? 127
-        : (result.status ??
-            128 + ((result.signal ? os.constants.signals[result.signal] : undefined) ?? 1));
-    if (result.error)
-        log(result.error.message);
+    const status = run();
+    if (waited(status))
+        return finish(status);
     if (status !== 0 || !before || definition?.gate !== gate) {
         fail();
         return finish(status);
     }
-    const after = cleanHead(cwd);
+    const after = cleanHead(cwd, tolerated);
     const afterPkg = readPackageJson(cwd);
     if (after?.sha !== before.sha ||
         after.tree !== before.tree ||
@@ -119,6 +134,26 @@ export function runPushGate(cwd, gate, log) {
         log(`recorded full push gate for ${before.sha}`);
     }
     return finish(status);
+}
+/**
+ * Execute a consumer gate; only a successful deepest full gate on an unchanged clean tree earns
+ * proof. A tests-lock wait (the lock wrapper gave up, exit 75) leaves the receipt and its
+ * markers as they were, and its status file is handed on to a caller that asked for one.
+ */
+export function runPushGate(cwd, gate, log) {
+    const pkg = readPackageJson(cwd);
+    const script = pkg.ok ? scriptsOf(pkg.pkg)?.[gate] : null;
+    if (typeof script !== "string" || script.trim() === "") {
+        log(`package.json must declare a non-empty ${gate} script`);
+        return EXIT.USAGE;
+    }
+    const env = gitEnv();
+    const lock = {};
+    return runWithReceipt(cwd, gate, [], () => {
+        log(`running ${scriptCommand(gate).join(" ")}`);
+        lock.run = runGateUnderLock(scriptCommand(gate), cwd, 2, { LOCAL_STACK_LOCK_WHO: env.LOCAL_STACK_LOCK_WHO || `bkit ci push-gate ${gate}` }, { base: env, forwardStatusTo: env[LOCK_STATUS_FILE_ENV] });
+        return lock.run.exitCode;
+    }, log, () => lock.run?.lock === "lock-wait");
 }
 /** Pending files survive interrupted runners; one read suffices to block earlier proof. */
 function pendingAttempt(file) {
@@ -163,11 +198,11 @@ function noLaterFailure(cwd, dir, sha, newSha, definition) {
     return true;
 }
 /** A bounded ancestor search; absent, malformed or stale proof always requires the full gate. */
-export function hasVerifiedIncrement(cwd, oldSha, newSha, paths) {
-    if (!SHA.test(oldSha) ||
+export function hasVerifiedIncrement(cwd, oldSha, newSha, outsideOf) {
+    const isNew = /^0+$/.test(oldSha);
+    if ((!isNew && !SHA.test(oldSha)) ||
         !SHA.test(newSha) ||
-        /^0+$/.test(oldSha) ||
-        !runGit(cwd, ["merge-base", "--is-ancestor", oldSha, newSha]).ok)
+        (!isNew && !runGit(cwd, ["merge-base", "--is-ancestor", oldSha, newSha]).ok))
         return false;
     const raw = git(cwd, ["show", `${newSha}:package.json`]);
     const parsed = raw === null ? null : parseJson(raw);
@@ -177,8 +212,8 @@ export function hasVerifiedIncrement(cwd, oldSha, newSha, paths) {
         !localPkg.ok ||
         gateDefinition(localPkg.pkg)?.fingerprint !== definition.fingerprint)
         return false;
-    const ancestors = git(cwd, ["rev-list", "--max-count=128", oldSha]);
-    const firstFile = receiptPath(cwd, oldSha);
+    const ancestors = git(cwd, ["rev-list", "--max-count=128", isNew ? newSha : oldSha]);
+    const firstFile = receiptPath(cwd, newSha);
     if (!ancestors || !firstFile)
         return false;
     const dir = path.dirname(firstFile);
@@ -186,7 +221,7 @@ export function hasVerifiedIncrement(cwd, oldSha, newSha, paths) {
         const file = path.join(dir, `${sha}.json`);
         if (!validReceipt(cwd, file, sha, definition))
             continue;
-        const diff = changedOutside(cwd, sha, newSha, paths);
+        const diff = outsideOf(sha, newSha);
         if (diff.ok && diff.outside.length === 0 && noLaterFailure(cwd, dir, sha, newSha, definition))
             return true;
     }

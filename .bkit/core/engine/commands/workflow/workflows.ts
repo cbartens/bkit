@@ -33,6 +33,7 @@ import {
   statusTimestamp,
   type StatusEvent,
   type StatusRow,
+  withTargetLock,
 } from "../../ledgers/status.js";
 import {
   compareTs,
@@ -87,6 +88,7 @@ import {
 import {
   EXIT_EMPTY,
   activeRecord,
+  appendRunCommits,
   commitBookkeeping,
   ownPathCommit,
   ownSet,
@@ -94,6 +96,7 @@ import {
   appendLedgerRows,
   runRows,
   unionLedgers,
+  writeParkedCommits,
 } from "./ledgers.js";
 import { readIssueTracker } from "./fids.js";
 import {
@@ -114,15 +117,18 @@ import {
 import { buildSummary, refOf, SUMMARY_WORKFLOWS, type SummaryWorkflow } from "./summary.js";
 import { parsePlans, parseWorkstreams } from "./plans.js";
 import {
+  EXIT_LOCK_BUSY,
   EXIT_REMOVE_FAILED,
   EXIT_SPLIT_BUCKET,
   acquireWorkflowLock,
   owns,
   readHolder,
+  readRunsLenient,
   releaseLock,
   resolveMonth,
   workflowLockPath,
 } from "./locks.js";
+import { openDecision } from "./open-decision.js";
 import { highestVersion } from "./plan-versions.js";
 import { mergePr, probePr } from "./prs.js";
 import { FEATURE_STATUS } from "./roadmap.js";
@@ -142,6 +148,7 @@ import {
   attempt,
   commentFileOf,
   postForVerb,
+  bindRunPublication,
   issueRef,
   readLabels,
   endedRunActionKey,
@@ -240,61 +247,6 @@ export function recordChat(file: string, workflow: string, env: NodeJS.ProcessEn
   fs.appendFileSync(file, appendLine(row));
 }
 
-/** An OPEN Decision Pause file of the current run, as `workflows start` prints it. */
-export interface OpenDecision {
-  file: string;
-  decision: number;
-  question: string | null;
-  from: string | null;
-  pauseStep: number | null;
-  group: number | null;
-  verifyAttempt: number | null;
-  testAttempt: number | null;
-  plan: string | null;
-}
-
-/**
- * The highest-numbered `{workflow}-decision-{run}-{N}.md` in `logDir` whose header holds
- * `Status: OPEN`, or null. Only the given run's files count, so an earlier run's pause
- * never resurfaces. `file` is relative to `tree`.
- */
-export function openDecision(
-  logDir: string,
-  tree: string,
-  workflow: string,
-  run: number,
-): OpenDecision | null {
-  if (!fs.existsSync(logDir)) return null;
-  const name = new RegExp(`^${workflow}-decision-${run}-([0-9]+)\\.md$`);
-  const found = fs
-    .readdirSync(logDir)
-    .map((f) => ({ f, m: name.exec(f) }))
-    .filter((x): x is { f: string; m: RegExpExecArray } => x.m !== null)
-    .map(({ f, m }) => ({ f, n: Number(m[1]) }))
-    .sort((a, b) => b.n - a.n);
-  for (const { f, n } of found) {
-    const text = fs.readFileSync(path.join(logDir, f), "utf-8");
-    const field = (key: string) =>
-      new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, "m").exec(text)?.[1] ?? null;
-    if (field("Status") !== "OPEN") continue;
-    const num = (key: string) => {
-      const v = field(key);
-      return v !== null && /^[0-9]+$/.test(v) ? Number(v) : null;
-    };
-    return {
-      file: path.relative(tree, path.join(logDir, f)),
-      decision: n,
-      question: field("Question"),
-      from: field("From"),
-      pauseStep: num("Pause step"),
-      group: num("Group"),
-      verifyAttempt: num("Verify attempt"),
-      testAttempt: num("Test attempt"),
-      plan: field("Plan"),
-    };
-  }
-  return null;
-}
 const logDirRel = (month: string, fid: string) => path.join("docs", "plans", month, "logs", fid);
 const list = (v: FlagValue) => (v as string[] | undefined) ?? [];
 
@@ -389,6 +341,16 @@ function failState(ctx: RunContext, workflow: string, fid: string) {
   return { row, rebaseAborted, lock, sentinels, removeFailed, soak, status };
 }
 
+/** Exit code: `workflows fail` refused `--next-step` before any write; no other usage error of that verb uses it. */
+const EXIT_NEXT_STEP_REFUSED = 6;
+
+/**
+ * The only `--next-step` shape `workflows fail` posts: a `/bkit-` command name, then optional
+ * space-separated arguments such as an FID or `#682`. The value goes into a code span in the
+ * failure comment, so nothing that could end the span or start markdown or HTML gets through.
+ */
+const NEXT_STEP_SHAPE = /^\/bkit-[a-z0-9-]+(?: [#A-Za-z0-9._-]+)*$/;
+
 async function failVerb(ctx: RunContext): Promise<number> {
   const workflow = workflowName(String(ctx.flags.workflow));
   // An empty value is a placeholder not held yet (the failure came before it was set).
@@ -396,6 +358,10 @@ async function failVerb(ctx: RunContext): Promise<number> {
   const token = str(ctx.flags.token) || undefined;
   if (token !== undefined && fid === undefined)
     throw new CommandError(EXIT.USAGE, "--token needs --fid");
+  // Empty is absent; anything else is one /bkit-* command line, checked before any write.
+  const nextStep = str(ctx.flags.nextStep) || undefined;
+  if (nextStep !== undefined && !NEXT_STEP_SHAPE.test(nextStep))
+    throw new CommandError(EXIT_NEXT_STEP_REFUSED, "--next-step must be one /bkit-* command line");
 
   // State only for a run that took the lock: without the token the failure came
   // before Step 1 locked, and nothing here is this run's to change.
@@ -445,6 +411,7 @@ async function failVerb(ctx: RunContext): Promise<number> {
       subStep: str(ctx.flags.subStep),
       error: state.removeFailed ? `${error}; Lock removal failed` : error,
       stderrFile: str(ctx.flags.stderrFile) || undefined,
+      ...(nextStep === undefined ? {} : { lines: [`Next step: \`${nextStep}\``] }),
     });
   }
   if (ctx.flags.post === true && comment === null)
@@ -463,6 +430,7 @@ async function failVerb(ctx: RunContext): Promise<number> {
           fid,
           issue: str(ctx.flags.issue),
           ...(key === undefined ? {} : { file: state.status, key }),
+          purpose: "attention",
         })
       : undefined;
   const labelsWrite =
@@ -481,7 +449,8 @@ async function failVerb(ctx: RunContext): Promise<number> {
     trackerState: failedState,
     prState,
     comment,
-    commentFile: commentFileOf(ctx.cwd, comment),
+    nextStep: nextStep ?? null,
+    commentFile: commentFileOf(ctx.cwd, comment, ctx),
     ...(tracker === undefined ? {} : { tracker }),
     ...(labelsWrite === undefined ? {} : { labelsWrite }),
     ...sessionRemoval(ctx),
@@ -632,13 +601,17 @@ function carryOwnBook(
   const uncommitted = (file: string) => runRows(src, file, rec);
   const add = (file: string, lines: string[]) => {
     const to = path.join(dst, file);
-    const existing = fs.existsSync(to) ? fs.readFileSync(to, "utf-8") : "";
-    const have = new Set(textLines(existing).map((l) => l.trim()));
-    const fresh = lines.filter((l) => !have.has(l.trim()));
-    if (fresh.length === 0) return;
     fs.mkdirSync(path.dirname(to), { recursive: true });
-    const sep = existing !== "" && !existing.endsWith("\n") ? "\n" : "";
-    fs.appendFileSync(to, `${sep}${fresh.join("\n")}\n`);
+    const fresh = withTargetLock(to, () => {
+      const existing = fs.existsSync(to) ? fs.readFileSync(to, "utf-8") : "";
+      const have = new Set(textLines(existing).map((l) => l.trim()));
+      const missing = lines.filter((l) => !have.has(l.trim()));
+      if (missing.length === 0) return missing;
+      const sep = existing !== "" && !existing.endsWith("\n") ? "\n" : "";
+      fs.appendFileSync(to, `${sep}${missing.join("\n")}\n`);
+      return missing;
+    });
+    if (fresh.length === 0) return;
     carried.lines.set(file, fresh);
   };
   const listed = (specs: string[]) =>
@@ -879,6 +852,17 @@ async function handoverVerb(ctx: RunContext): Promise<number> {
   }
   let handed: { sha: string; carried: Carried } | undefined;
   const rec = shared && (push || flush) ? activeRecord(tree, fid) : null;
+  // A run that stays open keeps its commit list, because the record goes below: a parked
+  // copy in this clone's git dir, and a row in its status log that lands with the handover.
+  const statusAbs = path.join(tree, statusRelPath(month, fid));
+  if (
+    rec !== null &&
+    fs.existsSync(statusAbs) &&
+    lastRun(readRunsLenient(statusAbs), workflow)?.status === "IN_PROGRESS"
+  ) {
+    appendRunCommits(statusAbs, workflow, rec);
+    writeParkedCommits(tree, workflow, rec);
+  }
   if (push && shared) {
     const r = await landFailedRecord(ctx, { workflow, fid, month, book: tree, shared });
     if (r.sha !== undefined && r.carried !== undefined) handed = { sha: r.sha, carried: r.carried };
@@ -928,16 +912,24 @@ async function handoverVerb(ctx: RunContext): Promise<number> {
   if (rec !== null) removeRecord(tree, fid);
   const tracker =
     ctx.flags.post === true && comment !== null
-      ? await postForVerb(ctx, comment, { fid })
+      ? await postForVerb(ctx, comment, { fid, purpose: "attention" })
       : undefined;
+  // Every exit this verb reaches keeps the record somewhere, so the run stops either way: an
+  // open PR (9), a refused push (10) or a failed dev landing (11) only add the closing line.
+  const message =
+    code === EXIT.OK
+      ? ""
+      : `Record not pushed: the handover commit is only in ${tree}, and the links in this run's comments open once it is pushed`;
   ctx.emit({
     handover: present ? artifact : null,
     pushed,
     ref: pushed ? ref : null,
     skipped,
     comment,
-    commentFile: commentFileOf(ctx.cwd, comment),
+    commentFile: commentFileOf(ctx.cwd, comment, ctx),
     ...(tracker === undefined ? {} : { tracker }),
+    route: "stop",
+    message,
   });
   return code;
 }
@@ -1567,7 +1559,7 @@ async function shipClose(
         `fetch of dev after the close PR failed — origin/${DEV} is stale until the next fetch`,
       );
     try {
-      worktree = removeWorktree(root, o.fid, o.branch, ctx.log);
+      worktree = removeWorktree(root, o.fid, o.branch, ctx.log, { landed: true });
     } catch (err) {
       ctx.log(`${(err as Error).message} — remove ${book} by hand`);
     }
@@ -2017,8 +2009,12 @@ function inputVerb(ctx: RunContext): number {
     const text = inputText(ctx.cwd, audit, "audit");
     sections.push([`Audit Report — ${audit} — ${fileDate(ctx.cwd, audit)}`, text]);
   }
-  const body = sections.map(([h, text]) => `## ${h}\n\n${text}\n`).join("\n");
   const abs = path.join(path.dirname(status), `${workflow}-input-${run}.md`);
+  const grill = path.join(path.dirname(status), `${workflow}-grill-${run}.md`);
+  const sectionText = sections.map(([h, text]) => `## ${h}\n\n${text}\n`).join("\n");
+  const body = fs.existsSync(grill)
+    ? `${sectionText}\n${fs.readFileSync(grill, "utf-8")}`
+    : sectionText;
   fs.mkdirSync(path.dirname(abs), { recursive: true });
   fs.writeFileSync(abs, body);
   ctx.emit({
@@ -2040,10 +2036,10 @@ async function postClose(
   out: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const comment = typeof out.comment === "string" ? out.comment : null;
-  const withFile = { ...out, commentFile: commentFileOf(ctx.cwd, comment) };
+  const withFile = { ...out, commentFile: commentFileOf(ctx.cwd, comment, ctx) };
   if (ctx.flags.post !== true) return withFile;
   if (comment === null) throw new CommandError(EXIT.USAGE, "--post needs --number");
-  return { ...withFile, tracker: await postForVerb(ctx, comment, { fid }) };
+  return { ...withFile, tracker: await postForVerb(ctx, comment, { fid, purpose: "terminal" }) };
 }
 
 export const workflowsCommand: CommandSpec = {
@@ -2059,6 +2055,7 @@ export const workflowsCommand: CommandSpec = {
         FID_FLAG,
         MONTH_FLAG,
         STATUS_FILE_FLAG,
+        SESSION_DIR_FLAG,
         {
           name: "lock-held",
           type: "boolean",
@@ -2079,12 +2076,14 @@ export const workflowsCommand: CommandSpec = {
         run: "which run of the workflow this is (1-based)",
         lastDoneStep: "the current run's last DONE step: resume after it (null on a new run)",
         openDecision:
-          "{file, decision, question, from, pauseStep, group, verifyAttempt, testAttempt, plan} of the current run's highest {workflow}-decision-{run}-{N}.md holding Status: OPEN, else null",
+          "{file, decision, question, from, pauseStep, group, verifyAttempt, testAttempt, plan, gate, sourceChanged, status} of the current run's highest {workflow}-decision-{run}-{N}.md holding Status: OPEN, or DECIDED / ASSUMED when no {workflow}-decision row names it, else null",
       },
       textOmit: ["row"],
       exitCodes: {
         [EXIT_NO_STATUS]: "status.jsonl is not valid",
         [EXIT_SPLIT_BUCKET]: "the feature has logs in more than one month bucket",
+        [EXIT_LOCK_BUSY]:
+          "without --lock-held: another run of the feature holds the lock and is still stepping",
         [EXIT_LOCK_NOT_HELD]: "--lock-held: the lock is missing or belongs to another owner",
         [EXIT_WRONG_BRANCH]: "--branch: the checkout is on another branch",
       },
@@ -2161,6 +2160,7 @@ export const workflowsCommand: CommandSpec = {
         recordChat(file, workflow, process.env);
         const runs = fold(readStatusEvents(file));
         const run = runNumber(runs, workflow);
+        bindRunPublication(ctx, file, workflow, run);
         const current = resumed ? lastRun(runs, workflow) : undefined;
         ctx.emit({
           lock,
@@ -2170,7 +2170,15 @@ export const workflowsCommand: CommandSpec = {
           run,
           lastDoneStep: current?.steps.filter((s) => s.status === "DONE").at(-1)?.step ?? null,
           openDecision: resumed
-            ? openDecision(path.dirname(file), where.tree, workflow, run)
+            ? openDecision(
+                path.dirname(file),
+                where.tree,
+                workflow,
+                run,
+                (current?.steps ?? [])
+                  .filter((s) => s.step === `${workflow}-decision`)
+                  .flatMap((s) => s.artifacts),
+              )
             : null,
         });
         return EXIT.OK;
@@ -2224,6 +2232,12 @@ export const workflowsCommand: CommandSpec = {
           help: "the failed shell command's stderr (last 20 lines kept)",
         },
         {
+          name: "next-step",
+          type: "string",
+          placeholderExit: EXIT_NEXT_STEP_REFUSED,
+          help: "one /bkit-* command line to name as the next step: adds a `Next step:` line to the failure comment (empty = none)",
+        },
+        {
           ...POST_FLAG,
           help: "post the failure comment (needs --step-number) to the --fid / --issue issue and write its failed labels; prints `tracker` and `labelsWrite`",
         },
@@ -2247,6 +2261,7 @@ export const workflowsCommand: CommandSpec = {
         trackerState: "the Linear or Jira state for the failed issue (null under github, none)",
         prState: "the --pr PR's state, or null",
         comment: "the failure comment body (with --step-number), else null",
+        nextStep: "the --next-step command line, or null",
         commentFile: COMMENT_FILE_OUTPUT,
         tracker: TRACKER_OUTPUT,
         labelsWrite:
@@ -2255,6 +2270,8 @@ export const workflowsCommand: CommandSpec = {
       },
       textOmit: ["row"],
       exitCodes: {
+        [EXIT_NEXT_STEP_REFUSED]:
+          "a refused --next-step (not one /bkit-* command line, or an unsubstituted placeholder): refused before any write, so the call can run again without it",
         [EXIT_SPLIT_BUCKET]: "no --month and the feature has logs in more than one month bucket",
         [EXIT_REMOVE_FAILED]:
           "the lock file is still there after removing it (everything else was done; the comment says so)",
@@ -2307,6 +2324,10 @@ export const workflowsCommand: CommandSpec = {
           "the handover comment body (null when there is no handover); links only when pushed",
         commentFile: COMMENT_FILE_OUTPUT,
         tracker: `${TRACKER_OUTPUT}; absent when there is no handover`,
+        route:
+          "stop: the record is kept (pushed, or left in the run's tree on exit 9, 10 or 11) and the run ends here; workflows route on this, not on the exit code",
+        message:
+          "the line to add to the owner's final message: `Record not pushed: …` on exit 9, 10 or 11, empty otherwise",
         shared: "--list-stray: the checkout is dev / main / detached (remove nothing)",
         modified: "--list-stray: tracked paths with changes, outside the run's logs",
         untracked: "--list-stray: untracked paths, outside the run's logs",
@@ -2483,7 +2504,14 @@ export const workflowsCommand: CommandSpec = {
           squashSha: str(f.squashSha),
           ref: str(f.ref),
           ownerRepo: str(f.ownerRepo),
-          outbox: str(f.outbox),
+          outbox:
+            str(f.outbox) ??
+            (str(f.sessionDir)
+              ? path.join(
+                  path.dirname(path.dirname(path.resolve(ctx.cwd, String(f.sessionDir)))),
+                  String(f.fid),
+                )
+              : undefined),
           recordStep: f.recordStep === true,
           message: str(f.message),
           labels: list(f.label),
@@ -2516,7 +2544,7 @@ export const workflowsCommand: CommandSpec = {
     },
     input: {
       summary:
-        "Write logs/{FID}/{workflow}-input-{run}.md: the session prompt, the issue description and each human comment, then the plan, design and audit reports, each section dated.",
+        "Write logs/{FID}/{workflow}-input-{run}.md: the session prompt, the issue description and each human comment, then the plan, design and audit reports, each section dated. An existing {workflow}-grill-{run}.md in the same folder is appended at the end.",
       use: "workflow",
       flags: [
         WORKFLOW_FLAG,

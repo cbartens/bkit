@@ -161,7 +161,7 @@ export const repoCommand: CommandSpec = {
         bkit: "the bkit binary the workflow blocks call: <repoRoot>/node_modules/.bin/bkit, else `bkit` on PATH",
         outboxRoot: "<git common dir>/bkit-outbox: per-run scratch files, never committed",
         sessionDir:
-          "<outboxRoot>/sessions/<utc-time>-<random>/: a new, empty folder per call for this run's prompt.md and issue files; folders older than 7 days are pruned",
+          "<outboxRoot>/sessions/<utc-time>-<random>/: a new, empty folder per invocation for prompt.md and issue files; pass it explicitly as --session-dir for workflow progress ownership; folders older than 7 days are pruned",
         bkitVersion:
           ".bkit/version pinnedVersion: the release this repo's bkit files came from (null when unpinned)",
         bkitLatest:

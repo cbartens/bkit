@@ -29,6 +29,15 @@ describe("shared/package-manager", () => {
     expect(installCommand({ frozen: false })).toEqual(["pnpm", "install"]);
   });
 
+  it("a prefer-offline frozen install adds --prefer-offline", () => {
+    expect(installCommand({ frozen: true, preferOffline: true })).toEqual([
+      "pnpm",
+      "install",
+      "--frozen-lockfile",
+      "--prefer-offline",
+    ]);
+  });
+
   it("regenerates the pnpm lockfile without touching node_modules", () => {
     expect(LOCKFILE_REGENERATE["pnpm-lock.yaml"]).toEqual(["pnpm", "install", "--lockfile-only"]);
   });

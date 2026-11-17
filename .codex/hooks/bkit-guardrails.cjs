@@ -33,223 +33,1634 @@
 
 // bkit:start
 
-// bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh
+// bkit:managed v6.2.0 — do not edit; run `bkit upgrade` to refresh
 
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 
+// --- GateGuard engine: identical in every host's hook (bkit renders it from one source).
+// Needs `fs`, `os` and `path` in scope; the host's own code above declares them.
+
+// Basename patterns for quality-gate configs (lint / format / types / test / slop).
+// A matching path gets the gate-config advisory instead of the first-touch checklist.
+// JS / TS first, then the other ecosystems' gate configs (Python, Go, Rust). Mixed-purpose
+// manifests that also hold dependencies and metadata (package.json, pyproject.toml,
+// setup.cfg, tox.ini) are not matched: routine edits to them are not gate edits.
+const GATE_CONFIG_PATTERNS = [
+  /^tsconfig(\..+)?\.json$/,
+  /^vitest\.config\.[mc]?[jt]s$/,
+  /^vite\.config\.[mc]?[jt]s$/,
+  /^jest\.config\.([mc]?[jt]s|json)$/,
+  /^eslint\.config\.[mc]?[jt]s$/,
+  /^\.eslintrc(\.(json|js|cjs|ya?ml))?$/,
+  /^\.prettierrc(\.(json|js|cjs|mjs|ya?ml|toml))?$/,
+  /^prettier\.config\.[mc]?js$/,
+  /^\.prettierignore$/,
+  /^prettierignore\.example$/,
+  /^biome\.jsonc?$/,
+  /^\.vale\.ini$/,
+  /^slop-scan\.config\.json$/,
+  /^\.lintstagedrc(\.(json|js|cjs|mjs|ya?ml))?$/,
+  /^lintstagedrc\.example\.json$/,
+  /^lint-staged\.config\.[mc]?js$/,
+  /^ruff\.toml$/,
+  /^\.ruff\.toml$/,
+  /^\.flake8$/,
+  /^\.?mypy\.ini$/,
+  /^\.?pylintrc$/,
+  /^pytest\.ini$/,
+  /^\.golangci\.(ya?ml|toml|json)$/,
+  /^\.?clippy\.toml$/,
+  /^\.?rustfmt\.toml$/,
+];
+
+// A path under `.bkit/templates/` (bkit's reference copies, refreshed on every upgrade)
+// is not a gate config, except in bkit's own repo (package name `@cbartens/bkit`), where
+// that folder is the template source and stays guarded.
+const TEMPLATE_COPIES_DIR = ".bkit/templates/";
+
+function isBkitRepo(root) {
+  const pkg = path.join(root, "package.json");
+  if (!fs.existsSync(pkg)) return false;
+  return JSON.parse(fs.readFileSync(pkg, "utf-8")).name === "@cbartens/bkit";
+}
+
+function isTemplateCopy(filePath) {
+  const p = filePath.replace(/\\/g, "/");
+  const at = p.startsWith(TEMPLATE_COPIES_DIR) ? 0 : p.indexOf("/" + TEMPLATE_COPIES_DIR);
+  if (at < 0) return false;
+  return !isBkitRepo(path.resolve(p.slice(0, at) || "."));
+}
+
+function isGateConfig(filePath) {
+  if (isTemplateCopy(filePath)) return false;
+  const base = path.basename(filePath);
+  return GATE_CONFIG_PATTERNS.some((re) => re.test(base));
+}
+
+function investigationChecklist(filePath) {
+  const base = path.basename(filePath);
+  return (
+    `[bkit GateGuard] First edit to \`${base}\` this session. Before you edit, confirm each point below, and investigate any you cannot answer:\n` +
+    `- Confirm you read this file and the exact symbols and lines you are about to change.\n` +
+    `- Confirm the exact field names, types and signatures you are changing.\n` +
+    `- Confirm the callers and importers the change affects, by searching or reading the code.\n` +
+    `- Confirm the symbols, flags and configs the change needs exist, by searching or reading the code.\n` +
+    `- Confirm the external data contracts (database schemas, APIs and SDKs) the change affects, by checking their actual shape.\n` +
+    `- Confirm the change follows the patterns and conventions already in this file or its neighbours where feasible, by reading the code.\n` +
+    `- Confirm the user instructions or plan tasks the change serves, by quoting them, not from memory.\n` +
+    `Advisory: proceed once satisfied.`
+  );
+}
+
+function reuseChecklist(filePath) {
+  const base = path.basename(filePath);
+  return (
+    `[bkit GateGuard] New file \`${base}\` this session. Before you add it, confirm each point below, and investigate any you cannot answer:\n` +
+    `- Confirm existing code does not already provide the capability, by searching or reading the code.\n` +
+    `- Confirm existing code cannot be reused or extended to provide the capability, by searching or reading the code.\n` +
+    `- Confirm anything the new code supersedes is deleted rather than left as duplicate work, by checking the removal.\n` +
+    `- Confirm the location and naming fit the project's architecture, topology and standards, by searching or reading the code.\n` +
+    `- Confirm the structures, patterns and conventions follow the closest equivalent files where feasible, by reading the code.\n` +
+    `Evolve existing code first.\n` +
+    `Advisory: proceed once satisfied.`
+  );
+}
+
+// docs/*.md authoring contract — appended to whichever base advisory applies
+// (first-touch / new-file / gate-config). Matches a `docs/` path segment, not a
+// basename. Excludes docs/plans/ and non-.md files.
+function isDocsPath(filePath) {
+  const p = filePath.replace(/\\/g, "/");
+  if (!p.endsWith(".md")) return false;
+  const inDocs = p.startsWith("docs/") || p.includes("/docs/");
+  if (!inDocs) return false;
+  const inPlans = p.startsWith("docs/plans/") || p.includes("/docs/plans/");
+  return !inPlans;
+}
+
+function docAuthoringAdvisory() {
+  return (
+    `[bkit GateGuard] docs/*.md authoring:\n` +
+    `- Read this file's \`> [!CAUTION]\` header and follow its \`Purpose\` and \`Rules\`.\n` +
+    `- Find the topic's home in the \`.agents/docs.md\` index first, and confirm that it is this doc.\n` +
+    `- Follow \`.bkit/authoring.md\` § All Agent-Read Files and § Docs.\n` +
+    `Advisory: proceed once satisfied.`
+  );
+}
+
+// Agent-read files: the files below `.agents/`, `.bkit/` and `docs/` plus the root agent
+// files, matching the scope `.bkit/authoring.md` states. Plan artifacts under `docs/plans/`
+// keep their own template contract and get no general reminder.
+const AGENT_READ_ROOT_FILES = new Set(["AGENTS.md", "CLAUDE.md", "GEMINI.md"]);
+
+function isAgentReadPath(filePath) {
+  const p = filePath.replace(/\\/g, "/");
+  if (AGENT_READ_ROOT_FILES.has(p.split("/").pop() || "")) return true;
+  if (p.startsWith("docs/plans/") || p.includes("/docs/plans/")) return false;
+  return ["docs/", ".agents/", ".bkit/"].some((d) => p.startsWith(d) || p.includes("/" + d));
+}
+
+// The one general authoring reminder, identical for every edit channel and host.
+function authoringReminder() {
+  return (
+    `[bkit GateGuard] Agent-read file. Before you edit it:\n` +
+    `- Find this file in \`.bkit/authoring.md\` § Which Sections Apply, and read the sections its row lists.\n` +
+    `- Follow those rules in the edit.`
+  );
+}
+
+function configAdvisory(filePath) {
+  const base = path.basename(filePath);
+  return (
+    `[bkit GateGuard] \`${base}\` quality-gate config (lint, format, types, tests or slop):\n` +
+    `- Prefer fixing the code over weakening any gate.\n` +
+    `- If a change is genuinely warranted, use targeted opt-outs per file or per rule rather than a blanket disable.\n` +
+    `- ALWAYS get explicit human sign-off for any quality-gate config change.\n` +
+    `- If you are inside a \`/bkit-*\` workflow, where no sign-off is available:\n` +
+    `  - Record the block and continue.\n` +
+    `  - NEVER self-approve the opt-out.\n` +
+    `With BKIT_ALLOW_CONFIG_EDIT=1 set, this file gets the normal first-edit or new-file checklist instead.\n` +
+    `Advisory: proceed once satisfied.`
+  );
+}
+
+// Per user: on a temp dir users share (Linux `/tmp`) another user's copy cannot be written.
+function stateDir() {
+  return path.join(
+    os.tmpdir(),
+    typeof process.getuid === "function" ? `bkit-gateguard-${process.getuid()}` : "bkit-gateguard",
+  );
+}
+
+// (session, file) warnings this process could not write to its state file, standing in
+// for it for the process's life.
+const warnedInProcess = new Set();
+
+function inProcessKey(sessionId, filePath) {
+  return JSON.stringify([sessionId, filePath]);
+}
+
+// Normalized warning identity: an absolute path resolved against the call's effective
+// directory, so a relative, absolute or `..` spelling of one file shares one record.
+function normalizeIdentity(filePath, cwd) {
+  const base = typeof cwd === "string" && cwd ? cwd : process.cwd();
+  return path.resolve(base, filePath);
+}
+
+// Dedup scope: the session, narrowed to one agent when the host names it. A Claude Code
+// subagent shares its parent's session_id and carries its own agent_id.
+function dedupKey(sessionId, agentId) {
+  const sid = typeof sessionId === "string" ? sessionId : "no-session";
+  return typeof agentId === "string" && agentId ? `${sid}.${agentId}` : sid;
+}
+
+function stateFile(sessionId) {
+  const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128) || "no-session";
+  return path.join(stateDir(), safe + ".json");
+}
+
+// Returns the per-session warned-file map. Absent state file is the NORMAL
+// first-touch case (guarded, no throw); a corrupt file reads as empty.
+function readState(sessionId) {
+  const file = stateFile(sessionId);
+  if (!fs.existsSync(file)) return { files: {} };
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
+  } catch {
+    // Unparseable state is treated as empty; the in-process set still prevents a deny loop.
+    return { files: {} };
+  }
+  if (parsed && typeof parsed === "object" && parsed.files && typeof parsed.files === "object") {
+    return parsed;
+  }
+  return { files: {} };
+}
+
+function alreadyWarned(sessionId, filePath) {
+  if (warnedInProcess.has(inProcessKey(sessionId, filePath))) return true;
+  return Boolean(readState(sessionId).files[filePath]);
+}
+
+// `spelling` is the path as the host wrote it; it is recorded beside the normalized key so
+// state readers that look a file up by its original spelling still find it.
+function markWarned(sessionId, filePath, spelling) {
+  fs.mkdirSync(stateDir(), { recursive: true });
+  const state = readState(sessionId);
+  state.files[filePath] = true;
+  if (typeof spelling === "string" && spelling) state.files[spelling] = true;
+  fs.writeFileSync(stateFile(sessionId), JSON.stringify(state), "utf-8");
+}
+
+// Opportunistic TTL: drops session state files older than 24h. Runs last, after the
+// advisory is decided; a cleanup race never suppresses the advisory.
+function gcOldState() {
+  const dir = stateDir();
+  if (!fs.existsSync(dir)) return;
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  for (const name of fs.readdirSync(dir)) {
+    const f = path.join(dir, name);
+    // throwIfNoEntry / force: the file can vanish between readdir and here (another
+    // session GCing the same dir); both calls tolerate that without a catch.
+    const stat = fs.statSync(f, { throwIfNoEntry: false });
+    if (stat && stat.mtimeMs < cutoff) fs.rmSync(f, { force: true });
+  }
+}
+
+// Host-declared: true when the hook process outlives one call (the opencode plugin), so a
+// deny whose state file cannot be written is still remembered in process and cannot loop.
+function processPersists() {
+  return typeof GATEGUARD_PROCESS_PERSISTS !== "undefined" && GATEGUARD_PROCESS_PERSISTS === true;
+}
+
+// Pure preparation: the advice for the first touch of `filePath` this session, or null when
+// GateGuard is off, the path is unusable, or the session was already warned about it.
+// Writes nothing; `acknowledgeAdvice` records the touch once the advice is delivered.
+// `isNewFile` picks the reuse checklist over the read-this-file checklist.
+function prepareAdvice(filePath, sessionId, isNewFile, cwd) {
+  const mode = process.env.BKIT_GATEGUARD;
+  if (mode === "off") return null;
+  if (!filePath || typeof filePath !== "string") return null;
+
+  const sid = typeof sessionId === "string" ? sessionId : "no-session";
+  const key = normalizeIdentity(filePath, cwd);
+
+  // Warn once per (session, file).
+  if (alreadyWarned(sid, key)) return null;
+
+  const gated = isGateConfig(key) && process.env.BKIT_ALLOW_CONFIG_EDIT !== "1";
+  const baseContext = gated
+    ? configAdvisory(key)
+    : isNewFile
+      ? reuseChecklist(key)
+      : investigationChecklist(key);
+  const parts = [baseContext];
+  if (isDocsPath(key)) parts.push(docAuthoringAdvisory());
+  if (isAgentReadPath(key)) parts.push(authoringReminder());
+
+  return {
+    sid,
+    key,
+    mode: mode === "deny" ? "deny" : "advisory",
+    context: parts.join("\n\n"),
+    spelling: filePath,
+    agentRead: isAgentReadPath(key),
+  };
+}
+
+// Records a prepared touch. Fail-open: a state-file write error remembers the touch in
+// this process and returns false (not durable). Only a durable record, or a process that
+// outlives the call, can back a deny: a deny no later call can see was given would block
+// every retry of the edit.
+function acknowledgeAdvice(prepared) {
+  try {
+    markWarned(prepared.sid, prepared.key, prepared.spelling);
+    gcOldState();
+    return true;
+  } catch {
+    warnedInProcess.add(inProcessKey(prepared.sid, prepared.key));
+    return false;
+  }
+}
+
+// The advisory for the first touch of `filePath` this session, or null. Prepares and
+// acknowledges in one step, for callers that deliver the advice themselves.
+function firstTouchAdvice(filePath, sessionId, isNewFile, cwd) {
+  const prepared = prepareAdvice(filePath, sessionId, isNewFile, cwd);
+  if (!prepared) return null;
+  const durable = acknowledgeAdvice(prepared);
+  const mode = durable || processPersists() ? prepared.mode : "advisory";
+  return { mode, context: prepared.context };
+}
+
+// Conservative per-host output budgets for delivered advice (reviewed under decision
+// `787-conservative-host-advisory-budgets`; complete-block visibility is unverified).
+const ADVICE_BUDGETS = {
+  claude: { limit: 8000, unit: "chars" },
+  codex: { limit: 2000, unit: "bytes" },
+  cursor: { limit: 2000, unit: "bytes" },
+  antigravity: { limit: 2000, unit: "bytes" },
+  opencode: { limit: 8000, unit: "chars" },
+};
+const ADVICE_NOTICE_RESERVE = 512;
+
+function adviceSize(text, unit) {
+  return unit === "bytes" ? Buffer.byteLength(text, "utf-8") : text.length;
+}
+
+// Selects prepared advice blocks inside `budget`: only whole blocks, in order, with
+// `ADVICE_NOTICE_RESERVE` units kept for the omitted-target notice. Pure: acknowledges
+// nothing. `fixedCost` is the size (in the budget's unit) of text the caller adds around
+// the blocks, so the whole composed advice fits. Returns `{ selected, context }`
+// (`context` includes the omitted-target notice).
+function selectAdvice(blocks, budget, fixedCost = 0) {
+  const sep = "\n\n";
+  const pick = (room) => {
+    const selected = [];
+    const omitted = [];
+    let used = 0;
+    for (const b of blocks) {
+      const cost = adviceSize(b.context, budget.unit) + (selected.length > 0 ? sep.length : 0);
+      if (used + cost <= room) {
+        selected.push(b);
+        used += cost;
+      } else {
+        omitted.push(b);
+      }
+    }
+    return { selected, omitted };
+  };
+  const omittedNotice = (omitted) => {
+    const reminder = omitted.some((b) => b.agentRead)
+      ? " Agent-read files: see `.bkit/authoring.md` § Which Sections Apply."
+      : "";
+    return `[bkit GateGuard] ${omitted.length} target${omitted.length === 1 ? "" : "s"} omitted (output limit); they stay unacknowledged and are advised on a later edit.${reminder}`;
+  };
+  let { selected, omitted } = pick(
+    budget.limit - (fixedCost > 0 ? 0 : ADVICE_NOTICE_RESERVE) - fixedCost,
+  );
+  if (fixedCost > 0 && omitted.length > 0) {
+    // Composed advice counts its own text, so the omitted-target notice is sized exactly
+    // (worst case: every block omitted) instead of by the fixed reserve.
+    const noticeRoom = adviceSize(omittedNotice(blocks), budget.unit) + sep.length;
+    ({ selected, omitted } = pick(budget.limit - fixedCost - noticeRoom));
+  }
+  const texts = selected.map((b) => b.context);
+  if (omitted.length > 0) texts.push(omittedNotice(omitted));
+  return { selected, context: texts.join(sep) };
+}
+
+// Records the selected blocks once their route has delivered them. Returns the mode to
+// report: a deny only when every record is durable (or the process outlives the call).
+function acknowledgeSelected(selected) {
+  if (selected.length === 0) return "advisory";
+  let durable = true;
+  for (const b of selected) if (!acknowledgeAdvice(b)) durable = false;
+  return durable || processPersists() ? selected[0].mode : "advisory";
+}
+
+// Delivers prepared advice blocks inside `budget` (see `selectAdvice`). Acknowledges exactly
+// the selected blocks, and only when `verified` says the route reaches the model. Returns
+// `{ mode, context }` or null when there is nothing to say.
+function deliverAdvice(blocks, budget, verified, fixedCost = 0) {
+  if (blocks.length === 0) return null;
+  const { selected, context } = selectAdvice(blocks, budget, fixedCost);
+  return { mode: verified ? acknowledgeSelected(selected) : "advisory", context };
+}
+
+// Prepared per-file blocks for the exact targets of a shell edit. Shell targets are
+// relative to the evidence root (`ctx.root`, else `ctx.cwd`); they normalize to the same
+// absolute identity the edit tools record, so both channels share one warning. A shell
+// edit is advisory only and never a new-file reuse check: the file may not exist yet.
+function shellTargetBlocks(targets, ctx, sessionId, agentId) {
+  const base = (ctx && (ctx.root || ctx.cwd)) || process.cwd();
+  const sid = dedupKey(sessionId, agentId);
+  const blocks = [];
+  const seen = new Set();
+  for (const t of targets || []) {
+    const prepared = prepareAdvice(t, sid, false, base);
+    if (!prepared || seen.has(prepared.key)) continue;
+    seen.add(prepared.key);
+    // The record carries only the normalized path: the relative spelling is shell-local.
+    prepared.spelling = prepared.key;
+    blocks.push(prepared);
+  }
+  return blocks;
+}
+
+// The name each host's guardrails advice carries in its deny line.
+const ADVICE_HOST_LABELS = {
+  claude: "Claude Code",
+  codex: "Codex",
+  cursor: "Cursor",
+  antigravity: "Antigravity",
+  opencode: "OpenCode",
+};
+// The most characters of a command the advice echoes back.
+const ADVICE_COMMAND_CHARS = 300;
+
+// `command` cut to `ADVICE_COMMAND_CHARS` whole characters, marked when cut.
+function adviceCommand(command) {
+  const chars = Array.from(String(command || ""));
+  if (chars.length <= ADVICE_COMMAND_CHARS) return chars.join("");
+  return `${chars.slice(0, ADVICE_COMMAND_CHARS).join("")} [cut]`;
+}
+
+// The guardrails advice for one shell verdict (`classifyShell`): one text for every host
+// apart from the host name in the deny line and the Codex-only line that its ask and secret
+// tiers ran without a prompt. `budget` is the host's `ADVICE_BUDGETS` entry; `call` is
+// `{ command, ctx, session, agent, reserve }`, where `reserve` is the size of any text the
+// host adds after the advice. Returns `{ text, selected }`: `selected` are the per-file
+// blocks in the text, which the caller acknowledges (`acknowledgeSelected`) once its route
+// has delivered them.
+function composeAdvice(v, host, budget, call = {}) {
+  const label = ADVICE_HOST_LABELS[host] || host;
+  const shown = adviceCommand(call.command);
+  const noPrompt =
+    host === "codex"
+      ? "\nIt runs without confirmation, because Codex cannot prompt for one. Tell the user that you ran it."
+      : "";
+  switch (v.tier) {
+    case "deny":
+      return { text: `Blocked by bkit ${label} guardrails: ${v.what}. ${v.fix}`, selected: [] };
+    case "ask":
+      return {
+        text: `bkit guardrails: this is a destructive or privileged command (${v.what}). It is on the PROHIBITED list in every bkit workflow.${noPrompt}\nIf the user did not ask for this exact command, NEVER run it.\n\`git clean\` and \`git checkout -- .\` destroy untracked files and uncommitted work, which no reflog can recover.\nCommand: ${shown}`,
+        selected: [],
+      };
+    case "secret":
+      return {
+        text: `bkit guardrails: this command reads ${v.path}, an env, secrets or private-key file, which may expose secrets.${noPrompt}\nNEVER print secret values.\nPrefer direnv or documented non-secret examples.\nCommand: ${shown}`,
+        selected: [],
+      };
+    default:
+      break;
+  }
+  const fetchNote =
+    v.tier === "fetch"
+      ? `bkit guardrails: outbound fetch to a host that is not on this repo's network allowlist (.agents/context.md § allowed-domains, plus bkit's shipped tooling hosts).\nConfirm the destination is intended before you rely on the result.\nIf the host is a standing dependency, add it to allowed-domains.\nCommand: ${shown}`
+      : "";
+  const notice = v.edits ? shellEditAdvisory(v.edits) : "";
+  const fixed = [fetchNote, notice].filter(Boolean).join("\n\n");
+  const blocks = v.edits
+    ? shellTargetBlocks(v.edits.targets, call.ctx, call.session, call.agent)
+    : [];
+  if (blocks.length === 0) return { text: fixed, selected: [] };
+  const sep = "\n\n";
+  const fixedCost = adviceSize(fixed, budget.unit) + sep.length + (call.reserve || 0);
+  const { selected, context } = selectAdvice(blocks, budget, fixedCost);
+  return { text: `${fixed}${sep}${context}`, selected };
+}
+
 // --- Shell detection: identical in every host's guardrails hook (bkit renders it from
-// one source). Needs `fs` and `path` in scope; the host's own code above declares them.
+// one source). Needs `fs` and `path` in scope; the host's own code above declares them. The
+// git entry of `KNOWN_WRITERS` calls `parseGit` from `guardrails-deny.js`, spliced beside it.
 
 /** Wrappers that precede the real command; skipped when finding a command's program. */
-const CMD_WRAPPERS = new Set(["sudo", "env", "time", "nohup", "nice", "command", "exec", "xargs"]);
+const CMD_WRAPPERS = new Set([
+  "sudo",
+  "env",
+  "time",
+  "nohup",
+  "nice",
+  "command",
+  "exec",
+  "xargs",
+  "timeout",
+  "stdbuf",
+  "builtin",
+  "noglob",
+  "doas",
+  "setsid",
+  "busybox",
+]);
 
-/** Split a command line into pipeline / list segments. */
-function shellSegments(cmd) {
-  return String(cmd)
-    .split(/\|\||&&|[|;\n]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
+/** Per program (wrappers too): the short letters and long options whose value is the next word. */
+const VALUE_OPTIONS = {
+  grep: [
+    "ABCDdefm",
+    [
+      "--regexp",
+      "--file",
+      "--after-context",
+      "--before-context",
+      "--context",
+      "--max-count",
+      "--include",
+      "--exclude",
+      "--exclude-dir",
+      "--label",
+    ],
+  ],
+  rg: [
+    "ABCMTefgjmrt",
+    [
+      "--regexp",
+      "--file",
+      "--glob",
+      "--iglob",
+      "--type",
+      "--type-not",
+      "--max-count",
+      "--after-context",
+      "--before-context",
+      "--context",
+      "--replace",
+      "--max-depth",
+      "--threads",
+    ],
+  ],
+  ag: ["ABCGgm", ["--after", "--before", "--context", "--max-count", "--file-search-regex"]],
+  sed: ["efl", ["--expression", "--file", "--line-length"]],
+  awk: ["Ffv", ["--file", "--assign", "--field-separator"]],
+  sort: ["kotST", ["--key", "--output", "--field-separator"]],
+  cut: ["bcdf", ["--bytes", "--characters", "--delimiter", "--fields"]],
+  head: ["cn", ["--bytes", "--lines"]],
+  tail: ["cn", ["--bytes", "--lines"]],
+  scp: ["cFiJloPS", []],
+  rsync: ["e", ["--rsh"]],
+  xargs: ["InPLsdEaJ", []],
+  sudo: ["ughpCDRTUrt", []],
+  doas: ["uC", []],
+  nice: ["n", []],
+  env: ["uCS", []],
+  timeout: ["ks", []],
+  exec: ["a", []],
+  stdbuf: ["ioe", []],
+};
+VALUE_OPTIONS.egrep = VALUE_OPTIONS.fgrep = VALUE_OPTIONS.grep;
 
-/**
- * A segment's words: single / double quotes group and are dropped, a backslash escapes
- * the next character, an unquoted `#` at a word start ends the segment (comment). An
- * unterminated quote runs to the end of the segment.
- */
-function shellWords(seg) {
-  const words = [];
-  let cur = "";
-  let started = false;
-  let quote = "";
-  for (let i = 0; i < seg.length; i++) {
-    const ch = seg[i];
-    if (quote) {
-      if (ch === quote) quote = "";
-      else if (ch === "\\" && quote === '"' && i + 1 < seg.length) cur += seg[++i];
-      else cur += ch;
-      continue;
-    }
-    if (ch === "#" && !started) break;
-    if (ch === "'" || ch === '"') {
-      quote = ch;
-      started = true;
-    } else if (ch === "\\" && i + 1 < seg.length) {
-      cur += seg[++i];
-      started = true;
-    } else if (/\s/.test(ch)) {
-      if (started) words.push(cur);
-      cur = "";
-      started = false;
-    } else {
-      cur += ch;
-      started = true;
-    }
-  }
-  if (started) words.push(cur);
-  return words;
-}
-
-/** The words a segment runs: subshell punctuation, `VAR=val` and wrappers skipped. */
-function commandWords(seg) {
-  const words = shellWords(seg.replace(/^(?:\$\(|[({`!\s])+/, "").replace(/[)}`\s]+$/, ""));
-  let i = 0;
-  while (
-    i < words.length &&
-    (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i]) || CMD_WRAPPERS.has(words[i]))
-  )
-    i++;
-  return words.slice(i);
+/** Whether option word `w` takes the next word as its value by `spec`, a `VALUE_OPTIONS` row. */
+function takesValue(spec, w) {
+  if (!spec || w.includes("=")) return false;
+  if (w.startsWith("--")) return spec[1].includes(w);
+  // The first value letter of a cluster takes the rest of the word (`-uroot`), so the next
+  // word is its value only when that letter ends the cluster (`-Eu root`).
+  return [...w.slice(1)].findIndex((ch) => spec[0].includes(ch)) === w.length - 2;
 }
 
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
 
+/** A word that is safe to pass to a shell unquoted. */
+const PLAIN_WORD_RE = /^[A-Za-z0-9_\/.,:=+@%-]+$/;
+
 /**
- * Every command line the input runs: each list / pipeline segment, the script of a
- * `sh -c '…'`, and the body of each `$(…)` / backtick substitution, recursively.
+ * A host's command field as shell text: a string as is; an argv array with each element
+ * shell-quoted, so `["bash", "-lc", "git push -f"]` reads its script as one word. Else null.
  */
-function commandLines(cmd, depth = 0) {
-  const lines = [];
-  if (depth < 3) {
-    for (const m of String(cmd).matchAll(/\$\(([^()]*)\)|`([^`]*)`/g)) {
-      lines.push(...commandLines(m[1] ?? m[2] ?? "", depth + 1));
+function shellCommandText(command) {
+  if (typeof command === "string") return command;
+  if (!Array.isArray(command) || !command.every((w) => typeof w === "string")) return null;
+  return command
+    .map((w) => (PLAIN_WORD_RE.test(w) ? w : "'" + w.split("'").join("'\\''") + "'"))
+    .join(" ");
+}
+
+/**
+ * A shell's script source: `{ script }` for the operand of `-c`, `{ stdin: true }` when it reads
+ * stdin (no operand, `-s`, `-`), or `{ operand }` for a script file. Options are read the way
+ * bash reads them: every option word before the first operand, `-o` / `-O` take a value, and
+ * `--` or `-` ends the options.
+ */
+function shellScriptSource(words) {
+  let dashC = false;
+  let dashS = false;
+  let i = 1;
+  for (; i < words.length; i++) {
+    const w = words[i];
+    if (w === "--" || w === "-") {
+      i++;
+      break;
+    }
+    if (!/^[-+]/.test(w)) break;
+    if (w.startsWith("--")) {
+      if (w === "--rcfile" || w === "--init-file") i++;
+      continue;
+    }
+    if (w[0] === "-" && w.includes("c")) dashC = true;
+    if (w[0] === "-" && w.includes("s")) dashS = true;
+    if (/[oO]/.test(w)) i++;
+  }
+  if (dashC) return { script: words[i] };
+  if (dashS || i >= words.length) return { stdin: true };
+  return { operand: words[i] };
+}
+
+/** The text a command prints when it only prints literal text (`echo`, `printf`, `cat <<`), else null. */
+function literalOutput(item, words) {
+  const program = (words[0] || "").replace(/^.*\//, "");
+  if (program === "cat" && words.length === 1) {
+    if (item.heredoc) return item.heredoc.body;
+    if (item.hereString !== null) return item.hereString;
+    return null;
+  }
+  const args = words.slice(1).map((w) => w.replace(/\u0000/g, ""));
+  if (program === "echo") {
+    while (/^-[neE]+$/.test(args[0] || "")) args.shift();
+    return args.join(" ");
+  }
+  if (program === "printf" && args.length > 0) {
+    return args.length > 1 ? args.slice(1).join("\n") : args[0].replace(/\\n/g, "\n");
+  }
+  return null;
+}
+
+/** `text` cut to at most `limit` bytes of UTF-8, at the last whole character. */
+function cutUtf8(text, limit) {
+  const buf = Buffer.from(text, "utf8");
+  if (buf.length <= limit) return text;
+  let end = limit;
+  // A continuation byte (10xxxxxx) at the cut belongs to a character that does not fit.
+  while (end > 0 && (buf[end] & 0xc0) === 0x80) end--;
+  return buf.subarray(0, end).toString("utf8");
+}
+
+/** Each `$(…)` and backtick body in an unquoted heredoc body, which the shell expands. */
+function heredocSubstitutions(body) {
+  const out = [];
+  for (let i = 0; i < body.length; i++) {
+    if (body[i] === "\\") i++;
+    else if (body[i] === "$" && body[i + 1] === "(" && body[i + 2] !== "(") {
+      const end = matchParen(body, i + 2);
+      out.push(body.slice(i + 2, end));
+      i = end;
+    } else if (body[i] === "`") {
+      const end = body.indexOf("`", i + 1);
+      out.push(body.slice(i + 1, end < 0 ? body.length : end));
+      i = end < 0 ? body.length : end;
     }
   }
-  for (const seg of shellSegments(cmd)) {
-    lines.push(seg);
-    if (depth >= 3) continue;
-    const words = commandWords(seg);
-    const head = (words[0] || "").replace(/^.*\//, "");
-    if (!SHELLS.has(head)) continue;
-    const c = words.findIndex((w, i) => i > 0 && /^-[a-z]*c$/.test(w));
-    if (c > 0 && words[c + 1]) lines.push(...commandLines(words[c + 1], depth + 1));
-  }
-  return lines;
-}
-
-/** The program a command line runs, path stripped (`/usr/bin/curl` -> `curl`). */
-function commandProgram(words) {
-  return (words[0] || "").replace(/^.*\//, "");
+  return out;
 }
 
 /**
- * True when some command line actually INVOKES curl or wget, including inside
+ * The simple commands a shell text runs, quote-aware (`lexShell`): each list and pipeline
+ * member, the bodies of `$(…)`, backticks, subshells and `<(…)`, the script of a `sh -c '…'`,
+ * the words of `eval`, the string of `env -S`, the command of `find -exec`, a heredoc or
+ * here-string fed to a shell, the literal text `echo`, `printf` or `cat <<` pipes into a shell
+ * or a `<(…)` hands to a shell or `source`, and the substitutions of an unquoted heredoc,
+ * to depth 3. Each is `{ program, words, prefix, redirects, stdinFile, dyn, scope }`: `words` is
+ * the program and its arguments, `prefix` the assignments, wrappers and reserved words
+ * stripped ahead of it (so `sudo` stays visible), `program` the first word with its path
+ * stripped, `redirects` the output targets, `stdinFile` the `<` input file, `dyn` the
+ * words whose value is computed (`$VAR`, `$(…)`, a glob) and `scope` the ids of the
+ * subshell scopes it runs in, outermost first (a `cd` moves only its own scope). Text over
+ * 256 KiB of UTF-8 is cut at the last whole character first. Quoted text and data heredoc
+ * bodies are never commands. A text the parser cannot finish is judged on what was read.
+ * `st` (`newEvidence`) collects the analysis limits reached, the cut included.
+ */
+function shellCommands(text, st = newEvidence()) {
+  const out = [];
+  let nextScope = 0;
+  const collect = (src, depth, outer) => {
+    const scope = [...outer, nextScope++];
+    let prev = null;
+    for (const item of lexShell(src, st, depth)) {
+      if (item.kind === "open") scope.push(nextScope++);
+      else if (item.kind === "close" && scope.length > outer.length + 1) scope.pop();
+      if (item.kind !== "cmd") continue;
+      const before = prev;
+      prev = item;
+      judge(item, item.words, depth, scope, before);
+    }
+  };
+  // One simple command, then the scripts it runs: a shell's script, `eval`'s words, `env -S`'s
+  // string, a `find -exec` command, and text piped or process-substituted into a shell.
+  const judge = (item, rawWords, depth, scope, before) => {
+    const { words, prefix } = stripCommandPrefix(rawWords);
+    const program = (words[0] || "").replace(/^.*\//, "");
+    out.push({
+      program,
+      words,
+      prefix,
+      redirects: item.redirects,
+      stdinFile: item.stdinFile,
+      dyn: [...item.dyn],
+      scope: [...scope],
+    });
+    if (item.heredoc && !item.heredoc.quoted && depth < EVIDENCE_LIMITS.depth) {
+      for (const body of heredocSubstitutions(item.heredoc.body)) collect(body, depth + 1, scope);
+    }
+    const scripts = [];
+    const split = prefix.findIndex((w, i) => w === "-S" && prefix.slice(0, i).includes("env"));
+    if (split >= 0) scripts.push([prefix[split + 1], ...words].join(" "));
+    // `eval` joins its words with spaces and runs the result as a script.
+    if (program === "eval")
+      scripts.push(
+        words
+          .slice(1)
+          .join(" ")
+          .replace(/\u0000/g, ""),
+      );
+    if (program === "find") {
+      for (let i = 1; i < words.length; i++) {
+        if (!/^-(exec|execdir|ok|okdir)$/.test(words[i])) continue;
+        let end = i + 1;
+        while (end < words.length && words[end] !== ";" && words[end] !== "+") end++;
+        // `{}` stands for each found path: a target the hook cannot name.
+        const run = { ...item, redirects: [], stdinFile: null, heredoc: null, hereString: null };
+        Object.assign(run, { piped: false, procSubs: [], dyn: new Set([...item.dyn, "{}"]) });
+        judge(run, words.slice(i + 1, end), depth, scope, null);
+        i = end;
+      }
+    }
+    if (SHELLS.has(program) || program === "source" || program === ".") {
+      const src = SHELLS.has(program) ? shellScriptSource(words) : { operand: words[1] };
+      if (src.script !== undefined && !item.dyn.has(src.script)) scripts.push(src.script);
+      else if (src.operand === "\u0000" && item.procSubs.length > 0) {
+        for (const body of item.procSubs) {
+          const inner = lexShell(body, st, depth + 1).filter((c) => c.kind === "cmd");
+          const last = inner[inner.length - 1];
+          const text = last && literalOutput(last, stripCommandPrefix(last.words).words);
+          if (text) scripts.push(text);
+        }
+      } else if (src.stdin) {
+        if (item.heredoc) scripts.push(item.heredoc.body);
+        else if (item.hereString !== null) scripts.push(item.hereString);
+        else if (item.piped && before) {
+          const text = literalOutput(before, stripCommandPrefix(before.words).words);
+          if (text) scripts.push(text);
+        }
+      }
+    }
+    if (!scripts.some(Boolean)) return;
+    if (depth >= EVIDENCE_LIMITS.depth) {
+      evidenceLimit(st, "depth", false);
+      return;
+    }
+    for (const script of scripts.filter(Boolean)) collect(script, depth + 1, scope);
+  };
+  const cut = cutUtf8(String(text), EVIDENCE_LIMITS.commandBytes);
+  if (cut.length < String(text).length) evidenceLimit(st, "command-size", false);
+  collect(cut, 0, []);
+  return out;
+}
+
+/**
+ * True when some parsed command (`shellCommands`) INVOKES curl or wget, including inside
  * `sh -c '…'`, `$(…)`, backticks and `( … )`.
  *
  * A token that only appears as an argument (`grep -n 'curl' file`) is not a program.
  */
-function usesFetch(cmd) {
-  return commandLines(cmd).some((line) => {
-    const p = commandProgram(commandWords(line));
-    return p === "curl" || p === "wget";
-  });
+function usesFetch(cmds) {
+  return cmds.some((c) => c.program === "curl" || c.program === "wget");
 }
 
-/** Source-ish extensions: a redirect into one of these is plausibly a file edit. */
+// --- Shell edit evidence -----------------------------------------------------
+//
+// Lexical evidence for "this command edits files", read only from the commands that match
+// `KNOWN_WRITERS` or redirect output: ordered unique exact targets, an independent
+// uncertainty set and at most one analysis limit. Nothing is executed and no file is read.
+
+/** Source-ish extensions: a write into one of these is plausibly a file edit. */
 const SOURCE_EXT_RE =
-  /\.(ts|tsx|js|jsx|cjs|mjs|json|md|sh|bash|py|rb|go|rs|java|css|scss|html|ya?ml|toml|sql)$/i;
+  /\.(ts|tsx|js|jsx|cjs|mjs|json|jsonl|md|sh|bash|py|rb|go|rs|java|css|scss|html|ya?ml|toml|sql)$/i;
+
+/** Agent-read locations an edit reaches even without a source extension. */
+const EVIDENCE_AGENT_READ_RE =
+  /(?:^|\/)(?:\.agents|\.bkit)\/|(?:^|\/)(?:AGENTS|CLAUDE|GEMINI)\.md$/;
+
+const EVIDENCE_LIMITS = {
+  commandBytes: 256 * 1024,
+  depth: 3,
+  targets: 64,
+  targetChars: 160,
+  deadlineMs: 200,
+};
 
 /**
- * Targets of every unquoted `>` / `>>` redirect in a command line. A `>` inside single
- * or double quotes is text (`rg 'a > b.ts'`), a backslash-escaped `>` is a literal, and
- * `2>`, `&>` and `>&` forms (fd redirects) are not file targets.
+ * The call context a hook passes: the effective directory, the workspace root, and `dirs`,
+ * the directories that locate the network allowlist, most authoritative first: the workspace
+ * roots (Cursor `workspace_roots`; Antigravity `workspacePaths`, carried over by its payload
+ * adapter), the payload `cwd` (Claude, Codex, Cursor), then the hook process's own cwd —
+ * which on Antigravity is the plugin dir, not the repo.
  */
-function redirectTargets(text) {
-  const targets = [];
+function hookContext(payload) {
+  const p = payload && typeof payload === "object" ? payload : {};
+  const roots = Array.isArray(p.workspace_roots) ? p.workspace_roots : [];
+  const root = roots.find((r) => typeof r === "string" && r) || undefined;
+  const cwd = typeof p.cwd === "string" && p.cwd ? p.cwd : undefined;
+  const dirs = [...roots, cwd, process.cwd()].filter((d) => typeof d === "string" && d !== "");
+  return { cwd, root, dirs };
+}
+
+/** This process's own CPU time in ms; scheduler contention does not inflate it. */
+function cpuMs() {
+  const u = process.cpuUsage();
+  return (u.user + u.system) / 1000;
+}
+
+function newEvidence(ctx) {
+  const cwd = path.resolve((ctx && ctx.cwd) || process.cwd());
+  const root = path.resolve((ctx && ctx.root) || (ctx && ctx.cwd) || process.cwd());
+  return {
+    root,
+    baseCwd: cwd,
+    targets: [],
+    seen: new Set(),
+    uncertain: new Set(),
+    limit: null,
+    halted: false,
+    startWall: Date.now(),
+    startCpu: cpuMs(),
+  };
+}
+
+/** Record the first limit; `halt` stops all further analysis (a prefix is kept). */
+function evidenceLimit(st, reason, halt = true) {
+  if (!st.limit) st.limit = reason;
+  if (halt) st.halted = true;
+}
+
+function evidenceExpired(st) {
+  if (st.halted) return true;
+  // The deadline counts the process's own CPU time, so machine load cannot trip it;
+  // a wall-clock backstop (4x) still bounds a stalled process.
+  if (
+    cpuMs() - st.startCpu > EVIDENCE_LIMITS.deadlineMs ||
+    Date.now() - st.startWall > EVIDENCE_LIMITS.deadlineMs * 4
+  ) {
+    evidenceLimit(st, "deadline");
+    return true;
+  }
+  return false;
+}
+
+function isQuietLiteral(literal) {
+  return (
+    /^\/(dev|tmp|var\/folders|var\/tmp)\//.test(literal) ||
+    /\.(log|bak|tmp|out|err|orig)$/i.test(literal)
+  );
+}
+
+function insideRoot(st, abs) {
+  const rel = path.relative(st.root, abs);
+  return rel !== ".." && !rel.startsWith(".." + path.sep) && !path.isAbsolute(rel);
+}
+
+/**
+ * Add one literal target. `force` skips the source-extension filter (in-place editors and
+ * formatters name files whatever their extension); a forced target that is a directory is
+ * uncertainty. A relative target under an unresolved directory is uncertainty, never a
+ * guessed path.
+ */
+function addEvidenceTarget(st, literal, cwd, force) {
+  if (evidenceExpired(st) || !literal) return;
+  if (!force && !SOURCE_EXT_RE.test(literal) && !EVIDENCE_AGENT_READ_RE.test(literal)) return;
+  if (/\.(log|bak|tmp|out|err|orig)$/i.test(literal)) return;
+  if (cwd === null && !path.isAbsolute(literal)) {
+    st.uncertain.add("unresolved-directory");
+    return;
+  }
+  const abs = path.resolve(cwd === null ? path.sep : cwd, literal);
+  if (isQuietLiteral(literal) && !insideRoot(st, abs)) return;
+  const shown = insideRoot(st, abs) ? path.relative(st.root, abs).split(path.sep).join("/") : abs;
+  // A target reaches hook output: control characters, backticks, overlong names and
+  // directories become uncertainty instead of text.
+  if (
+    shown === "" ||
+    shown.length > EVIDENCE_LIMITS.targetChars ||
+    (force && fs.statSync(abs, { throwIfNoEntry: false })?.isDirectory()) ||
+    /[\u0000-\u001f\u007f-\u009f\u2028\u2029`]/.test(shown)
+  ) {
+    st.uncertain.add("unresolved-target");
+    return;
+  }
+  if (st.seen.has(shown)) return;
+  if (st.targets.length >= EVIDENCE_LIMITS.targets) {
+    evidenceLimit(st, "target-count");
+    return;
+  }
+  st.seen.add(shown);
+  st.targets.push(shown);
+}
+
+/** A target word: dynamic ones are uncertain when they could name a source file. */
+function addWordTarget(st, cmd, text, cwd, force) {
+  if (cmd.dyn.includes(text)) {
+    if (force || SOURCE_EXT_RE.test(text.replace(/\u0000/g, ""))) {
+      if (!/^\$[A-Za-z_{][A-Za-z0-9_}]*$/.test(text) || force)
+        st.uncertain.add("unresolved-target");
+    }
+    return;
+  }
+  addEvidenceTarget(st, text, cwd, force);
+}
+
+// --- Lexer -------------------------------------------------------------------
+
+/** Matching `)` of a `$(` whose body starts at `from`; quotes and nesting aware. */
+function matchParen(text, from) {
+  let depth = 1;
   let quote = "";
-  for (let i = 0; i < text.length; i++) {
+  const heredocs = [];
+  for (let i = from; i < text.length; i++) {
     const ch = text[i];
     if (quote) {
-      if (ch === quote) quote = "";
-      else if (ch === "\\" && quote === '"') i++;
+      if (ch === "\\" && quote === '"') i++;
+      else if (ch === quote) quote = "";
       continue;
     }
-    if (ch === "'" || ch === '"') quote = ch;
-    else if (ch === "\\") i++;
-    else if (ch === ">") {
-      const prev = text[i - 1] ?? "";
-      let j = i + 1;
-      if (text[j] === ">") j++;
-      const fdOrAmp = /[>&\d]/.test(prev);
-      i = j - 1;
-      if (fdOrAmp) continue;
-      while (/\s/.test(text[j] ?? "")) j++;
-      const open = text[j];
-      let target = "";
-      if (open === '"' || open === "'") {
-        const end = text.indexOf(open, j + 1);
-        target = end < 0 ? "" : text.slice(j + 1, end);
-        i = end < 0 ? text.length : end;
-      } else {
-        const m = /^[^\s;|&<>]+/.exec(text.slice(j));
-        target = m ? m[0] : "";
-        i = j + target.length - 1;
+    if (ch === "<" && text[i + 1] === "<" && text[i + 2] !== "<" && text[i + 2] !== "(") {
+      const m = /^<<(-?)[ \t]*(?:'([^'\n]*)'|"([^"\n]*)"|\\?([A-Za-z0-9_.-]+))/.exec(
+        text.slice(i, i + 200),
+      );
+      if (m) {
+        heredocs.push({ delim: m[2] ?? m[3] ?? m[4], strip: m[1] === "-" });
+        i += m[0].length - 1;
+        continue;
       }
-      if (target.trim()) targets.push(target.trim());
     }
+    if (ch === "\n" && heredocs.length > 0) {
+      // Heredoc bodies are data: skip to the line holding each delimiter.
+      let pos = i + 1;
+      for (const h of heredocs) {
+        while (pos < text.length) {
+          let eol = text.indexOf("\n", pos);
+          if (eol < 0) eol = text.length;
+          let line = text.slice(pos, eol);
+          if (h.strip) line = line.replace(/^\t+/, "");
+          pos = eol + 1;
+          if (line === h.delim) break;
+        }
+      }
+      heredocs.length = 0;
+      i = pos - 2;
+      continue;
+    }
+    if (ch === "\\") i++;
+    else if (ch === "'" || ch === '"') quote = ch;
+    else if (ch === "(") depth++;
+    else if (ch === ")" && --depth === 0) return i;
   }
-  return targets;
+  return text.length;
 }
 
 /**
- * Detect a shell command being used as an edit channel. Returns a list of human
- * descriptions, empty when the command edits nothing.
+ * Parse `text` into command items: `{ kind: "cmd", words, dyn, redirects, heredoc,
+ * stdinFile, hereString, piped }` plus `open` / `close` scope markers around subshells and
+ * substitutions. Quotes, escapes, comments, heredoc bodies and substitutions are honoured.
+ */
+function lexShell(text, st, depth) {
+  const items = [];
+  let cmd = newLexCommand();
+  let cur = newLexWord();
+  let pending = null;
+  let pipedFromPrev = false;
+  const heredocs = [];
+
+  function newLexCommand() {
+    return {
+      kind: "cmd",
+      words: [],
+      dyn: new Set(),
+      redirects: [],
+      heredoc: null,
+      stdinFile: null,
+      hereString: null,
+      piped: false,
+      procSubs: [],
+    };
+  }
+  function newLexWord() {
+    return { t: "", started: false, dyn: false, quoted: false, digits: true };
+  }
+  function pushWord() {
+    if (!cur.started) return;
+    const word = cur;
+    cur = newLexWord();
+    if (word.dyn) cmd.dyn.add(word.t);
+    if (pending) {
+      const r = pending;
+      pending = null;
+      if (r.op === "<<") heredocs.push({ cmd, delim: word.t, quoted: word.quoted, strip: r.strip });
+      else if (r.op === "<") cmd.stdinFile = word.t;
+      else if (r.op === "<<<") cmd.hereString = word.t;
+      else if (r.op === ">" && !r.ignore) cmd.redirects.push(word.t);
+      else if (r.op === ">" && r.dup && !/^(\d+|-)$/.test(word.t)) cmd.redirects.push(word.t);
+      return;
+    }
+    cmd.words.push(word.t);
+  }
+  function endCommand(pipe) {
+    pushWord();
+    pending = null;
+    if (cmd.words.length > 0 || cmd.redirects.length > 0 || cmd.stdinFile || cmd.heredoc) {
+      cmd.piped = pipedFromPrev;
+      items.push(cmd);
+    }
+    pipedFromPrev = pipe;
+    cmd = newLexCommand();
+  }
+  function subshell(body) {
+    if (depth + 1 > EVIDENCE_LIMITS.depth) {
+      // Too deep a nesting skips that body only: the commands after it are still judged.
+      evidenceLimit(st, "depth", false);
+      return;
+    }
+    items.push({ kind: "open" });
+    items.push(...lexShell(body, st, depth + 1));
+    items.push({ kind: "close" });
+  }
+  function add(ch) {
+    cur.t += ch;
+    cur.started = true;
+    if (!/\d/.test(ch)) cur.digits = false;
+  }
+  function expansion(i) {
+    // text[i] === "$"; returns the index of the last consumed char.
+    const next = text[i + 1];
+    if (next === "(") {
+      const end = matchParen(text, i + 2);
+      if (text[i + 2] !== "(") subshell(text.slice(i + 2, end));
+      cur.dyn = true;
+      cur.t += "\u0000";
+      cur.started = true;
+      cur.digits = false;
+      return end;
+    }
+    if (next === "{") {
+      const end = text.indexOf("}", i + 2);
+      cur.dyn = true;
+      cur.t += text.slice(i, end < 0 ? text.length : end + 1);
+      cur.started = true;
+      cur.digits = false;
+      return end < 0 ? text.length : end;
+    }
+    if (next && /[A-Za-z0-9_@*#?!-]/.test(next)) cur.dyn = true;
+    add("$");
+    return i;
+  }
+  function backtick(i) {
+    const end = text.indexOf("`", i + 1);
+    subshell(text.slice(i + 1, end < 0 ? text.length : end));
+    cur.dyn = true;
+    cur.t += "\u0000";
+    cur.started = true;
+    cur.digits = false;
+    return end < 0 ? text.length : end;
+  }
+  function readHeredocBodies(from) {
+    let i = from;
+    for (const h of heredocs.splice(0)) {
+      const lines = [];
+      while (i < text.length) {
+        let eol = text.indexOf("\n", i);
+        if (eol < 0) eol = text.length;
+        const line = text.slice(i, eol);
+        i = Math.min(eol + 1, text.length);
+        if ((h.strip ? line.replace(/^\t+/, "") : line) === h.delim) break;
+        lines.push(line);
+      }
+      h.cmd.heredoc = { body: lines.join("\n"), quoted: h.quoted };
+    }
+    return i;
+  }
+
+  for (let i = 0; i < text.length; i++) {
+    if (i % 512 === 0 && evidenceExpired(st)) break;
+    const ch = text[i];
+    if (ch === "\\") {
+      if (text[i + 1] === "\n") {
+        i++;
+        continue;
+      }
+      if (i + 1 < text.length) add(text[++i]);
+      cur.quoted = true;
+      continue;
+    }
+    if (ch === "'") {
+      const end = text.indexOf("'", i + 1);
+      cur.t += text.slice(i + 1, end < 0 ? text.length : end);
+      cur.started = true;
+      cur.quoted = true;
+      cur.digits = false;
+      i = end < 0 ? text.length : end;
+      continue;
+    }
+    if (ch === '"') {
+      cur.started = true;
+      cur.quoted = true;
+      cur.digits = false;
+      let j = i + 1;
+      for (; j < text.length && text[j] !== '"'; j++) {
+        const c = text[j];
+        if (c === "\\" && j + 1 < text.length) {
+          const n = text[j + 1];
+          if (n === "\n") j++;
+          else if (/["\\$`]/.test(n)) cur.t += text[++j];
+          else cur.t += c;
+        } else if (c === "$") j = expansion(j);
+        else if (c === "`") j = backtick(j);
+        else cur.t += c;
+      }
+      i = j;
+      continue;
+    }
+    if (ch === "`") {
+      i = backtick(i);
+      continue;
+    }
+    if (ch === "$") {
+      i = expansion(i);
+      continue;
+    }
+    if (ch === "#" && !cur.started) {
+      const eol = text.indexOf("\n", i);
+      i = eol < 0 ? text.length : eol - 1;
+      continue;
+    }
+    if (ch === "\n") {
+      endCommand(false);
+      i = readHeredocBodies(i + 1) - 1;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      pushWord();
+      continue;
+    }
+    if (ch === ";") {
+      endCommand(false);
+      continue;
+    }
+    if (ch === "&") {
+      if (text[i + 1] === "&") {
+        endCommand(false);
+        i++;
+      } else if (text[i + 1] === ">") {
+        pushWord();
+        pending = { op: ">", ignore: false };
+        i += text[i + 2] === ">" ? 2 : 1;
+      } else {
+        endCommand(false);
+      }
+      continue;
+    }
+    if (ch === "|") {
+      endCommand(true);
+      if (text[i + 1] === "|") {
+        pipedFromPrev = false;
+        i++;
+      } else if (text[i + 1] === "&") i++;
+      continue;
+    }
+    if (ch === "(" || ch === ")") {
+      endCommand(false);
+      items.push({ kind: ch === "(" ? "open" : "close" });
+      continue;
+    }
+    if ((ch === "<" || ch === ">") && text[i + 1] === "(") {
+      // Process substitution: its body runs, and the word is a path to its output.
+      const end = matchParen(text, i + 2);
+      subshell(text.slice(i + 2, end));
+      cmd.procSubs.push(text.slice(i + 2, end));
+      cur.dyn = true;
+      cur.t += "\u0000";
+      cur.started = true;
+      cur.digits = false;
+      i = end;
+      continue;
+    }
+    if (ch === ">" || ch === "<") {
+      let fd = false;
+      let stdoutFd = false;
+      if (cur.started && cur.digits && !cur.quoted) {
+        fd = true;
+        stdoutFd = ch === ">" && cur.t === "1";
+        cur = newLexWord();
+      } else pushWord();
+      let op = ch;
+      let strip = false;
+      let ignore = fd && !stdoutFd;
+      let dup = false;
+      let j = i + 1;
+      if (ch === ">") {
+        if (text[j] === ">" || text[j] === "|") j++;
+        else if (text[j] === "&") {
+          ignore = true;
+          dup = !fd || stdoutFd;
+          j++;
+        }
+      } else if (text[j] === "<") {
+        j++;
+        if (text[j] === "<") {
+          op = "<<<";
+          j++;
+        } else {
+          op = "<<";
+          if (text[j] === "-") {
+            strip = true;
+            j++;
+          }
+        }
+      } else if (text[j] === "&") {
+        op = ">";
+        ignore = true;
+        j++;
+      } else if (text[j] === ">") {
+        j++;
+      }
+      i = j - 1;
+      pending = { op, strip, ignore, dup };
+      continue;
+    }
+    if (!cur.started && ch === "~") cur.dyn = true;
+    if (ch === "*" || ch === "?" || ch === "[") cur.dyn = true;
+    add(ch);
+  }
+  endCommand(false);
+  readHeredocBodies(text.length);
+  return items;
+}
+
+// --- Command prefix ----------------------------------------------------------
+
+const KEYWORD_PREFIX = new Set([
+  "then",
+  "do",
+  "else",
+  "elif",
+  "if",
+  "while",
+  "until",
+  "!",
+  "{",
+  "}",
+  "time",
+]);
+
+/**
+ * Strip assignments, wrappers (with their options, the arguments those options take and
+ * the `timeout` duration), reserved words and a `function NAME` head ahead of the real program. `prefix` is the
+ * stripped words.
+ */
+function stripCommandPrefix(words) {
+  let i = 0;
+  while (
+    i < words.length &&
+    (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i]) ||
+      CMD_WRAPPERS.has(words[i]) ||
+      KEYWORD_PREFIX.has(words[i]) ||
+      words[i] === "function")
+  ) {
+    const wrapper = words[i];
+    // `function NAME` heads a definition; its body is the command.
+    i += wrapper === "function" ? 2 : 1;
+    if (!CMD_WRAPPERS.has(wrapper)) continue;
+    while (i < words.length && words[i].startsWith("-") && words[i].length > 1) {
+      const opt = words[i++];
+      if (opt === "--") break;
+      if (takesValue(VALUE_OPTIONS[wrapper], opt)) i++;
+    }
+    if (wrapper === "timeout" && i < words.length) i++;
+  }
+  return { words: words.slice(i), prefix: words.slice(0, i) };
+}
+
+function resolveCwd(cwd, dir) {
+  if (cwd === null) return path.isAbsolute(dir) ? path.resolve(dir) : null;
+  return path.resolve(cwd, dir);
+}
+
+/**
+ * Positional operands of `args` (a command's words after its program): non-option words and
+ * everything after `--`, skipping the value of each option `spec` (`VALUE_OPTIONS`) names.
+ */
+function operands(args, spec) {
+  const out = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--") return out.concat(args.slice(i + 1));
+    if (args[i] === "-" || !args[i].startsWith("-")) out.push(args[i]);
+    else if (takesValue(spec, args[i])) i++;
+  }
+  return out;
+}
+
+// --- Known writers -------------------------------------------------------------
+
+/**
+ * In-place operands of an editor call, or null when it does not edit in place. `flag(a)` reads
+ * one option word: `"in-place"`, `"script"` (the program is an option value, so the first
+ * operand is a file), `"script+1"` / `"value"` (the next word is that value) or null. Without
+ * a script option the first operand is the program.
+ */
+function inPlaceOperands(args, flag) {
+  let inPlace = false;
+  let script = false;
+  const pos = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--") {
+      pos.push(...args.slice(i + 1));
+      break;
+    }
+    if (!a.startsWith("-") || a === "-") {
+      pos.push(a);
+      continue;
+    }
+    const kind = flag(a, args[i + 1]);
+    if (kind === "in-place") inPlace = true;
+    else if (kind === "in-place+1") {
+      inPlace = true;
+      i++;
+    } else if (kind === "script") script = true;
+    else if (kind === "script+1") {
+      script = true;
+      i++;
+    } else if (kind === "value") i++;
+  }
+  if (!inPlace) return null;
+  if (!script) pos.shift();
+  return pos;
+}
+
+/** sed / gsed: `-i[SUFFIX]` (BSD `-i ''`), `--in-place`; `-e` / `-f` supply the script. */
+function sedFlag(a, next) {
+  if (/^--in-place(=|$)/.test(a)) return "in-place";
+  if (/^--(expression|file)=/.test(a)) return "script";
+  if (a === "--expression" || a === "--file") return "script+1";
+  const m = /^-[A-Za-z]*?([ief])/.exec(a);
+  if (!m) return null;
+  if (m[1] === "i") return a.endsWith("i") && next === "" ? "in-place+1" : "in-place";
+  return a.endsWith(m[1]) ? "script+1" : "script";
+}
+
+/** perl / ruby: `-i[SUFFIX]` in a cluster (`-pi`); `-e` / `-E` supply the script. */
+function perlFlag(a) {
+  if (a.startsWith("--")) return null;
+  for (let k = 1; k < a.length; k++) {
+    const c = a[k];
+    if (c === "i") return "in-place";
+    if (c === "e" || c === "E") return k === a.length - 1 ? "script+1" : "script";
+    // `-l` / `-0` take only octal digits; the others take the rest of the cluster.
+    if (c === "l" || c === "0") k += a.slice(k + 1).match(/^[0-7]*/)[0].length;
+    else if ("IMmFx".includes(c)) return null;
+  }
+  return null;
+}
+
+/** awk / gawk: `-i inplace`; `-f` / `-e` supply the program; `-v`, `-F` take a value. */
+function awkFlag(a, next) {
+  if (a === "-i") return next === "inplace" ? "in-place+1" : "value";
+  if (a === "-f" || a === "-e" || a === "--file" || a === "--source") return "script+1";
+  if (a === "-v" || a === "-F") return "value";
+  return null;
+}
+
+/** Operands a formatter writes when one of `flags` is given; `values` take the next word. */
+function fixerTargets(args, flags, values) {
+  if (!args.some((a) => flags.includes(a))) return null;
+  const out = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--") {
+      out.push(...args.slice(i + 1));
+      break;
+    }
+    if (!a.startsWith("-")) out.push(a);
+    else if (values.has(a)) i++;
+  }
+  return out;
+}
+
+const PRETTIER_VALUE_OPTS = new Set([
+  "--config",
+  "--ignore-path",
+  "--plugin",
+  "--parser",
+  "--log-level",
+  "--cache-location",
+  "--cache-strategy",
+  "--stdin-filepath",
+  "--print-width",
+  "--tab-width",
+]);
+const ESLINT_VALUE_OPTS = new Set([
+  "-c",
+  "--config",
+  "-f",
+  "--format",
+  "-o",
+  "--output-file",
+  "--ext",
+  "--rule",
+  "--parser",
+  "--plugin",
+  "--ignore-path",
+  "--ignore-pattern",
+  "--max-warnings",
+  "--cache-location",
+  "--fix-type",
+]);
+const YQ_VALUE_OPTS = new Set([
+  "-o",
+  "--output-format",
+  "-p",
+  "--input-format",
+  "-I",
+  "--indent",
+  "-s",
+  "--split-exp",
+  "--front-matter",
+]);
+
+/** yq: `-i` / `--inplace`; files follow the expression (`yq eval -i EXPR FILE`). */
+function yqTargets(args) {
+  if (!args.some((a) => a === "-i" || /^--inplace(=|$)/.test(a))) return null;
+  const rest = ["e", "eval", "ea", "eval-all"].includes(args[0]) ? args.slice(1) : args;
+  let expression = false;
+  const pos = [];
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a === "--expression") {
+      expression = true;
+      i++;
+    } else if (a.startsWith("--expression=")) expression = true;
+    else if (!a.startsWith("-")) pos.push(a);
+    else if (YQ_VALUE_OPTS.has(a)) i++;
+  }
+  if (!expression) pos.shift();
+  return pos;
+}
+
+/** cp / mv: the target is an option value (`-t DIR`) the table does not name. */
+function hasTargetDir(args) {
+  return args.some((a) => a === "-t" || a.startsWith("--target-directory"));
+}
+
+/** git: `apply` (its files are in the patch body) and `checkout -- <file>`, via `parseGit`. */
+function gitTargets(args, words) {
+  const g = parseGit(words);
+  if (!g) return null;
+  if (g.sub === "apply") {
+    const report = ["--check", "--stat", "--numstat", "--summary"].some((o) => g.long.has(o));
+    return report && !g.long.has("--apply") ? null : "patch-body";
+  }
+  if (g.sub !== "checkout") return null;
+  const end = words.indexOf("--");
+  return end > 0 ? words.slice(end + 1) : null;
+}
+
+/**
+ * The commands known to write files: the only ones the "may edit files" advice names. bkit
+ * owns the list; it is not extensible. Each entry is keyed by program and gives `form`, the
+ * flag or form that makes it write, and `read(args, words)`, which returns the target words,
+ * null when this call writes nothing, or a reason code when the targets are not on the command
+ * line. `force` names a target whatever its extension; otherwise only source and agent-read
+ * files count, so `cp a.png b.png` and `tee out.txt` stay quiet. The `>` and `>>` redirects
+ * of any command are writers too (`shellEditTargets`). Every other command is silent: script
+ * runners (`node`, `python3`) are never read. `prettier` and `eslint` are also matched behind
+ * `npx`, `pnpm exec`, `pnpm dlx`, `yarn` and `bunx` (`unwrapRunner`).
+ */
+const KNOWN_WRITERS = {
+  sed: { form: "-i", force: true, read: (args) => inPlaceOperands(args, sedFlag) },
+  gsed: { form: "-i", force: true, read: (args) => inPlaceOperands(args, sedFlag) },
+  perl: { form: "-i", force: true, read: (args) => inPlaceOperands(args, perlFlag) },
+  ruby: { form: "-i", force: true, read: (args) => inPlaceOperands(args, perlFlag) },
+  awk: { form: "-i inplace", force: true, read: (args) => inPlaceOperands(args, awkFlag) },
+  gawk: { form: "-i inplace", force: true, read: (args) => inPlaceOperands(args, awkFlag) },
+  tee: { form: "its file operands", force: false, read: (args) => operands(args) },
+  cp: {
+    form: "its last operand",
+    force: false,
+    read: (args) => {
+      if (hasTargetDir(args)) return "unresolved-target";
+      const ops = operands(args);
+      return ops.length > 1 ? ops.slice(-1) : null;
+    },
+  },
+  mv: {
+    form: "both operands",
+    force: false,
+    read: (args) =>
+      hasTargetDir(args) ? "unresolved-target" : operands(args).length > 1 ? operands(args) : null,
+  },
+  patch: {
+    form: "any call but a dry run",
+    read: (args) => (args.some((a) => /^(--dry-run|--check|-C)$/.test(a)) ? null : "patch-body"),
+  },
+  git: { form: "apply, checkout -- <file>", force: true, read: gitTargets },
+  prettier: {
+    form: "--write or -w",
+    force: true,
+    read: (args) => fixerTargets(args, ["--write", "-w"], PRETTIER_VALUE_OPTS),
+  },
+  eslint: {
+    form: "--fix",
+    force: true,
+    read: (args) => fixerTargets(args, ["--fix"], ESLINT_VALUE_OPTS),
+  },
+  yq: { form: "-i or --inplace", force: true, read: yqTargets },
+  dd: {
+    form: "of=FILE",
+    force: false,
+    read: (args) => {
+      const out = args.filter((a) => a.startsWith("of=")).map((a) => a.slice(3));
+      return out.length > 0 ? out : null;
+    },
+  },
+};
+
+/** The tool a package runner starts (`npx -y prettier@3 …` -> `prettier …`), else `words`. */
+function unwrapRunner(words) {
+  const p = (words[0] || "").replace(/^.*\//, "");
+  let rest;
+  if (p === "npx" || p === "bunx") rest = words.slice(1);
+  else if (p === "pnpm" && (words[1] === "exec" || words[1] === "dlx")) rest = words.slice(2);
+  else if (p === "yarn")
+    rest = ["exec", "dlx"].includes(words[1]) ? words.slice(2) : words.slice(1);
+  else return words;
+  let i = 0;
+  while (i < rest.length && rest[i].startsWith("-")) i += /^(-p|--package)$/.test(rest[i]) ? 2 : 1;
+  rest = rest.slice(i);
+  return rest.length > 0 ? [rest[0].replace(/(.)@[^/]*$/, "$1"), ...rest.slice(1)] : rest;
+}
+
+/** Record what one parsed command writes, from its redirects and `KNOWN_WRITERS`. */
+function addCommandEdits(st, c, cwd) {
+  for (const t of c.redirects) if (!t.startsWith("&")) addWordTarget(st, c, t, cwd, false);
+  const words = unwrapRunner(c.words);
+  const program = (words[0] || "").replace(/^.*\//, "");
+  if (!Object.hasOwn(KNOWN_WRITERS, program) || c.dyn.includes(words[0])) return;
+  const writer = KNOWN_WRITERS[program];
+  const hit = writer.read(words.slice(1), words);
+  if (hit === null) return;
+  // A reason code, or operands `xargs` extends from its input: no file can be named.
+  if (typeof hit === "string") st.uncertain.add(hit);
+  else if (c.prefix.some((w) => w.replace(/^.*\//, "") === "xargs"))
+    st.uncertain.add("unresolved-target");
+  else for (const w of hit) addWordTarget(st, c, w, cwd, writer.force);
+}
+
+const EVIDENCE_REASONS = {
+  "unresolved-directory": "the working directory is not a literal path",
+  "unresolved-target": "a target path is computed, not literal, or a directory",
+  "patch-body": "a patch names its files in its body, which is not read",
+};
+const LIMIT_REASONS = {
+  "command-size": "the command is longer than 256 KiB",
+  depth: "nesting is deeper than 3 levels",
+  "target-count": "more than 64 targets",
+  deadline: "analysis took longer than 200 ms",
+};
+
+/**
+ * Edit evidence for a shell command: `{ targets, uncertain, limit }`. Each parsed command
+ * in `cmds` is matched against its redirects and `KNOWN_WRITERS`; nothing else counts.
+ * `targets` are ordered unique paths (workspace-relative where inside it), `uncertain` lists
+ * reason codes for writes whose targets cannot be named, and `limit` is the first analysis
+ * limit reached (the targets found before it are kept). A literal `cd` moves the directory
+ * relative targets resolve against, within its own subshell scope. A command that matches no
+ * writer returns empty `targets` and `uncertain` and a null `limit`.
  *
  * Quiet on `> /dev/null`, `>> "$GITHUB_ENV"`, `mktemp` handoff files and log capture.
- * Only a redirect whose target both looks like a repo path AND carries a source
- * extension is reported.
+ * `st` is the `newEvidence(ctx)` state `shellCommands` filled while it parsed `cmds`.
  */
-function shellEditTargets(cmd) {
-  const hits = [];
-  const lines = commandLines(cmd);
-  for (const line of lines) {
-    const words = commandWords(line);
-    const program = commandProgram(words);
-    const args = words.slice(1);
-    if ((program === "sed" || program === "perl") && args.some((w) => /^-i(?:\..*)?$/.test(w))) {
-      hits.push("in-place sed/perl (-i)");
+function shellEditTargets(cmds, st) {
+  // The directory of each scope: a scope starts in its parent's directory.
+  const cwds = new Map();
+  for (const c of cmds) {
+    if (evidenceExpired(st)) break;
+    let cwd = st.baseCwd;
+    for (const id of c.scope) {
+      if (cwds.has(id)) cwd = cwds.get(id);
+      else cwds.set(id, cwd);
     }
-    if (program === "awk" && args.some((w, i) => w === "-i" && args[i + 1] === "inplace")) {
-      hits.push("awk -i inplace");
+    if (c.program === "cd" || c.program === "pushd" || c.program === "popd") {
+      const arg = c.program === "popd" ? undefined : operands(c.words.slice(1))[0];
+      const known = arg !== undefined && arg !== "-" && !c.dyn.includes(arg);
+      cwds.set(c.scope[c.scope.length - 1], known ? resolveCwd(cwd, arg) : null);
     }
+    addCommandEdits(st, c, cwd);
   }
-  for (const text of [String(cmd), ...lines]) {
-    for (const target of redirectTargets(text)) {
-      // Scratch and env sinks — never a source edit.
-      if (target.startsWith("$") || target.startsWith("&")) continue;
-      if (/^\/(dev|tmp|var\/folders|var\/tmp)\//.test(target)) continue;
-      if (/\.(log|bak|tmp|out|err|orig)$/i.test(target)) continue;
-      if (!SOURCE_EXT_RE.test(target)) continue;
-      hits.push(`redirect into ${target}`);
-    }
-  }
-  return [...new Set(hits)];
+  return { targets: st.targets, uncertain: [...st.uncertain], limit: st.limit };
+}
+
+/** True when the evidence has anything to report. */
+function hasEditEvidence(ev) {
+  return Boolean(ev) && (ev.targets.length > 0 || ev.uncertain.length > 0 || Boolean(ev.limit));
 }
 
 /** Shared advisory string, identical on every host. */
-function shellEditAdvisory(hits) {
-  return (
-    `bkit guardrails: this command edits files through the shell (${hits.join("; ")}). The command is allowed. ` +
-    "Pre-edit gates see only the edit and write tools, so a shell edit gets past every one of them.\n" +
-    "Use the edit or write tool instead.\n" +
-    "If this is one of the exceptions in .agents/rules.md (generating files from a script, a bulk mechanical rewrite, or appending a log line to your own step output file with `>>`), proceed."
+function shellEditAdvisory(ev) {
+  const named = ev.targets.length > 0;
+  // The introduction counts against the host's response budget, so it names only as many
+  // targets as fit a fixed character cap; the per-file blocks carry the full list.
+  const shown = [];
+  let used = 0;
+  for (const t of ev.targets) {
+    if (shown.length > 0 && used + JSON.stringify(t).length > 200) break;
+    shown.push(JSON.stringify(t));
+    used += JSON.stringify(t).length + 2;
+  }
+  const more = ev.targets.length - shown.length;
+  const lines = [
+    named
+      ? `bkit guardrails: this command edits files through the shell (targets: ${shown.join(", ")}${more > 0 ? ` and ${more} more` : ""}). The command is allowed.`
+      : "bkit guardrails: this command may edit files through the shell. The command is allowed.",
+    "Pre-edit gates see only the edit and write tools, so a shell edit gets past every one of them.",
+  ];
+  if (ev.uncertain.length > 0) {
+    lines.push(
+      `Some targets cannot be determined (${ev.uncertain.map((r) => EVIDENCE_REASONS[r] || r).join("; ")}). The authoring rules in .bkit/authoring.md still apply to every file this command may write.`,
+    );
+  }
+  if (ev.limit) {
+    lines.push(
+      `Analysis limit reached (${LIMIT_REASONS[ev.limit] || ev.limit}); the targets listed were found before it, and later ones were not examined.`,
+    );
+  }
+  lines.push(
+    "Use the edit or write tool instead.",
+    "If this is one of the exceptions in .agents/rules.md (generating files from a script, a bulk mechanical rewrite, or appending a log line to your own step output file with `>>`), proceed.",
   );
+  return lines.join("\n");
 }
 
 /** Repo-relative path of the install-written network allowlist every host's hook reads. */
 const NETWORK_ALLOWLIST_FILE = path.join(".bkit", "allowlist.json");
-
-/**
- * Directories a hook call names, most authoritative first: the workspace roots (Cursor
- * `workspace_roots`; Antigravity `workspacePaths`, carried over by its payload adapter),
- * the payload `cwd` (Claude, Codex, Cursor), then the hook process's own cwd — which on
- * Antigravity is the plugin dir, not the repo.
- */
-function hookDirs(payload) {
-  const p = payload && typeof payload === "object" ? payload : {};
-  const roots = Array.isArray(p.workspace_roots) ? p.workspace_roots : [];
-  return [...roots, p.cwd, process.cwd()].filter((d) => typeof d === "string" && d !== "");
-}
 
 /**
  * The network allowlist file for a hook call: walking up from each of `dirs` in turn,
@@ -274,7 +1685,7 @@ function findNetworkAllowlist(dirs) {
  * Hosts come from `.bkit/allowlist.json`, the one install-written artifact carrying the
  * resolved network allowlist (the shipped egress registry union the consumer's
  * `allowed-domains`); every host's hook reads it, found from the hook call's
- * directories (`hookDirs`). There is NO hardcoded fallback list: absent or unreadable,
+ * directories (`hookContext`). There is NO hardcoded fallback list: absent or unreadable,
  * this returns empty and every host is treated as unknown.
  */
 function loadNetworkAllowlistBases(dirs) {
@@ -296,16 +1707,16 @@ function loadNetworkAllowlistBases(dirs) {
 }
 
 /**
- * Pull the HOST out of every `http(s)://…` URL in a command.
+ * The HOST of every `http(s)://…` URL in the words of the parsed curl / wget commands
+ * (`usesFetch`); a URL in another command or inside its quoted text is not fetched.
  *
  * Strict: only an explicit scheme counts; a scheme-less token (`./deploy.sh`,
  * `pkg.json`) is never read as a URL.
  */
-function extractUrlHosts(cmd) {
+function extractUrlHosts(cmds) {
   const hosts = [];
-  const re = /\bhttps?:\/\/([^\s"'`\\|;&<>()]+)/gi;
-  let m;
-  while ((m = re.exec(cmd)) !== null) {
+  const words = cmds.filter((c) => usesFetch([c])).flatMap((c) => c.words);
+  for (const m of words.join(" ").matchAll(/\bhttps?:\/\/([^\s"'`\\|;&<>()]+)/gi)) {
     // Authority ends at the first /, ? or #.
     let authority = m[1].split(/[/?#]/)[0];
     // Strip userinfo — `https://github.com@evil.tld/` is a request to evil.tld.
@@ -325,23 +1736,22 @@ function hostMatchesBase(host, base) {
 }
 
 /**
- * True when EVERY URL in the command targets an allowlisted host.
+ * True when EVERY URL the parsed commands fetch targets an allowlisted host.
  *
- * Only each URL's host is consulted, never the rest of the command string (query
- * params, headers). No parseable URL, or any host off the list → false. `dirs` locate
- * the allowlist (`hookDirs`).
+ * Only each URL's host is consulted, never the rest of the command (query params,
+ * headers). No parseable URL, or any host off the list → false. `dirs` locate the
+ * allowlist (`hookContext`).
  */
-function curlWgetHostAllowed(cmd, dirs) {
-  const hosts = extractUrlHosts(cmd);
+function curlWgetHostAllowed(cmds, dirs) {
+  const hosts = extractUrlHosts(cmds);
   if (hosts.length === 0) return false;
   const bases = loadNetworkAllowlistBases(dirs);
   return hosts.every((h) => [...bases].some((b) => hostMatchesBase(h, b)));
 }
 
-// --- Shell tiers: identical in the Cursor, Codex and Google Antigravity guardrails hooks
-// (bkit renders them from one source). Each host maps a tier to its own output shape and
-// wording. Needs `commandWords`, `commandLines` and `shellSegments` from `guardrails-shell.js`
-// above it.
+// --- Shell deny tier: identical in every host's guardrails hook (bkit renders it from one
+// source). Reads the parsed commands `shellCommands` (`guardrails-shell.js`) returns, and
+// splits their words with `operands` from the same file.
 //
 // git commands are classified by their parsed words — subcommand, flag set (any order,
 // short clusters such as `-fdx` expanded), positionals, `+refspec` — never by a literal
@@ -429,12 +1839,10 @@ function parseGit(words) {
   return { sub, long, short, args };
 }
 
-/** A pathspec naming the whole tree (or more): `.`, `./`, `..`, `:/`. */
-const WHOLE_TREE_PATH = /^(?:\.\.?\/?|:\/\.?)$/;
-
-/** `{ what, fix }` when a parsed git invocation force-pushes, else null. */
-function gitDenyRule(g) {
-  if (g.sub !== "push") return null;
+/** `{ what, fix }` when a parsed command's words force-push with git, else null. */
+function gitDenyRule(words) {
+  const g = parseGit(words);
+  if (!g || g.sub !== "push") return null;
   if (g.long.has("--force") || g.short.has("f") || g.args.some((a) => a.startsWith("+"))) {
     return {
       what: "git force-push",
@@ -443,6 +1851,79 @@ function gitDenyRule(g) {
   }
   return null;
 }
+
+/**
+ * A filesystem root an operand names: `/` (also `//`, `/.`), or `~`, `$HOME` or `${HOME}` bare
+ * or followed by such slashes and dots, with an optional trailing `*`.
+ */
+const ROOT_OPERAND = /^(?:\/[/.]*|(?:~|\$HOME|\$\{HOME\})(?:\/[/.]*)?)\*?$/;
+
+/** The system root itself: `/`, `//`, `/.`, `/*`. */
+const SYSTEM_ROOT = /^\/[/.]*\*?$/;
+
+/** A chmod mode that makes a file world-writable: octal `777` / `0777` / `666`, or `a+w` / `o=rwx`. */
+function worldWritable(mode) {
+  if (/^[0-7]{3,4}$/.test(mode)) return /[2367]$/.test(mode);
+  return mode.split(",").some((clause) => /^[ugoa]*[ao][ugoa]*[+=][rwxXst]*w/.test(clause));
+}
+
+/** The short letters and long names of the options before `--`, and the operands, of `words`. */
+function optionsAndOperands(words) {
+  const args = words.slice(1);
+  const end = args.includes("--") ? args.indexOf("--") : args.length;
+  const opts = args.slice(0, end).filter((w) => w.length > 1 && w.startsWith("-"));
+  return {
+    short: new Set(opts.filter((w) => w[1] !== "-").flatMap((w) => [...w.slice(1)])),
+    long: new Set(opts.filter((w) => w[1] === "-").map((w) => w.split("=")[0])),
+    operands: operands(args),
+  };
+}
+
+/**
+ * Deny tier — matches Claude's settings.json deny rows and OpenCode's bash deny map.
+ * `cmds` are the parsed commands (`shellCommands`). `{ what, fix }` for a blocked
+ * command, else null.
+ */
+function denyRule(cmds) {
+  for (const c of cmds) {
+    const denied = gitDenyRule(c.words);
+    if (denied) return denied;
+    const { short, long, operands } = optionsAndOperands(c.words);
+    // rm with both -r and -f (-rf, -fr, -Rf, -r -f, --recursive --force) on /, ~ or $HOME
+    // itself. A path below them (~/projects/x) is not matched.
+    if (
+      c.program === "rm" &&
+      (short.has("r") || short.has("R") || long.has("--recursive")) &&
+      (short.has("f") || long.has("--force")) &&
+      operands.some((o) => ROOT_OPERAND.test(o))
+    ) {
+      return {
+        what: "recursive delete of a filesystem root",
+        fix: "NEVER run rm -rf against /, ~, or $HOME. Narrow the path to the target directory.",
+      };
+    }
+    if (
+      c.program === "chmod" &&
+      (short.has("R") || long.has("--recursive")) &&
+      worldWritable(operands[0] || "") &&
+      operands.slice(1).some((o) => SYSTEM_ROOT.test(o))
+    ) {
+      return {
+        what: "world-writable chmod -R on the filesystem root",
+        fix: "NEVER make the filesystem root world-writable.",
+      };
+    }
+  }
+  return null;
+}
+
+// --- Shell tiers: identical in the Cursor, Codex and Google Antigravity guardrails hooks
+// (bkit renders them from one source). Each host maps a tier to its own output shape and
+// wording. Needs `shellCommands` and `usesFetch` from `guardrails-shell.js`, and
+// `parseGit` and `denyRule` from `guardrails-deny.js`, above it.
+
+/** A pathspec naming the whole tree (or more): `.`, `./`, `..`, `:/`. */
+const WHOLE_TREE_PATH = /^(?:\.\.?\/?|:\/\.?)$/;
 
 /** What makes a parsed git invocation ask-tier, else null. */
 function gitAskRule(g) {
@@ -474,66 +1955,59 @@ function gitAskRule(g) {
   }
 }
 
-/**
- * Deny tier — matches Claude's settings.json deny rows and OpenCode's bash deny map.
- * `{ what, fix }` for a blocked command, else null.
- */
-function denyRule(c) {
-  for (const line of commandLines(c)) {
-    const g = parseGit(commandWords(line));
-    const denied = g && gitDenyRule(g);
-    if (denied) return denied;
+/** The basename of a word that names a program (`/usr/bin/sudo` -> `sudo`). */
+function programName(word) {
+  return String(word || "").replace(/^.*\//, "");
+}
+
+/** Whether a parsed command runs `bkit tests jump` (also `pnpm bkit ...`, `node dist/cli.js ...`). */
+function isTestsJump(words) {
+  return words.some(
+    (w, i) =>
+      (programName(w) === "bkit" || /^cli\.[jt]s$/.test(programName(w))) &&
+      words[i + 1] === "tests" &&
+      words[i + 2] === "jump",
+  );
+}
+
+/** Whether any parsed command runs `bkit tests jump`. */
+function testsJump(cmds) {
+  return cmds.some((c) => isTestsJump(c.words));
+}
+
+/** Ask tier, non-git: what makes one parsed command destructive or privileged, else null. */
+function shellAskRule(c) {
+  for (const priv of ["sudo", "doas"]) {
+    if (c.program === priv || c.prefix.some((w) => programName(w) === priv)) return priv;
   }
-  // rm with both -r and -f (-rf, -fr, -Rf, -r -f) on /, ~ or $HOME itself, bare, with a
-  // trailing slash, or with a trailing /*. A path below them (~/projects/x) is not matched.
-  if (
-    /\brm\s+(?:-[a-zA-Z]*(?:[rR][a-zA-Z]*f|f[a-zA-Z]*[rR])[a-zA-Z]*|-[rR]\s+-f|-f\s+-[rR])\s+(?:\/|~\/?|\$HOME\/?|\$\{HOME\}\/?)\*?(?=\s|$|[;&|)])/.test(
-      c,
-    )
-  ) {
-    return {
-      what: "recursive delete of a filesystem root",
-      fix: "NEVER run rm -rf against /, ~, or $HOME. Narrow the path to the target directory.",
-    };
+  const ops = operands(c.words.slice(1));
+  if (c.program === "brew" && ops[0] === "install") return "brew install";
+  if (["pnpm", "npm", "bun"].includes(c.program) && ops[0] === "publish") return "package publish";
+  if (c.program === "gh") {
+    const sub = `${ops[0] || ""} ${ops[1] || ""}`;
+    if (sub === "repo delete" || sub === "pr close" || sub === "release delete") return `gh ${sub}`;
   }
-  if (/\bchmod\s+-R\s+777\s+\//.test(c)) {
-    return {
-      what: "chmod -R 777 on the filesystem root",
-      fix: "NEVER make the filesystem root world-writable.",
-    };
+  return isTestsJump(c.words) ? "bkit tests jump" : null;
+}
+
+/** What makes one of the parsed commands ask-tier, else null. */
+function askRule(cmds) {
+  for (const c of cmds) {
+    const g = parseGit(c.words);
+    const what = (g && gitAskRule(g)) || shellAskRule(c);
+    if (what) return what;
   }
   return null;
 }
 
-/** Ask tier, non-git — destructive or privileged shell. */
-const ASK_PATTERNS = [
-  { re: /\bsudo\b/, what: "sudo" },
-  { re: /\bbrew\s+install\b/, what: "brew install" },
-  { re: /\b(pnpm|npm|bun)\s+publish\b/, what: "package publish" },
-  { re: /\bgh\s+repo\s+delete\b/, what: "gh repo delete" },
-  { re: /\bgh\s+pr\s+close\b/, what: "gh pr close" },
-  { re: /\bgh\s+release\s+delete\b/, what: "gh release delete" },
-];
-
-/** What makes a command ask-tier, else null. */
-function askRule(c) {
-  for (const line of commandLines(c)) {
-    const g = parseGit(commandWords(line));
-    const what = g && gitAskRule(g);
-    if (what) return what;
-  }
-  const hit = ASK_PATTERNS.find((p) => p.re.test(c));
-  return hit ? hit.what : null;
-}
-
 /**
- * `"key"` for private-key material (`*.pem`, `*.p12`, `id_rsa`), `"env"` for an env /
- * secrets file (`.env`, `.env.*` except `.env.example`), else null. `/` or `\` separated.
+ * `"key"` for a private-key file (`mayNameKeyFile`), `"env"` for an env / secrets file
+ * (`.env`, `.env.*` except `.env.example`), else null. `/` or `\` separated.
  */
 function secretFileKind(filePath) {
   const p = String(filePath || "").replace(/\\/g, "/");
   if (!p) return null;
-  if (/\.pem$/i.test(p) || /\.p12$/i.test(p) || /(^|\/)id_rsa$/i.test(p)) return "key";
+  if (mayNameKeyFile(p)) return "key";
   const base = p.split("/").pop() || p;
   if (base === ".env" || (/^\.env[.*]/.test(base) && base !== ".env.example")) return "env";
   return null;
@@ -564,39 +2038,190 @@ const NON_READING_HEADS = new Set([
 const COPY_HEADS = new Set(["cp", "install", "rsync", "scp"]);
 /** Programs whose first positional is a search pattern unless `-e` / `-f` supplies one. */
 const PATTERN_HEADS = new Set(["grep", "egrep", "fgrep", "rg", "ag"]);
+/** Programs whose first positional is a filter expression, never a file (`jq .key f.json`). */
+const FILTER_HEADS = new Set(["jq", "yq"]);
+
+/** Whether a grep / sed / awk invocation takes its pattern or script from an option. */
+function patternFromOption(words) {
+  return words.some((w) => /^-[a-zA-Z]*[ef]/.test(w) || /^--(?:regexp|expression|file)\b/.test(w));
+}
 
 /**
- * The first secret file a command reads through the shell (`cat .bkit/.env`,
- * `grep KEY .env.local`, `source .env`, `curl -d @.env …`), else null. Not reads: a
- * redirect target (`> .env`), a copy destination, a grep pattern (`grep -rn ".env" docs`),
- * and anything `NON_READING_HEADS` runs.
+ * The first secret file the parsed commands read (`cat .bkit/.env`, `grep KEY .env.local`,
+ * `source .env`, `curl -d @.env ...`, `wc -l < .env`), else null. Not reads: a redirect
+ * target (`> .env`), a copy destination, a grep pattern (`grep -rn ".env" docs`), a `jq` /
+ * `yq` filter, and anything `NON_READING_HEADS` runs.
  */
-function shellSecretRead(c) {
-  for (const line of commandLines(c)) {
-    const words = commandWords(line);
-    const head = (words[0] || "").replace(/^.*\//, "");
+function shellSecretRead(cmds) {
+  for (const c of cmds) {
+    const words = c.words;
+    const head = c.program;
     if (!head || NON_READING_HEADS.has(head)) continue;
+    if (c.stdinFile && secretFileKind(c.stdinFile)) return c.stdinFile;
     const positionals = words.flatMap((w, i) => (i > 0 && !w.startsWith("-") ? [i] : []));
     const skip = new Set();
     if (COPY_HEADS.has(head) && positionals.length > 1) skip.add(positionals.at(-1));
-    if (
-      PATTERN_HEADS.has(head) &&
-      !words.some((w) => /^-[a-zA-Z]*[ef]/.test(w) || /^--(?:regexp|file)\b/.test(w))
-    ) {
-      skip.add(positionals[0]);
+    // The pattern or filter is the first operand, past option values (`grep -A 2 PATTERN`).
+    if (FILTER_HEADS.has(head) || (PATTERN_HEADS.has(head) && !patternFromOption(words))) {
+      skip.add(words.indexOf(operands(words.slice(1), VALUE_OPTIONS[head])[0], 1));
     }
     for (let i = 1; i < words.length; i++) {
       if (skip.has(i)) continue;
-      const w = words[i];
-      if (/^(?:\d*|&)>[>|]?$/.test(w)) {
-        i++;
-        continue;
-      }
-      if (/^(?:\d*|&)>/.test(w)) continue;
-      for (const part of w.replace(/^</, "").split(/[=:@,]/)) {
+      // Then the whole word: a `{a,b}` glob holds a comma.
+      for (const part of [...words[i].split(/[=:@,]/), words[i]]) {
         if (secretFileKind(part)) return part;
       }
     }
+  }
+  return null;
+}
+
+/** A private-key file: `id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519` (not `*.pub`), `*.pem`, `*.p12`, `*.pfx`, `*.key`. */
+const PRIVATE_KEY_RE = /(?:^|\/)id_(?:rsa|dsa|ecdsa|ed25519)(?:_sk)?$|\.(?:pem|p12|pfx|key)$/i;
+/** Programs that print the content of the files they are given. */
+const CONTENT_READERS = new Set(
+  "cat tac nl head tail less more bat base64 base32 xxd od hexdump strings cut sort uniq fold rev paste column diff grep egrep fgrep rg ag sed awk".split(
+    " ",
+  ),
+);
+/** `openssl` subcommands that print the private key they read, unless told to print none. */
+const OPENSSL_KEY_PRINTERS = new Set(["rsa", "dsa", "ec", "pkey", "pkcs8", "pkcs12", "storeutl"]);
+/** `openssl` subcommands that print an encoding of whatever file they read with `-in`. */
+const OPENSSL_ENCODERS = new Set(["base64", "enc", "asn1parse"]);
+/** Names a key-file glob is tried against, and plain names a narrow glob must not match. */
+const KEY_NAME_SAMPLES = ["id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "id_ed25519_sk"].concat(
+  ["pem", "p12", "pfx", "key"].map((ext) => "k." + ext),
+);
+const PLAIN_NAME_SAMPLES = ["k", "k.txt"];
+
+/** The regex source for one shell glob: `*`, `?`, `[...]` and `{a,b}`. */
+function globSource(glob) {
+  let re = "";
+  for (let i = 0; i < glob.length; i++) {
+    const ch = glob[i];
+    const close = ch === "[" ? glob.indexOf("]", i + 2) : ch === "{" ? glob.indexOf("}", i) : -1;
+    if (ch === "*") re += ".*";
+    else if (ch === "?") re += ".";
+    else if (ch === "[" && close > 0) re += "[" + glob.slice(i + 1, close).replace(/^!/, "^") + "]";
+    else if (ch === "{" && close > 0) {
+      re +=
+        "(?:" +
+        glob
+          .slice(i + 1, close)
+          .split(",")
+          .map(globSource)
+          .join("|") +
+        ")";
+    } else re += ch.replace(/[.*+?^$()|[\]\\{}]/g, "\\$&");
+    if (close > 0 && (ch === "[" || ch === "{")) i = close;
+  }
+  return re;
+}
+
+/**
+ * Whether a file word names a private-key file, or is a glob that can match one: a glob
+ * under a `.ssh/` folder that can match a key name (`~/.ssh/*`, not `~/.ssh/*.pub`), or one
+ * that can match a key name and no plain name (`*.pem`, `id_rs?`, `id_{rsa,dsa}`, not `*`).
+ */
+function mayNameKeyFile(word) {
+  const p = String(word || "").replace(/\\/g, "/");
+  if (PRIVATE_KEY_RE.test(p)) return true;
+  if (!/[*?[{]/.test(p)) return false;
+  const base = new RegExp("^" + globSource(p.split("/").pop()) + "$", "i");
+  if (!KEY_NAME_SAMPLES.some((n) => base.test(n))) return false;
+  return /(?:^|\/)\.ssh\//.test(p) || !PLAIN_NAME_SAMPLES.some((n) => base.test(n));
+}
+
+/** Options that upload the file named by their value (`curl -T`, `wget --post-file`). */
+const UPLOAD_OPTIONS = new Set(["-T", "--upload-file", "--post-file", "--body-file"]);
+
+/**
+ * The key file one parsed command sends off the machine, else null: an `@file` word of any
+ * program (`curl -d @key.pem`, `-F f=@key.pem`), a curl / wget upload option's value, or a
+ * local source operand of `scp` / `rsync` whose destination is `host:...`.
+ */
+function keySentBy(c) {
+  const words = c.words;
+  for (let i = 1; i < words.length; i++) {
+    const at = /(?:^-[A-Za-z]|^|=)@([^;]+)/.exec(words[i]);
+    if (at && mayNameKeyFile(at[1])) return at[1];
+    const eq = words[i].startsWith("--") ? words[i].indexOf("=") : -1;
+    const [name, value] =
+      eq > 0 ? [words[i].slice(0, eq), words[i].slice(eq + 1)] : [words[i], words[i + 1]];
+    const uploads = (c.program === "curl" || c.program === "wget") && UPLOAD_OPTIONS.has(name);
+    if (uploads && mayNameKeyFile(value)) return value;
+  }
+  if (c.program !== "scp" && c.program !== "rsync") return null;
+  const remote = (w) => /^[^/]*:/.test(w);
+  const ops = operands(words.slice(1), VALUE_OPTIONS[c.program]);
+  if (ops.length < 2 || !remote(ops.at(-1))) return null;
+  return ops.slice(0, -1).find((w) => !remote(w) && mayNameKeyFile(w)) || null;
+}
+
+/**
+ * The key file one parsed `git` or `openssl` command prints, else null: `git show` /
+ * `git cat-file` of `rev:path`, `git diff --no-index`, an `openssl` encoder's `-in` file, or
+ * a key printer's input unless it prints only the public key or nothing (`-pubout`,
+ * `-noout`, `pkcs12 -nokeys`, each without `-text`).
+ */
+function keyPrintedByTool(c) {
+  const words = c.words;
+  const g = parseGit(words);
+  if (g && (g.sub === "show" || g.sub === "cat-file")) {
+    const file = g.args.map((a) => a.slice(a.indexOf(":") + 1 || a.length)).find(mayNameKeyFile);
+    return file || null;
+  }
+  if (g)
+    return g.sub === "diff" && g.long.has("--no-index")
+      ? g.args.find(mayNameKeyFile) || null
+      : null;
+  if (c.program !== "openssl") return null;
+  const sub = words[1];
+  const inAt = words.findIndex((w) => w === "-in" || w.startsWith("-in="));
+  const named =
+    inAt < 0 ? null : words[inAt].startsWith("-in=") ? words[inAt].slice(4) : words[inAt + 1];
+  const input = sub === "storeutl" ? words.at(-1) : named;
+  if (!mayNameKeyFile(input)) return null;
+  if (OPENSSL_ENCODERS.has(sub)) return input;
+  if (!OPENSSL_KEY_PRINTERS.has(sub)) return null;
+  const has = (o) => words.includes(o);
+  const quiet = has("-pubout") || has("-noout") || (sub === "pkcs12" && has("-nokeys"));
+  return quiet && !has("-text") ? null : input;
+}
+
+/**
+ * The key file one parsed content reader prints, else null: an operand of `cat`, `head`,
+ * `grep` and the like (after a grep / sed / awk pattern unless an option supplies it, and
+ * skipping option values such as `grep -A 2`), or `dd if=`. An in-place `sed -i` prints
+ * nothing.
+ */
+function keyPrintedByReader(c) {
+  const words = c.words;
+  if (c.program === "dd") {
+    const input = (words.find((w) => w.startsWith("if=")) || "").slice(3);
+    return mayNameKeyFile(input) ? input : null;
+  }
+  if (!CONTENT_READERS.has(c.program)) return null;
+  if (c.program === "sed" && words.some((w) => /^-[a-zA-Z]*i|^--in-place/.test(w))) return null;
+  const ops = operands(words.slice(1), VALUE_OPTIONS[c.program]);
+  const scripted = PATTERN_HEADS.has(c.program) || c.program === "sed" || c.program === "awk";
+  const files = scripted && !patternFromOption(words) ? ops.slice(1) : ops;
+  return files.find(mayNameKeyFile) || null;
+}
+
+/**
+ * The private-key file whose content one of the parsed commands exposes, else null:
+ * printed (a reader, a `<` input file, `git show`, `dd`, a key-printing `openssl`
+ * subcommand) or sent off the machine (`curl -d @key`, `scp key host:`). A key passed to
+ * a program that only uses it (`ssh -i`, `curl --cacert`, `openssl x509 -in`), a write
+ * destination (`-out`, `-keyout`, `ssh-keygen -f`) and a word that only names it
+ * (`git rm`, `git commit -m`, `ls`) does not expose it.
+ */
+function privateKeyContentRead(cmds) {
+  for (const c of cmds) {
+    if (mayNameKeyFile(c.stdinFile)) return c.stdinFile;
+    const key = keySentBy(c) || keyPrintedByTool(c) || keyPrintedByReader(c);
+    if (key) return key;
   }
   return null;
 }
@@ -606,22 +2231,47 @@ function shellSecretRead(c) {
  *   `{ tier: "deny", what, fix }` — blocked on every host;
  *   `{ tier: "ask", what }`       — a destructive / privileged command;
  *   `{ tier: "secret", path }`    — a shell read of an env / secrets / private-key file;
- *   `{ tier: "fetch" }`           — curl / wget to a host off the network allowlist;
+ *   `{ tier: "fetch", edits? }`   — curl / wget to a host off the network allowlist, with the
+ *                                   edit evidence of the same command when it has any;
  *   `{ tier: "edit", edits }`     — the shell used as an edit channel (advisory only);
  *   null                          — nothing to say.
- * `dirs` locate the network allowlist (`hookDirs`).
+ * An allowed fetch never hides an edit in the same command. `edits` is the evidence from
+ * `shellEditTargets`. `host` is the hook's host (`codex` cannot prompt); `ctx` is the call's
+ * `{ cwd, root, dirs }` (`hookContext`).
  */
-function classifyShell(c, dirs) {
+function classifyShell(c, host, ctx) {
   if (!c) return null;
-  const denied = denyRule(c);
+  const st = newEvidence(ctx);
+  const cmds = shellCommands(c, st);
+  const denied = denyRule(cmds);
   if (denied) return { tier: "deny", ...denied };
-  const what = askRule(c);
+  if (host === "codex" && testsJump(cmds)) {
+    return {
+      tier: "deny",
+      what: "bkit tests jump",
+      fix: "Every bkit tests jump needs the human's approval and Codex cannot ask. Ask the human to run it in their own terminal.",
+    };
+  }
+  // Codex cannot prompt, so a command that exposes a private key's content (prints it or
+  // sends it off the machine) is denied there whatever tier would win; a command that uses,
+  // writes or only names a key file keeps the advisory.
+  const keyRead = host === "codex" ? privateKeyContentRead(cmds) : null;
+  if (keyRead) {
+    return {
+      tier: "deny",
+      what: `a command that exposes the content of ${keyRead}, a private-key file`,
+      fix: "NEVER read or send private keys through the shell. Ask the user to run the step that needs the key.",
+    };
+  }
+  const what = askRule(cmds);
   if (what) return { tier: "ask", what };
-  const secret = shellSecretRead(c);
+  const secret = shellSecretRead(cmds);
   if (secret) return { tier: "secret", path: secret };
-  if (usesFetch(c)) return curlWgetHostAllowed(c, dirs) ? null : { tier: "fetch" };
-  const edits = shellEditTargets(c);
-  return edits.length > 0 ? { tier: "edit", edits } : null;
+  const offList = usesFetch(cmds) && !curlWgetHostAllowed(cmds, ctx.dirs);
+  const edits = shellEditTargets(cmds, st);
+  const found = hasEditEvidence(edits);
+  if (offList) return found ? { tier: "fetch", edits } : { tier: "fetch" };
+  return found ? { tier: "edit", edits } : null;
 }
 
 /** Verdicts mirror the Cursor hook's tiers so the shared gate table reads identically. */
@@ -639,32 +2289,16 @@ function deny(reason) {
 
 /**
  * @param {string} cmd
- * @param {string[]} dirs where to look for the network allowlist (`hookDirs`)
+ * @param {{ cwd?: string, root?: string, dirs: string[] }} ctx the call's directories (`hookContext`)
  */
-function decideShell(cmd, dirs) {
+function decideShell(cmd, ctx, session) {
   const c = String(cmd || "").trim();
-  const v = classifyShell(c, dirs);
+  const v = classifyShell(c, "codex", ctx);
   if (!v) return allow();
-  switch (v.tier) {
-    case "deny":
-      return deny(`Blocked by bkit Codex guardrails: ${v.what}. ${v.fix}`);
-    case "ask":
-      // Advisory on this host (Codex cannot prompt).
-      return ask(
-        `bkit Codex guardrails: this destructive or privileged command (${v.what}) ran without confirmation, because Codex cannot prompt for one. It is on the PROHIBITED list in every bkit workflow.\nTell the user that you ran it.\nIf the user did not ask for this exact command, NEVER run it again.\n\`git clean\` and \`git checkout -- .\` destroy untracked files and uncommitted work, which no reflog can recover.\nCommand: ${c}`,
-      );
-    case "secret":
-      return ask(
-        `bkit Codex guardrails: this command read ${v.path}, an env, secrets or private-key file, without confirmation, because Codex cannot prompt for one.\nNEVER print secret values.\nPrefer direnv or documented non-secret examples.\nCommand: ${c}`,
-      );
-    case "fetch":
-      return ask(
-        `bkit Codex guardrails: outbound fetch to a host that is not on the network allowlist.\nConfirm the destination is intended before you rely on the result.\nCommand: ${c}`,
-      );
-    default:
-      // Shell-as-edit-channel: advisory on every host, never a block.
-      return ask(shellEditAdvisory(v.edits));
-  }
+  const advice = composeAdvice(v, "codex", ADVICE_BUDGETS.codex, { command: c, ctx, session });
+  acknowledgeSelected(advice.selected);
+  // Every tier but deny is advisory on this host (Codex cannot prompt).
+  return v.tier === "deny" ? deny(advice.text) : ask(advice.text);
 }
 
 /**
@@ -683,9 +2317,9 @@ function bkitGuardrails(payload) {
   if (!SHELL_TOOL_NAMES.has(tool)) return null;
   const input = payload.tool_input || {};
   // Codex passes the command as a string, or as an argv array for some shells.
-  const cmd = Array.isArray(input.command) ? input.command.join(" ") : input.command;
+  const cmd = shellCommandText(input.command);
   if (typeof cmd !== "string") return null;
-  const decision = decideShell(cmd, hookDirs(payload));
+  const decision = decideShell(cmd, hookContext(payload), payload.session_id);
   return decision.verdict === "allow" ? null : decision;
 }
 

@@ -4,9 +4,22 @@
 // disk and passes `read` for the log files.
 import { coversList } from "./plans.js";
 import { issueIdOf } from "./fids.js";
-import { parseDecisionItems } from "./decisions.js";
+import { decisionHeader, parseDecisionItems } from "./open-decision.js";
 import { parsePlanBlocks } from "./plan-blocks.js";
+import { parseJson } from "../../shared/json.js";
+import { oneLine } from "../../shared/text.js";
 import { challengeResolution, taskVerified } from "./summary-findings.js";
+import { RED_STEP, redTestsOf, TAKEOVER_STEP } from "./tests.js";
+/** What a taken-over test's red state proves, in the summary's words. */
+const handedWords = (state) => {
+    if (state === "red" || state === "red-not-loaded")
+        return "recorded failing";
+    if (state === "taken-over")
+        return "changed hands, not proven failing";
+    if (state === "updated")
+        return "existing test updated and passing; verify judged its diff";
+    return `not recorded red (\`${state}\`)`;
+};
 export const SUMMARY_WORKFLOWS = ["plan", "design", "build", "debug", "ship"];
 /** Per workflow and verdict, the next command the summary recommends. */
 export const NEXT_STEP = {
@@ -47,14 +60,32 @@ export function refOf(fid, tracker = "any") {
     return /^[0-9]+$/.test(id) ? `#${id}` : id;
 }
 /**
- * Review updates cover their review's findings. Group verification covers failed
- * execution, but does not cover a remediation agent's separate warnings or flakes.
+ * Review updates cover their review's findings. The same group's verification, or a
+ * whole-plan verification, covers failed execution; a passing test run covers a failed
+ * test-failure fix. None covers a remediation agent's separate warnings or flakes.
  */
 const RESOLVED_BY = {
     "plan/plan-review": ["plan-apply-review"],
     "design/design-review": ["design-apply-review"],
-    "build/build-plan-tasks": ["build-plan-verify"],
-    "build/build-plan-gaps-remediate": ["build-plan-verify"],
+    "build/build-plan-tasks": ["build-plan-verify", "build-plan-verify-holistic"],
+    "build/build-plan-gaps-remediate": ["build-plan-verify", "build-plan-verify-holistic"],
+    "build/build-plan-gaps-remediate-holistic": ["build-plan-verify-holistic"],
+    "build/build-failure-remediate": ["build-run-tests"],
+    "debug/debug-failure-remediate": ["debug-run-tests"],
+};
+/** Test-fix steps whose resolving run must have run the scope of the run the fix followed. */
+const SAME_SCOPE = new Set(["build/build-failure-remediate", "debug/debug-failure-remediate"]);
+/** Steps that check the whole run, so they answer a failure in any task group. */
+const WHOLE_RUN = new Set(["build-plan-verify-holistic", "build-run-tests"]);
+/**
+ * Whole-run checks that cover a failed check of any one group. A Decision Pause `Fix now`
+ * can put a group's fix in a new group, so that group is never verified again: the
+ * holistic verification judges every task, and the full test gate runs every group gate's suites.
+ */
+const RESOLVED_BY_RUN = {
+    "build/build-plan-verify": ["build-plan-verify-holistic"],
+    "build/build-group-gate": ["build-run-tests"],
+    "build/build-holistic-gate": ["build-run-tests"],
 };
 const RUN_TESTS = new Set(["build-run-tests", "debug-run-tests"]);
 const SEVERITY = /\*\*Severity:\*\*\s*(CRITICAL|HIGH|MEDIUM|LOW)\b/;
@@ -66,6 +97,131 @@ const taskGroupOf = (r) => {
     const taskGroup = r.group ?? r.subPlan;
     return typeof taskGroup === "number" ? taskGroup : undefined;
 };
+const WARNING_FIELDS = [
+    "topic",
+    "gap",
+    "recommendedPath",
+    "alternativeEvidence",
+    "action",
+];
+/** Each field's length cap after folding to one line, in `WARNING_FIELDS` order. */
+const WARNING_FIELD_MAX = [80, 80, 200, 400, 400];
+/** Raw inputs (`*-input-N.md`) are untrusted: never a source of warnings. */
+const isRawInput = (rel) => /(^|\/)[a-z-]*-?input-[^/]*$/.test(rel) ||
+    /(^|\/)related-(issues|failures|deferrals)\.md$/.test(rel) ||
+    /(^|\/)context-related-[^/]*$/.test(rel);
+/** Text between the untrusted-content markers is external data: never a source of warnings. */
+const stripUntrusted = (text) => {
+    const open = /^[^\n]*={5} BEGIN UNTRUSTED ={5}/m.exec(text);
+    if (!open)
+        return text;
+    // The fence ends at the LAST closing marker: any earlier closer inside the payload is forged.
+    const closers = [...text.matchAll(/^[^\n]*={5} END UNTRUSTED ={5}[^\n]*(?:\r?\n|$)/gm)].filter((m) => m.index >= open.index + open[0].length);
+    const last = closers.at(-1);
+    const end = last ? last.index + last[0].length : text.length;
+    return text.slice(0, open.index) + text.slice(end);
+};
+/**
+ * The top-level `{...}` objects in a fence body, in order. Each may span several lines (prettier
+ * rewrites a one-line record into that shape); braces inside strings are ignored. Text outside
+ * an object and an unterminated object are dropped.
+ */
+function jsonObjectChunks(body) {
+    const chunks = [];
+    let depth = 0;
+    let start = -1;
+    let inString = false;
+    let escaped = false;
+    for (let i = 0; i < body.length; i++) {
+        const ch = body[i];
+        if (inString) {
+            if (escaped)
+                escaped = false;
+            else if (ch === "\\")
+                escaped = true;
+            else if (ch === '"')
+                inString = false;
+            continue;
+        }
+        if (ch === '"' && depth > 0)
+            inString = true;
+        else if (ch === "{") {
+            if (depth === 0)
+                start = i;
+            depth++;
+        }
+        else if (ch === "}" && depth > 0) {
+            depth--;
+            if (depth === 0)
+                chunks.push(body.slice(start, i + 1));
+        }
+    }
+    if (depth > 0) {
+        // An unterminated object must not swallow the records after it: rescan after its first line.
+        const nl = body.indexOf("\n", start);
+        if (nl !== -1)
+            chunks.push(...jsonObjectChunks(body.slice(nl + 1)));
+    }
+    return chunks;
+}
+/**
+ * The structured records under `## Documentation Warnings` (JSON objects, one per line or pretty-printed, in a
+ * `jsonl` fence) of the run's own step artifacts, merged by normalised topic and gap. A missing
+ * section, a malformed line or a record without all five non-empty fields is skipped. Each
+ * field is folded to one line and capped (`oneLine`), and the path loses its backticks, so a
+ * record cannot add lines or markup to the summary.
+ */
+function documentationWarnings(rows, read) {
+    const merged = new Map();
+    const seenFiles = new Set();
+    for (const row of rows) {
+        if (row.type !== "step-done")
+            continue;
+        for (const rel of artifactsOf(row)) {
+            if (!rel.endsWith(".md") || isRawInput(rel) || seenFiles.has(rel))
+                continue;
+            seenFiles.add(rel);
+            const raw = read(rel);
+            if (raw === null)
+                continue;
+            const text = stripUntrusted(raw);
+            const section = /^## Documentation Warnings[ \t]*\r?\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(text);
+            const fence = section === null
+                ? null
+                : /```jsonl[ \t]*\r?\n([\s\S]*?)(?:```|(?![\s\S]))/.exec(section[1]);
+            if (fence === null)
+                continue;
+            for (const chunk of jsonObjectChunks(fence[1])) {
+                const parsed = parseJson(chunk);
+                if (!parsed.ok)
+                    continue;
+                const value = parsed.value;
+                if (typeof value !== "object" || value === null || Array.isArray(value))
+                    continue;
+                const rec = value;
+                const fields = WARNING_FIELDS.map((f) => rec[f]);
+                if (!fields.every((f) => typeof f === "string" && f.trim() !== ""))
+                    continue;
+                const [topic, gap, path, evidence, action] = fields.map((f, i) => oneLine(f, WARNING_FIELD_MAX[i]));
+                const recommendedPath = path.replace(/`/g, "").replace(/ {2,}/g, " ").trim();
+                const key = `${topic.toLowerCase()}\u0000${gap.toLowerCase()}`;
+                const found = merged.get(key) ?? {
+                    topic: topic.toLowerCase(),
+                    gap: gap.toLowerCase(),
+                    recommendedPath: recommendedPath,
+                    evidence: [],
+                    actions: [],
+                };
+                if (!found.evidence.includes(evidence))
+                    found.evidence.push(evidence);
+                if (!found.actions.includes(action))
+                    found.actions.push(action);
+                merged.set(key, found);
+            }
+        }
+    }
+    return [...merged.values()];
+}
 /** The run's step rows grouped per step (and task group), in first-seen order. */
 function stepGroups(rows) {
     const groups = new Map();
@@ -88,6 +244,22 @@ function stepGroups(rows) {
     return [...groups.values()];
 }
 const lastOf = (g) => g.rows.at(-1);
+const PAUSE_RULES = {
+    verify: {
+        loop: "Verify",
+        settles: ["build-plan-tasks", "build-plan-verify", "build-plan-gaps-remediate"],
+        grouped: true,
+        fixNow: true,
+        loopDecide: false,
+    },
+    holistic: {
+        loop: "Holistic verify",
+        settles: ["build-plan-verify-holistic", "build-plan-gaps-remediate-holistic"],
+        grouped: false,
+        fixNow: false,
+        loopDecide: true,
+    },
+};
 /** A level-2 section whose heading matches `title`, minus the template's non-content subsections. */
 function planSection(text, title) {
     const lines = text.split("\n");
@@ -150,9 +322,81 @@ export function buildSummary(input) {
             const sev = SEVERITY.exec(t.text)?.[1];
             fails.push(`Task ${t.task} not done (${t.path})${sev === undefined ? "" : ` — ${sev} challenge finding`}`);
         }
+    // One rule for every verify and holistic pause (PAUSE_RULES): a pause answered in full
+    // settles the failed rows before it. Every gap is `Accept`, or (verify) a `Fix now` whose
+    // task was verified after the pause. An all-Accept pause whose `Source changed` header is
+    // present and not `false` settles nothing: source changed after the check the answers judged.
+    // The latest qualifying pause per task group (verify) or per run (holistic) settles.
+    const pauseSettled = new Set();
+    if (workflow === "build") {
+        const latest = new Map();
+        input.rows.forEach((row, index) => {
+            if (row.type !== "step-done" || row.step !== "build-decision")
+                return;
+            for (const rel of artifactsOf(row)) {
+                const text = read(rel);
+                if (text === null)
+                    continue;
+                const header = decisionHeader(text);
+                const rule = PAUSE_RULES[header.From ?? ""];
+                if (rule === undefined)
+                    continue;
+                const group = /^[0-9]+$/.test(header.Group ?? "") ? Number(header.Group) : undefined;
+                if (rule.grouped && group === undefined)
+                    continue;
+                const items = parseDecisionItems(text);
+                const gaps = items.filter((i) => i.title !== rule.loop);
+                const loop = items.filter((i) => i.title === rule.loop);
+                if (gaps.length === 0)
+                    continue;
+                const loopAnswered = (d) => rule.loopDecide ? /^Decide\b/.test(d ?? "") : d !== null;
+                if (!loop.every((i) => loopAnswered(i.decision)))
+                    continue;
+                const fixes = rule.fixNow ? gaps.filter((i) => /^Fix now\b/.test(i.decision ?? "")) : [];
+                if (!gaps.every((i) => fixes.includes(i) || /^Accept\b/.test(i.decision ?? "")))
+                    continue;
+                let how = "every item accepted";
+                if (fixes.length === 0) {
+                    const source = header["Source changed"];
+                    if (source !== undefined && source !== "false")
+                        continue;
+                }
+                else {
+                    const fixTasks = fixes.map((i) => tasks.find((t) => t.task === i.fixTask));
+                    if (fixTasks.some((t) => t === undefined || !taskVerified(input, t, index)))
+                        continue;
+                    how = `task ${fixes.map((i) => i.fixTask).join(", ")} verified`;
+                }
+                const scope = rule.grouped ? `${header.From}#${group}` : String(header.From);
+                latest.set(scope, { rule, group: rule.grouped ? group : undefined, index, rel, how });
+            }
+        });
+        // Verify pauses list first, then holistic: the order the findings read in.
+        const pauses = Object.values(PAUSE_RULES).flatMap((rule) => [...latest.values()].filter((p) => p.rule === rule));
+        for (const pause of pauses)
+            for (const step of pause.rule.settles) {
+                const rows = input.rows
+                    .map((row, index) => ({ row, index }))
+                    .filter(({ row, index }) => row.type === "step-done" &&
+                    row.step === step &&
+                    (pause.group === undefined || taskGroupOf(row) === pause.group) &&
+                    index < pause.index);
+                if (rows.at(-1)?.row.verdict !== "FAIL")
+                    continue;
+                const label = pause.group === undefined ? step : `${step} (group ${pause.group})`;
+                resolvedFindings.push(`${label} FAIL, resolved by the Decision Pause (\`${pause.rel}\`), ${pause.how}`);
+                const g = pause.group === undefined
+                    ? groups.find((x) => x.step === step)
+                    : groups.find((x) => x.key === `${step}#${pause.group}`);
+                if (g !== undefined && lastOf(g).index < pause.index)
+                    pauseSettled.add(g.key);
+            }
+    }
     for (const g of groups) {
         const { row, index } = lastOf(g);
         if (g.step === `${workflow}-summary`)
+            continue;
+        if (pauseSettled.has(g.key) && row.verdict === "FAIL")
             continue;
         if (RUN_TESTS.has(g.step)) {
             if (row.verdict === "FAIL")
@@ -186,15 +430,24 @@ export function buildSummary(input) {
             : review || row.verdict === "FAIL"
                 ? (RESOLVED_BY[`${workflow}/${g.step}`] ?? [])
                 : [];
+        const runAnswers = row.verdict === "FAIL" ? (RESOLVED_BY_RUN[`${workflow}/${g.step}`] ?? []) : [];
         const sub = taskGroupOf(row);
+        const needsScope = SAME_SCOPE.has(`${workflow}/${g.step}`);
+        const fixScope = needsScope
+            ? input.rows.find((r) => r.type === "step-done" &&
+                RUN_TESTS.has(String(r.step)) &&
+                r.attempt === row.attempt &&
+                typeof r.scope === "string")?.scope
+            : undefined;
         const answer = groups
             .map(lastOf)
             .find(({ row: r, index: i }) => i > index &&
-            answers.includes(String(r.step)) &&
+            (answers.includes(String(r.step)) || runAnswers.includes(String(r.step))) &&
             (r.verdict === "PASS" || (review && r.verdict === "CONCERNS")) &&
             (r.failures === undefined || r.failures === 0) &&
-            taskGroupOf(r) === sub &&
-            (!review || r.attempt === row.attempt));
+            (WHOLE_RUN.has(String(r.step)) || taskGroupOf(r) === sub) &&
+            (!review || r.attempt === row.attempt) &&
+            (!needsScope || (fixScope !== undefined && r.scope === fixScope)));
         if (answer !== undefined && spike) {
             const reports = artifactsOf(row).map((p) => read(p));
             const unsettled = reports.map((report) => report === null ? undefined : planSection(report, /^## Unsettled\s*$/));
@@ -322,6 +575,22 @@ export function buildSummary(input) {
         for (const { row } of runs)
             out.push(`- Attempt ${String(row.attempt ?? "?")}: ${str(row.verdict) ?? "-"}, failures ${typeof row.failures === "number" ? row.failures : "-"}, ran \`${str(row.scope) ?? "unknown"}\``);
     }
+    // Planned tests a later task took over (red entries with `from`), and the takeover tasks
+    // the build added itself (`build-takeover` rows).
+    if (workflow === "build") {
+        const handed = input.rows
+            .filter((r) => r.type === "step-done" && r.step === RED_STEP)
+            .flatMap((r) => redTestsOf(r))
+            .filter((t) => typeof t.from === "number");
+        const latest = new Map(handed.map((t) => [`${t.task}\0${t.test}\0${t.testName}`, t]));
+        const added = input.rows.filter((r) => r.type === "step-done" && r.step === TAKEOVER_STEP);
+        if (latest.size > 0 || added.length > 0)
+            out.push("", "## Tests that changed hands", "");
+        for (const t of latest.values())
+            out.push(`- TASK ${t.from} → TASK ${t.task}: \`${t.testName}\` ${handedWords(String(t.state))}`);
+        for (const r of added)
+            out.push(`- TASK ${String(r.task)} added by the build: takes over \`${oneLine(String(r.name))}\` in \`${oneLine(String(r.test))}\` from TASK ${String(r.from)} — ${oneLine(String(r.reason ?? ""))}`);
+    }
     if (workflow === "plan") {
         const final = input.plans.at(-1)?.text ?? "";
         out.push("", "## Acceptance Scenario", "", planSection(final, /Acceptance Scenario/) || "None", "", "## Open Questions", "", planSection(final, /Open Questions/) || "None");
@@ -340,6 +609,18 @@ export function buildSummary(input) {
     }
     if (unconfirmed.length > 0)
         out.push("", "## Ship Completed with Assumed Items", "", "Accepted without the owner and not confirmed; each is a `needs-decision` deferral.", "", ...unconfirmed.map((u) => `- ${u}`));
+    // Documentation warnings: advisory only, never part of the verdict.
+    const docWarnings = documentationWarnings(input.rows, read);
+    if (docWarnings.length > 0) {
+        out.push("", "## Documentation Warnings", "");
+        for (const w of docWarnings) {
+            out.push(`- **${w.topic}** (${w.gap}) — \`${w.recommendedPath}\``);
+            for (const e of w.evidence)
+                out.push(`  - Evidence: ${e}`);
+            for (const a of w.actions)
+                out.push(`  - Action: ${a}`);
+        }
+    }
     // Risks and action items.
     const items = [];
     for (const g of groups) {

@@ -7,8 +7,9 @@
 //      - "byte-equal-text" : delete only if unchanged since bkit wrote it (canonicalHashes)
 //   2. package.json: the `bkit` install-state block (full/core uninstall). Scripts and
 //      devDeps are the consumer's — the bkit:gate:* names included — and are left alone.
-//   2b. docs/ (full/core uninstall): bkit's managed block stripped from every installed
-//      `docs/*.md`, the owned `docs/templates/bkit-*.md` deleted.
+//   2b. docs/ (full/core uninstall): the owned `docs/templates/bkit-*.md` deleted. The ten
+//      project documents (`docs/architecture.md` …) and their `Project Documents` index rows
+//      belong to the project and stay.
 //   3. .agents/ mirror files (bkit-prefix .md files in .claude/ .cursor/)
 //
 // Flags:
@@ -28,15 +29,16 @@ import { getInstallManifest, ISSUE_TRACKERS, } from "../../install/manifest.js";
 import { OPENCODE_PROVIDERS } from "../../shared/egress.js";
 import { parseJson } from "../../shared/json.js";
 import { hashFile, isConsumerModified, mergeCanonicalHashes, readBkitVersion, writeBkitVersion, } from "../../install/version-file.js";
-import { getBkitDocsRoot, getPkgRoot, getSharedRoot, findTemplateSource, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
+import { getBkitDocsRoot, getPkgRoot, findTemplateSource, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
 import { PAYLOAD_LINKS } from "../../install/payload-links.js";
 import { removeOpencodeProviderBlock, renderOpencodeAgentsCommands, renderOpencodeJson, } from "../../install/modules/opencode.js";
 import { applyModelOverrides, buildOpencodeModelLookup, parseEffortMap, } from "../../render/models.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { SEEDED_BKIT_DEFAULTS } from "../../install/modules/core.js";
-import { CLAUDE_CLOUD_RELPATH, CODEX_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, resolveClaudeDerivedAllows, } from "../../install/cloud-env.js";
+import { CLAUDE_CLOUD_RELPATH, CODEX_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, } from "../../install/cloud-env.js";
 import { LOG_PREFIX, setLogPrefix } from "../../shared/log-prefix.js";
+import { isOpencodeSubstringFetchKey, redactUrlParts } from "../../checks/before/files.js";
 import { unusedTrackerMcpServers } from "../../checks/before/mcp.js";
 // ---------------------------------------------------------------------------
 // stripTier2JsonScope — remove bkit-owned JSON scope from consumer doc (BAR-167 Phase 1)
@@ -263,26 +265,6 @@ const CORE_TEMPLATE_DOCTRINE = [
     // Retired `.bkit/lite.md` (5.2.5 – 6.0.0), for an install never upgraded since.
     { path: ".bkit/lite.md", format: "markered-text", module: "core" },
 ];
-/**
- * The top-level `docs/*.md` the core payload pass installs: each carries bkit's managed
- * block (`bkit:start` / `bkit:end`, managed marker inside), so uninstall strips the block
- * and keeps the consumer's content, exactly like `.agents/*.md`. The payload's
- * `shared/docs/` holds only these block docs; `docs/capabilities.md` is a template
- * (copied, never installed) and is left alone.
- */
-function coreDocEntries() {
-    const dir = path.join(getSharedRoot(), "docs");
-    if (!fs.existsSync(dir))
-        return [];
-    return fs
-        .readdirSync(dir, { withFileTypes: true })
-        .filter((e) => e.isFile() && e.name.endsWith(".md"))
-        .map((e) => ({
-        path: path.join("docs", e.name),
-        format: "markered-text",
-        module: "core",
-    }));
-}
 /** Prefix of the bkit-owned files under `docs/templates/`; uninstall deletes them whole. */
 const DOCS_TEMPLATES_DIR = path.join("docs", "templates");
 const isOwnedDocsTemplate = (name) => name.startsWith("bkit-") && name.endsWith(".md");
@@ -294,7 +276,7 @@ export function buildDecisionTable(modules, ctx) {
         : modules;
     const entries = [
         ...getInstallManifest(moduleList),
-        ...(moduleList.includes("core") ? [...CORE_TEMPLATE_DOCTRINE, ...coreDocEntries()] : []),
+        ...(moduleList.includes("core") ? CORE_TEMPLATE_DOCTRINE : []),
     ];
     // The hash of every owned file as bkit last wrote it.
     const versionFilePath = path.join(ctx.cwd, ".bkit", "version");
@@ -495,6 +477,9 @@ export async function runUninstall(modules, ctx) {
             return result;
         }
     }
+    // The grants bkit wrote into `.claude/settings.json`, read before the loop below deletes
+    // `.bkit/version` on a full or core uninstall.
+    const claudeAllowDerived = readBkitVersion(path.join(ctx.cwd, ".bkit", "version"))?.claudeAllowDerived ?? [];
     const table = buildDecisionTable(moduleList, ctx);
     result.decisions = table;
     if (ctx.dryRun) {
@@ -567,19 +552,18 @@ export async function runUninstall(modules, ctx) {
                             // the resolved network allowlist and `mcp__…` grants per declared MCP
                             // server (enrichClaudeSettingsAllows). Stripping
                             // against the RAW template leaves those grants behind as if the consumer
-                            // had added them. Recompute the same set — the very function that produced
-                            // them — and treat it as part of the template, exactly as the opencode.json
-                            // sentinel render above does.
+                            // had added them. `.bkit/version` records exactly the rows install wrote
+                            // (`claudeAllowDerived`); treat them as part of the template. A derived-looking
+                            // row the record lacks has unknown ownership: it stays and is listed for review.
                             if (summary.file === path.join(".claude", "settings.json")) {
                                 const perms = templateDoc.permissions;
                                 if (perms !== null && typeof perms === "object" && !Array.isArray(perms)) {
                                     const permsObj = perms;
                                     const allow = permsObj.allow;
                                     if (Array.isArray(allow)) {
-                                        const enriched = resolveClaudeDerivedAllows(ctx.cwd);
                                         permsObj.allow = [
                                             ...allow,
-                                            ...enriched.filter((e) => !allow.includes(e)),
+                                            ...claudeAllowDerived.filter((e) => !allow.includes(e)),
                                         ];
                                     }
                                 }
@@ -589,6 +573,28 @@ export async function runUninstall(modules, ctx) {
                                 : isOpencodeJson
                                     ? stripOpencodeJsonScope(consumerDoc, templatePath, ctx.cwd)
                                     : stripTier2JsonScope(consumerDoc, templateDoc);
+                            if (summary.file === path.join(".claude", "settings.json")) {
+                                const remaining = stripped.permissions?.allow;
+                                if (Array.isArray(remaining)) {
+                                    for (const row of remaining) {
+                                        if (typeof row === "string" &&
+                                            /^(WebFetch\(domain:|mcp__)/.test(row) &&
+                                            !claudeAllowDerived.includes(row)) {
+                                            console.log(`${ctx.logPrefix} review: ${summary.file} keeps ${row} — .bkit/version does not record it as bkit-written; remove it by hand if bkit added it`);
+                                        }
+                                    }
+                                }
+                            }
+                            if (isOpencodeJson) {
+                                const bash = stripped.permission?.bash;
+                                if (bash !== null && typeof bash === "object" && !Array.isArray(bash)) {
+                                    for (const [key, value] of Object.entries(bash)) {
+                                        if (value === "allow" && isOpencodeSubstringFetchKey(key)) {
+                                            console.log(`${ctx.logPrefix} review: ${summary.file} keeps legacy substring grant \`${redactUrlParts(key)}\` in permission.bash — remove it by hand if you did not add it`);
+                                        }
+                                    }
+                                }
+                            }
                             const strippedJson = JSON.stringify(stripped, null, 2) + "\n";
                             if (Object.keys(stripped).length === 0) {
                                 // All keys were bkit-owned → delete file

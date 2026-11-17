@@ -23,16 +23,17 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-03T12:11:01Z)_
+_(refreshed 2026-11-17T05:27:06Z)_
 
 ### Design
 
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 254-add-pi-dev | 254-add-pi-dev | 1794046179322 |
 | 764-map-each-five | 764-map-each-five | 1793669052601 |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
-| 803-close-codex-opencode | 803-close-codex-opencode | 1793702114105 |
+| 924-every-workflow-land | 924-every-workflow-land | 1794553962276 |
 
 ### Plan
 
@@ -42,11 +43,13 @@ _(refreshed 2026-11-03T12:11:01Z)_
 | 504-example-project | 504-example-project | 1791870640742 |
 | 546-knowledge-store-ledger | 546-knowledge-store-ledger | 1793687664562 |
 | 651-sops-env-backup | 651-sops-env-backup | 1792633642892 |
-| 719-cloud-variants-add | 719-cloud-variants-add | 1793249397536 |
-| 787-show-authoring-rules | 787-show-authoring-rules | 1793699031010 |
-| 826-append-routine-workflow | 826-append-routine-workflow | 1793618138004 |
+| 803-close-codex-opencode | 803-close-codex-opencode | 1794355498634 |
 | 836-record-host-model | 836-record-host-model | 1793671481372 |
-| 842-ship-fails-local | 842-ship-fails-local | 1793687751643 |
+| 849-keep-local-dev | 849-keep-local-dev | 1794294240802 |
+| 887-review-doc-starters | 887-review-doc-starters | 1794617898860 |
+| 894-show-progress-line | 894-show-progress-line | 1794294803514 |
+| 895-one-question-format | 895-one-question-format | 1794222208628 |
+| 902-show-every-choice | 902-show-every-choice | 1794355307817 |
 
 ### Build
 
@@ -54,6 +57,12 @@ _(refreshed 2026-11-03T12:11:01Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
+| 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1794438325395 |
+| 864-move-project-docs | 864-move-project-docs | 1794355539739 |
+| 891-build-gate-stuck | 891-build-gate-stuck | 1794381380980 |
+| 901-challenge-merge-breaks | 901-challenge-merge-breaks | 1794380576794 |
+| 914-build-planned-test | 914-build-planned-test | 1794815291907 |
+| 918-ad-hoc-agent | 918-ad-hoc-agent | 1794476513474 |
 
 ### Debug
 
@@ -64,16 +73,16 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
-| 724-machine-wide-test | 724-machine-wide-test | 1793707861076 |
-| 825-show-progress-bar | 825-show-progress-bar | 1793685847386 |
-| 748-brand-every-consumer | 748-brand-every-consumer | 1793681146452 |
-| 830-debug-diagnose-named | 830-debug-diagnose-named | 1793658551188 |
-| 715-retire-lite-workflows | 715-retire-lite-workflows | 1793575645147 |
-| 699-engine-run-completeness | 699-engine-run-completeness | 1793517704318 |
-| 701-engine-work-build | 701-engine-work-build | 1793191338658 |
-| 705-build-plan-convert | 705-build-plan-convert | 1793100657723 |
-| 703-standardise-question-option | 703-standardise-question-option | 1793090828870 |
-| 700-session-start-nudge | 700-session-start-nudge | 1793054973314 |
+| 1011-rules-ship-project | 1011-rules-ship-project | 1794893226286 |
+| 957-workflows-skip-re | 957-workflows-skip-re | 1794774301354 |
+| 921-tests-lock-default | 921-tests-lock-default | 1794772838726 |
+| 951-build-repeat-whole | 951-build-repeat-whole | 1794738945847 |
+| 814-local-test-limits | 814-local-test-limits | 1794736903637 |
+| 923-pre-push-block | 923-pre-push-block | 1794689727505 |
+| 920-build-agents-run | 920-build-agents-run | 1794637457684 |
+| 917-docs-node-test | 917-docs-node-test | 1794615636061 |
+| 915-min-push-ignores | 915-min-push-ignores | 1794610198037 |
+| 929-hung-test-never | 929-hung-test-never | 1794608796745 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

@@ -20,7 +20,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { DECISION_ROUTES, WORKFLOW_STEPS } from "../commands/workflow/step-table";
-import { RED_STEP } from "../commands/workflow/tests";
+import { RED_STEP, TAKEOVER_STEP } from "../commands/workflow/tests";
 import { substituteWorkflow } from "../render/trackers";
 import {
   SHIP_STEP_ORDER,
@@ -112,36 +112,15 @@ function pathBStatus(): string {
   ].join("\n");
 }
 
-/** Build a MERGED-on-entry status.jsonl (Step 2 detects MERGED → Step 13). */
+/** Build a MERGED-on-entry status.jsonl (Step 2 detects MERGED → Step 11). */
 function mergedOnEntryStatus(): string {
   return [
     row("ship-start-workflow"),
-    // Step 2 routes to Step 13 at sub-step 5 (`state` = MERGED) — BEFORE sub-step
+    // Step 2 routes to Step 11 at sub-step 5 (`state` = MERGED) — BEFORE sub-step
     // 8 writes ship-worktree-setup + ship-regression-guard, so neither appears.
     // The explicit marker identifies this path.
     JSON.stringify({ type: "ship-merged-on-entry", workflow: "ship", at: "2026-07-29T00:00:00Z" }),
-    // Steps 3–12 skipped entirely — PR was already merged
-    row("ship-switch-to-dev"),
-    row("ship-close-workflow"),
-  ].join("\n");
-}
-
-/** Build a retry-loop Path B status (merge failed, diagnosed, remediated, retried). */
-function retryLoopPathBStatus(): string {
-  return [
-    row("ship-start-workflow"),
-    row("ship-worktree-setup"),
-    row("ship-regression-guard"),
-    row("ship-conflict-resolve", { verdict: "PASS" }),
-    row("ship-deferred-sweep"),
-    row("ship-update-docs"),
-    row("ship-summary"),
-    row("ship-prune-skills"),
-    row("ship-bookkeeping-push"),
-    row("ship-merge-pr", { verdict: "FAIL", attempt: 1, failures: 1 }),
-    row("ship-failure-diagnose", { verdict: "PASS", attempt: 1 }),
-    row("ship-failure-remediate", { verdict: "PASS", attempt: 1, strategy: "STANDARD" }),
-    row("ship-merge-pr", { verdict: "PASS", attempt: 2, failures: 0 }),
+    // Steps 3–10 skipped entirely — PR was already merged
     row("ship-switch-to-dev"),
     row("ship-close-workflow"),
   ].join("\n");
@@ -159,10 +138,10 @@ describe("source derivation", () => {
       expect(contract.drift, name).toEqual([]);
       expect(contract.orphanSteps, name).toEqual([]);
     }
-    // Build writes two row keys outside its numbered steps by design; the contract names them.
+    // Build writes three row keys outside its numbered steps by design; the contract names them.
     const build = deriveContract(flowMd("build"), "build");
     expect(build.pauseRows).toEqual([DECISION_ROUTES.build!.step]);
-    expect(build.subRows).toEqual([RED_STEP]);
+    expect(build.subRows).toEqual([RED_STEP, TAKEOVER_STEP]);
     for (const name of ["design", "plan", "debug", "ship"] as const) {
       const contract = deriveContract(flowMd(name), name);
       expect([...contract.pauseRows, ...contract.subRows], name).toEqual([]);
@@ -253,6 +232,28 @@ describe("source derivation", () => {
     ]);
   });
 
+  it("leaves a fix agent's gate label out of the universe when its gate step is named", () => {
+    const fakeMd = [
+      "## 🧠 Step 1 — Gate",
+      "```bash",
+      '"{BKIT}" tests run --step=build-holistic-gate',
+      '"{BKIT}" steps finish --step=build-holistic-gate',
+      "```",
+      'Context: `"{BKIT}" tests run --since-pass-of=build-holistic-gate,build-holistic-gate-fix --step=build-holistic-gate-fix`',
+    ].join("\n");
+    expect(deriveContract(fakeMd, "build").universe).toEqual(["build-holistic-gate"]);
+  });
+
+  it("keeps a key that ends in -fix when no step names its stem", () => {
+    const fakeMd = [
+      "## 🧠 Step 1 — Fix",
+      "```bash",
+      '"{BKIT}" steps finish --step=build-quick-fix',
+      "```",
+    ].join("\n");
+    expect(deriveContract(fakeMd, "build").universe).toEqual(["build-quick-fix"]);
+  });
+
   it("flags a status write that lives outside any numbered step (orphanSteps)", () => {
     const fakeMd = [
       "## 🧠 Step 1 — Start",
@@ -310,7 +311,7 @@ describe("classifyRun", () => {
     expect(classifyRun(observed, false)).toBe("PATH_B");
   });
 
-  it("classifies a MERGED-on-entry run (Step 2 routed to Step 13 before its writes)", () => {
+  it("classifies a MERGED-on-entry run (Step 2 routed to Step 11 before its writes)", () => {
     // bkit-ship.md Step 2 routes on `state` = MERGED at sub-step 5, BEFORE
     // sub-step 8 writes ship-worktree-setup + ship-regression-guard — so a real
     // MERGED-on-entry resume carries neither.
@@ -362,20 +363,16 @@ describe("classifyRun", () => {
 describe("computeMandatoryForPath", () => {
   const universe = [...SHIP_STEP_ORDER];
 
-  it("Path A excludes conflict-resolve + retry-loop steps", () => {
+  it("Path A excludes conflict-resolve", () => {
     const mandatory = computeMandatoryForPath("PATH_A", universe);
     expect(mandatory.has("ship-conflict-resolve")).toBe(false);
-    expect(mandatory.has("ship-failure-diagnose")).toBe(false);
-    expect(mandatory.has("ship-failure-remediate")).toBe(false);
     expect(mandatory.has("ship-merge-pr")).toBe(true);
     expect(mandatory.has("ship-close-workflow")).toBe(true);
   });
 
-  it("Path B includes conflict-resolve, excludes retry-loop steps", () => {
+  it("Path B includes conflict-resolve", () => {
     const mandatory = computeMandatoryForPath("PATH_B", universe);
     expect(mandatory.has("ship-conflict-resolve")).toBe(true);
-    expect(mandatory.has("ship-failure-diagnose")).toBe(false);
-    expect(mandatory.has("ship-failure-remediate")).toBe(false);
   });
 
   it("MERGED-on-entry excludes the entire middle", () => {
@@ -484,23 +481,15 @@ describe("detectHoles", () => {
     expect(unexpected).toContain("ship-resume-human-override");
   });
 
-  it("does NOT flag absence of failure-diagnose/remediate (retry-loop steps)", () => {
+  it("detectHoles reports a pre-change run's ship-failure rows as unexpected and no step as missing", () => {
     const observed = new Set([
-      "ship-start-workflow",
-      "ship-worktree-setup",
-      "ship-regression-guard",
-      "ship-deferred-sweep",
-      "ship-update-docs",
-      "ship-summary",
-      "ship-prune-skills",
-      "ship-bookkeeping-push",
-      "ship-merge-pr",
-      "ship-switch-to-dev",
-      "ship-close-workflow",
+      ...universe.filter((step) => step !== "ship-conflict-resolve"),
+      "ship-failure-diagnose",
+      "ship-failure-remediate",
     ]);
-    const { missing } = detectHoles(observed, universe, "PATH_A");
-    expect(missing).not.toContain("ship-failure-diagnose");
-    expect(missing).not.toContain("ship-failure-remediate");
+    const { missing, unexpected } = detectHoles(observed, universe, "PATH_A");
+    expect(missing).toEqual([]);
+    expect(unexpected).toEqual(["ship-failure-diagnose", "ship-failure-remediate"]);
   });
 
   it("aborted run: flags pre-abort holes but not post-abort absences", () => {
@@ -569,11 +558,29 @@ describe("auditStatusJsonl (end-to-end)", () => {
     expect(report.unexpected).toEqual([]);
   });
 
-  it("retry-loop Path B: no holes (failure steps optional)", () => {
-    const report = auditStatusJsonl(retryLoopPathBStatus(), shipMd);
+  it("a pre-change run's ship-failure rows are unexpected against the current ship workflow", () => {
+    const status = [
+      row("ship-start-workflow"),
+      row("ship-worktree-setup"),
+      row("ship-regression-guard"),
+      row("ship-conflict-resolve", { verdict: "PASS" }),
+      row("ship-deferred-sweep"),
+      row("ship-update-docs"),
+      row("ship-summary"),
+      row("ship-prune-skills"),
+      row("ship-bookkeeping-push"),
+      row("ship-merge-pr", { verdict: "FAIL", attempt: 1, failures: 1 }),
+      row("ship-failure-diagnose", { verdict: "PASS", attempt: 1 }),
+      row("ship-failure-remediate", { verdict: "PASS", attempt: 1, strategy: "STANDARD" }),
+      row("ship-merge-pr", { verdict: "PASS", attempt: 2, failures: 0 }),
+      row("ship-switch-to-dev"),
+      row("ship-close-workflow"),
+    ].join("\n");
+    const report = auditStatusJsonl(status, shipMd);
     expect(report.path).toBe("PATH_B");
     expect(report.missing).toEqual([]);
-    expect(report.unexpected).toEqual([]);
+    expect(report.unexpected).toEqual(["ship-failure-diagnose", "ship-failure-remediate"]);
+    expect([...report.sourceUniverse].sort()).toEqual([...SHIP_STEP_ORDER].sort());
   });
 
   it("holey fixture: ship-regression-guard missing surfaces in advisory report", () => {
@@ -755,7 +762,7 @@ describe("step conditionality", () => {
     plan: [8],
     build: [6, 9, 13, 14, 15, 16],
     debug: [4, 5, 6, 7, 8, 9, 10, 11],
-    ship: [4, 11, 12, 13],
+    ship: [4, 11],
   } as const;
 
   it("classifies a step conditional only under the column-0 marker rule", () => {
@@ -811,6 +818,32 @@ describe("step conditionality", () => {
     }));
     const report = auditRun(rows, "build", md);
     expect(report.missing).toEqual(["build-always"]);
+  });
+});
+
+describe("resume re-run of a red group gate", () => {
+  it("reports no hole for a build-decision row followed by a second build-group-gate row under the same verify attempt", () => {
+    const md = [
+      "## 🧠 Step 1 — Start",
+      '"{BKIT}" steps done --step=build-start-workflow',
+      "## 🧠 Step 8 — Verify",
+      '"{BKIT}" steps finish --step=build-plan-verify',
+      '"{BKIT}" steps finish --step=build-group-gate',
+      '"{BKIT}" steps finish --step=build-decision',
+      "## 🧠 Step 17 — Close",
+      '"{BKIT}" steps done --step=build-close-workflow',
+    ].join("\n");
+    const rows = [
+      { step: "build-start-workflow" },
+      { step: "build-plan-verify", attempt: 1, group: 1 },
+      { step: "build-group-gate", attempt: 1, group: 1, verdict: "FAIL" },
+      { step: "build-decision", attempt: 1 },
+      { step: "build-group-gate", attempt: 1, group: 1, verdict: "PASS" },
+      { step: "build-close-workflow" },
+    ].map((r) => ({ type: "step-done", workflow: "build", ...r }));
+    const report = auditRun(rows, "build", md);
+    expect(report.missing).toEqual([]);
+    expect(report.unexpected).toEqual([]);
   });
 });
 
@@ -1038,6 +1071,75 @@ describe("check — hole classes", () => {
     const forged = [...rows];
     forged[evidenceIndex] = { ...rows[evidenceIndex]!, ciGeneration: 2 };
     expect(check(forged, contract).verdict).toBe("HOLEY");
+  });
+
+  it("a counted CI round with its step-done row raises no CI evidence hole", () => {
+    const md = [
+      "## Step 1 — Run Tests",
+      ...fence(
+        "tests run --ci-run=123 --ci-url=https://github.com/example/example/actions/runs/123/attempts/2",
+        "steps finish --workflow=debug --step=debug-run-tests --number=1",
+      ),
+    ].join("\n");
+    const selection = {
+      mode: "ci",
+      provider: "github",
+      repo: "example/example",
+      runId: "123",
+      runAttempt: 2,
+      runUrl: "https://github.com/example/example/actions/runs/123/attempts/2",
+      workflowId: "456",
+      workflowPath: ".github/workflows/consumer-ci.yml",
+      headBranch: "fix/ci",
+      headSha: "a".repeat(40),
+      conclusion: "failure",
+      redTiers: ["integration"],
+      failedJobCount: 2,
+      via: "prompt-run",
+    };
+    const rows: StatusRow[] = [
+      { type: "workflow-started", workflow: "debug", at: AT },
+      { type: "workflow-meta", workflow: "debug", at: AT, ciSelection: selection, ciGeneration: 1 },
+      callRow("debug", "tests", "run"),
+      {
+        type: "test-run",
+        workflow: "debug",
+        at: AT,
+        step: "debug-run-tests",
+        source: "ci",
+        scope: "ci:123",
+        verdict: "FAIL",
+        exitCode: null,
+        failures: 2,
+        ciRun: "123",
+        ciUrl: selection.runUrl,
+        repo: selection.repo,
+        workflowId: selection.workflowId,
+        workflowPath: selection.workflowPath,
+        headSha: selection.headSha,
+        gate: null,
+        runAttempt: 2,
+        ciGeneration: 1,
+        artifact: "logs/ci-round-1.md",
+        log: "logs/ci-round-1.md",
+        attempt: 1,
+        run: 1,
+      },
+      callRow("debug", "steps", "finish"),
+      stepRow("debug", "debug-run-tests", {
+        source: "ci",
+        scope: "ci:123",
+        verdict: "FAIL",
+        failures: 2,
+        attempt: 1,
+        ciGeneration: 1,
+        artifacts: ["logs/ci-round-1.md"],
+      }),
+    ];
+    const contract = deriveContract(md, "debug");
+    const holes = check(rows, contract).evidenceHoles;
+    expect(holes.filter((hole) => hole.step === "debug-run-tests")).toEqual([]);
+    expect(holes.some((hole) => JSON.stringify(hole).includes("tests run --ci-run"))).toBe(false);
   });
 
   const contextSelection = {

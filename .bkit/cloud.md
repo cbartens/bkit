@@ -1,9 +1,9 @@
 # Cloud agent environments — Claude on the web + Codex Cloud + Cursor Cloud Agents + OpenCode
 
-<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.2.0 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
-> **Purpose:** The canonical reference for Claude on the web (mobile / web), Codex Cloud, Cursor Cloud Agents and OpenCode cloud runners. Environments do not depend on the tracker: every generated `<host>/bkit-cloud.md` carries the same env block (`BKIT_GH_TOKEN` plus whatever `.envrc` resolves, tracker keys included) for any tracker. Dispatch pairs each agent with one tracker: Claude and OpenCode with GitHub (one unified `bkit-cloud.yml`), and Cursor with Linear. Jira and Codex Cloud have no bkit dispatch, so you launch those runs by hand (§ Cloud-agent support matrix).
+> **Purpose:** The canonical reference for Claude on the web (mobile / web), Codex Cloud, Cursor Cloud Agents and OpenCode cloud runners. Environments do not depend on the tracker: every generated `<host>/bkit-cloud.md` carries the same env block (`BKIT_GH_TOKEN` plus whatever `.envrc` resolves, tracker keys included) for any tracker. Any agent pairs with any wired tracker: Claude, OpenCode and Codex dispatch from one unified `bkit-cloud.yml` (one agent per run), and Cursor uses its native triggers. Codex Cloud tasks have no bkit dispatch, so you launch those runs by hand (§ Cloud-agent support matrix).
 >
 > **Rules:**
 >
@@ -19,19 +19,19 @@
 
 ## Cloud-agent support matrix (read first)
 
-Dispatch pairs each agent with one tracker, while the environments (`<host>/bkit-cloud.md`) work with any tracker. Pick the row for the agent you run:
+Every agent works with any wired tracker (GitHub, Linear or Jira), and the environments (`<host>/bkit-cloud.md`) work with any tracker. Install refuses only tracker `none`. Pick the row for the agent you run:
 
 <!-- prettier-ignore -->
-| Agent (the agent, not the editor) | Ways to launch a cloud agent | Tracker | not supported |
-| --- | --- | --- | --- |
-| **Claude** (terminal — any IDE host) | **A)** Claude iOS / desktop app → Claude-on-web env (`.claude/hooks/bkit-cloud-bootstrap.sh` + the env defined in `claude.ai/code`) · **B)** manual `workflow_dispatch` on `bkit-cloud.yml` (pick phase + issue) · **C)** GitHub CI pass / fail → `bkit-cloud.yml` claude job · **D)** `@claude` mention on a GitHub issue / PR (needs `/install-github-app`, the base requirement for `cloud=claude`) | GitHub | Linear |
-| **Codex** (Codex Cloud) | **A)** ChatGPT Codex → task on the env from `.codex/bkit-cloud.md` (manual; no bkit dispatch) | any (tracker MCP + env block) | bkit-triggered runs |
-| **Cursor** (native agent) | **A)** Cursor's built-in cloud-agent launch · **B)** Cursor's GitHub integration on PR events (CI pass / fail) · **C)** Linear → Cursor integration | Linear (+ GitHub PR events) | GitHub Projects / Issues |
-| **OpenCode** (GitHub runner) | **A)** manual `workflow_dispatch` on `bkit-cloud.yml` (pick phase + issue) · **B)** GitHub CI pass / fail → `bkit-cloud.yml` OpenCode job (requires `OPENCODE_PROVIDER_KEY` secret) · **C)** reactive `/oc` comment handler (self-installed, not bkit's: § Reactive comment handlers) | GitHub | Linear |
+| Agent (the agent, not the editor) | Ways to launch a cloud agent | not supported |
+| --- | --- | --- |
+| **Claude** (terminal — any IDE host) | **A)** Claude iOS / desktop app → Claude-on-web env (`.claude/hooks/bkit-cloud-bootstrap.sh` + the env defined in `claude.ai/code`) · **B)** manual `workflow_dispatch` on `bkit-cloud.yml` (pick phase + issue) · **C)** GitHub CI pass / fail → `bkit-cloud.yml` claude job · **D)** `@claude` mention on a GitHub issue / PR (needs `/install-github-app`, the base requirement for `cloud=claude`) | none |
+| **Codex** (Codex Cloud and GitHub runner) | **A)** ChatGPT Codex → task on the env from `.codex/bkit-cloud.md` (manual; no bkit dispatch) · **B)** manual `workflow_dispatch` on `bkit-cloud.yml` (pick phase + issue) · **C)** CI pass / fail → `bkit-cloud.yml` codex job (`openai/codex-action`; requires the `BKIT_OPENAI_API_KEY` secret; install with `--auto=codex --codex`) | Codex Cloud tasks started by bkit |
+| **Cursor** (native agent) | **A)** Cursor's built-in cloud-agent launch · **B)** Cursor's GitHub integration on PR events (CI pass / fail) · **C)** tracker integration (Cursor's Linear integration) | bkit-triggered runner jobs |
+| **OpenCode** (GitHub runner) | **A)** manual `workflow_dispatch` on `bkit-cloud.yml` (pick phase + issue) · **B)** GitHub CI pass / fail → `bkit-cloud.yml` OpenCode job (requires one provider `BKIT_` secret: `BKIT_OPENCODE_API_KEY`, `BKIT_OPENROUTER_API_KEY` or `BKIT_OLLAMA_API_KEY`) · **C)** reactive `/oc` comment handler (self-installed, not bkit's: § Reactive comment handlers) | none |
 
-**Unified file — additive coexistence:** Claude and OpenCode share one `bkit-cloud.yml`. A `context` job resolves the phase once, and two runner jobs follow, each gated at run time on its own credential: the claude job on the `ANTHROPIC_API_KEY` secret or the federation variables, and the OpenCode job on `OPENCODE_PROVIDER_KEY`. Both jobs can fire on the same CI event. With both credentials set, both agents run, and with one set, only that agent runs. Cursor is separate: it has no GitHub Action and uses its native triggers. Cursor cloud pairs with Linear.
+**Unified file — one agent per run:** Claude, OpenCode and Codex share one `bkit-cloud.yml`. A `context` job resolves the phase once and its `Select agent job` step reads `bkit.cloud.agent` from `package.json`. Only the job that names the recorded agent starts, and only when its `BKIT_` credential is set: the claude job on `BKIT_ANTHROPIC_API_KEY` or the federation variables, the opencode job on one provider `BKIT_` key, and the codex job on `BKIT_OPENAI_API_KEY`. A credential set for another agent is ignored, and the log names it. Cursor is separate: it has no GitHub Action and uses its native triggers.
 
-**Manual dispatch (Claude or OpenCode, path A):** GitHub → **Actions** → **bkit-cloud** → **Run workflow**, then pick `phase` (`ship` / `debug` / `design` / `plan` / `build`) and `issue`. Use it on demand, or as a smoke test, for `design` / `plan` / `build`. `ship` / `debug` normally fire from CI. A dispatched `design` runs headless (`runtimeHeadless` = true on a GitHub runner): Grill asks nothing, records each recommended answer as `Assumed, not confirmed`, and records the draft acceptance scenario as not reviewed by a human. A dispatched `/bkit-auto` orchestrator hands off to the matching phase skill, which takes its brief from the GitHub issue through the MCP.
+**Manual dispatch (Claude, OpenCode or Codex):** GitHub → **Actions** → **bkit-cloud** → **Run workflow**, then pick `phase` (`ship` / `debug` / `design` / `plan` / `build`) and `issue`. Use it on demand, or as a smoke test, for `design` / `plan` / `build`. `ship` / `debug` normally fire from CI. A dispatched `design` runs headless (`runtimeHeadless` = true on a GitHub runner): Grill asks nothing, records each recommended answer as `Assumed, not confirmed`, and records the draft acceptance scenario as not reviewed by a human. A dispatched `/bkit-auto` orchestrator hands off to the matching phase skill, which takes its brief from the GitHub issue through the MCP.
 
 ### Reactive comment handlers (`claude.yml` + `opencode.yml`) — separately managed, not bkit
 
@@ -43,7 +43,7 @@ Dispatch pairs each agent with one tracker, while the environments (`<host>/bkit
 | `.github/workflows/claude.yml` | `/install-github-app` (Claude CLI → official Claude GitHub App) | OIDC as the App (`bkit-cloud.yml` grants `id-token: write`; no App installed → OIDC error at boot) | comment `@claude /bkit-plan` (or any phase) on an issue / PR |
 | `.github/workflows/opencode.yml` | `opencode github install` (OpenCode CLI) | your provider key (`BKIT_OPENCODE_API_KEY` / `BKIT_OPENROUTER_API_KEY` / etc.) — no App, no OIDC | comment `/oc` or `/opencode` on an issue / PR |
 
-You maintain these files, not bkit. `opencode.yml` hardcodes a `model:` and a provider-secret `env:`. Keep both in sync with your installed OpenCode provider. `bkit check` and postinstall raise a non-fatal advisory when they drift. Fix the file by hand, because bkit will not rewrite it. `claude.yml` has no equivalent check, because its `@claude` handler is fixed to Claude as its provider. For Claude, the `@claude` path is the base requirement for `cloud=claude`. Enable it with `bkit install --auto=claude`, which works with the GitHub tracker only. The App also gives the runner a GitHub identity for the `mcp__github__*` surface.
+You maintain these files, not bkit. `opencode.yml` hardcodes a `model:` and a provider-secret `env:`. Keep both in sync with your installed OpenCode provider. `bkit check` and postinstall raise a non-fatal advisory when they drift. Fix the file by hand, because bkit will not rewrite it. `claude.yml` has no equivalent check, because its `@claude` handler is fixed to Claude as its provider. For Claude, the `@claude` path is the base requirement for `cloud=claude`. Enable it with `bkit install --auto=claude`. The App also gives the runner a GitHub identity for the `mcp__github__*` surface.
 
 ## What lives where (orient first)
 
@@ -100,7 +100,7 @@ Open `claude.ai/code` → environment selector → **+ Add environment**. It has
 ## In-repo side
 
 - `.claude/hooks/bkit-preflight.sh` — the tracker opt-in guard plus the rules-read advisory, as one JSON document (`.bkit/providers.md` § Rules-read advisory). When the tracker issue ID env var is unset, as in an IDE session, it prints the advisory alone and exits 0. On Claude a non-zero exit is informational only, because `SessionStart` cannot block. The agent reads the `HARD STOP` text from `additionalContext`.
-- `.claude/hooks/bkit-cloud-bootstrap.sh` — when `CLAUDE_CODE_REMOTE=true`, runs `pnpm install --frozen-lockfile` and `vale sync`, then gh auth, then context-fetch CLI provisioning through the just-installed bkit (`bkit context provision`). When bkit is missing, it skips provisioning with a loud log line. A failed recipe's `.bkit/.unavailable` line goes to stdout, and so into the session's context. Locally the hook does nothing.
+- `.claude/hooks/bkit-cloud-bootstrap.sh` — when `CLAUDE_CODE_REMOTE=true`, runs `pnpm install --frozen-lockfile` and `vale sync`, then gh auth, then context-fetch CLI provisioning through the just-installed bkit (`bkit context provision`). When bkit is missing, it skips provisioning with a loud log line. A failed recipe's `.bkit/.unavailable` line goes to stdout, and so into the session's context. Locally the hook does nothing. It also compares the `BKIT_CLOUD_ALLOWLIST_FINGERPRINT` env var with the `fingerprint` in `.bkit/allowlist.json` and warns when the variable is unset, malformed or different, or when the expected fingerprint is unavailable, then continues. Each warning is also printed as one line on stdout, so it reaches the session's context; a malformed value is never printed. A match is an operator assertion, so the deployed dashboard list stays unverified. `bkit check` reports `cloud-bootstrap-fingerprint-missing` when an adopted copy never reads the variable.
 - Both are registered in `.claude/settings.json` under `hooks.SessionStart`.
 
 These ship with the repo. Do not paste them into the app.
@@ -120,6 +120,9 @@ Always choose `Custom`, because the rendered list carries bkit's own shipped hos
 1. Select **Custom**.
 2. Tick **Also include default list of common package managers**. It extends the trusted defaults (package registries, GitHub, cloud SDKs) and never replaces them.
 3. Paste the domains bkit renders into `.claude/bkit-cloud.md` § Network access into **Allowed domains**.
+4. Set `BKIT_CLOUD_ALLOWLIST_FINGERPRINT` in the environment's variables to the "Allowlist fingerprint" printed under that list. The same value is the `fingerprint` in `.bkit/allowlist.json`. After any `allowed-domains` change, run `bkit upgrade`, re-paste the list and update the variable.
+
+The fingerprint covers the whole pasted list, consumer `allowed-domains` included. Every cloud's dashboard list (Claude, Cursor and Codex) is an unverified operator assertion: bkit cannot read it, so a matching stamp proves only that you copied the current value. The Cursor and Codex paste notes print a derived-set stamp only, which ignores consumer `allowed-domains`, so it does not describe the full list those dashboards hold, and no bootstrap compares it.
 
 Declare only what bkit cannot see: the log-backend and API hosts that the implicit CLI blocks reach (`vercel` / `gcloud`), plus the app's production and preview / dev domains. Declare apex domains only. `bkit install` expands each one to `<domain>` + `*.<domain>` and unions them with the derived set. Under `Trusted` those hosts are unreachable, so a cloud `/bkit-debug` gets no runtime logs and e2e tests can't reach the deployment.
 
@@ -327,6 +330,13 @@ ChatGPT → **Settings > Codex Cloud > Environments** → **Create environment**
 - **Network secrets** (Key / Value / **Allowed domains**): Programs see a placeholder. The proxy substitutes the real value only on requests to allowed domains, during setup and tasks. This fits a token used only in HTTP headers to known hosts, and breaks any token a program reads directly (`gh auth login --with-token`).
 - **Personal vault** shares a secret across **All environments** or **Selected environments**, for a token several repos reuse.
 
+## Test slots
+
+The tests lock treats a Codex Cloud task as a local run, because no runtime marker names it, so a VM with 8 or more vCPUs gets 2 slots at half width each.
+
+- **If** the VM has 8 or more vCPUs → add `BKIT_TEST_SLOTS=1` to **Environment variables**, which gives one slot at full width.
+- **Else** (the standard 2- and 4-vCPU VMs) → add nothing.
+
 ## Hooks in cloud tasks
 
 Repo skills (`.agents/skills/bkit-*`, `$bkit-design`) load in cloud tasks. Codex's cloud docs do not say whether `.codex/hooks.json` runs there, so GateGuard, ReadGuard, guardrails and the rules advisory are unproven in cloud tasks. Review cloud diffs as unguarded. Locally they fire only once the `.codex/` layer is trusted (`.bkit/providers.md` § Codex CLI — three deviations).
@@ -367,7 +377,7 @@ GitHub dispatch uses the Cursor Automations "Pull request label changed" trigger
 
 **Trigger flow:**
 
-1. `bkit-build` writes `bkit:auto` as a static PR label (the opt-in marker). The matching GitHub issue must also carry `bkit:auto`, which is the runtime kill switch: remove it to stop dispatch.
+1. `bkit-build` writes `bkit:auto` as a static PR label (the opt-in marker). The matching GitHub issue must also carry `bkit:auto`. `.cursor/hooks/bkit-preflight.sh` checks it when a background session starts and blocks that session when the label is absent. Removing the label later does not stop a session that is already running.
 2. The workflow adds the phase label (`bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`) to the PR. Cursor reads the label for workflow dispatch.
 3. Cursor Automations fires on "Pull request label changed" → spawns a Background Agent session against the repo. The Automation's prompt must contain `bkit-auto`, because `AGENTS.md` routes only a `bkit-{command}` prompt, and `.bkit/router.md` reads the phase from the issue's labels.
 4. `sessionStart` fires `bkit-preflight.sh`. With `failClosed: true`, a non-zero exit hard-stops the agent.
@@ -391,6 +401,37 @@ BKIT_GH_TOKEN=<PAT — fine-grained for one owner, classic across owners; same p
 2. The Cursor webhook → a background agent against the repo, with `is_background_agent: true` and `LINEAR_ISSUE_ID` set.
 3. `sessionStart` fires `bkit-preflight.sh`. With `failClosed: true`, a non-zero exit hard-stops the agent before work.
 4. Preflight skips IDE sessions (`is_background_agent !== true`), so the local Cursor IDE is unaffected.
+
+## Session guard per tracker
+
+`.cursor/hooks/bkit-preflight.sh` (Cursor background sessions) and `.claude/hooks/bkit-preflight.sh` (Claude sessions that carry `GITHUB_ISSUE_ID`) share one tracker part, `preflight-tracker.sh`. It checks once, at session start, whether the issue lost `bkit:auto` or is finished, judged by the tracker's state category (the `terminal` fact of `bkit issues fetch`), not by a state name. On Cursor a failed check blocks the session (`failClosed` in `.cursor/hooks.json`). On Claude a SessionStart hook cannot block, so the hook prints a HARD STOP instruction into the agent's context and the agent decides whether to obey:
+
+- **GitHub:** the issue's labels and open / closed state.
+- **Linear:** the issue's labels and state type (`completed` or `canceled` is finished). Needs `BKIT_LINEAR_API_KEY`.
+- **Jira:** the issue's labels and status category (`Done` is finished). Needs `BKIT_JIRA_API_KEY`. On Cursor, the guard hard-stops when the `bkit` binary is not present at `sessionStart`.
+
+A session that carries no issue id is unguarded: the guard prints a line saying so and exits 0. A `GITHUB_ISSUE_ID` that is not digits only, and a `bkit.tracker.default` that names no tracker bkit knows (for example `GitHub`), fail the guard; `bkit check` reports the unknown name as `tracker-setup-unknown`. Codex Cloud tasks are unguarded, because hooks there are unproven (§ Codex Cloud → Hooks in cloud tasks).
+
+**What removing `bkit:auto` stops:**
+
+<!-- prettier-ignore -->
+| Place | Effect |
+| --- | --- |
+| `bkit_gate` job in `.github/workflows/bkit-cloud.yml` | Stops. It reads the labels before an agent job starts and starts nothing when `bkit:auto` is absent (`label-absent`). |
+| Session-start hook (`.cursor/hooks/bkit-preflight.sh`) | Cursor background sessions: blocks the session at start. |
+| Session-start hook (`.claude/hooks/bkit-preflight.sh`) | Advises only: the agent is told to stop and can ignore it. |
+| Build Step 16 and debug Step 11, last sub-step | Stops nothing: the label is re-read after the push, when the run is finished, and the final message says the label was removed. |
+| `/bkit-auto` | Never reads the label. |
+
+A run that is already working keeps going when the label is removed.
+
+## Not yet verified live
+
+These paths are built and covered by recorded-reply or fixture tests, and have not run against a live service. Report a failure through `/bkit-debug`:
+
+- Linear and Jira router dispatch (the `context` job label read, not yet verified live).
+- The codex router job (`openai/codex-action` dispatch with `BKIT_OPENAI_API_KEY`, not yet verified live).
+- The Cursor Jira guard, with the `bkit` binary present at `sessionStart` (not yet verified live).
 
 ## Required env vars (Cursor side)
 
@@ -446,7 +487,7 @@ The rule is the same as for Claude: a per-repo environment with per-repo secrets
 
 ## Cursor — byte-identical Dockerfile
 
-Cursor resolves the environment in this order: (1) `.cursor/environment.json` in the repo, (2) a personal saved environment in the Cursor account, (3) a team saved environment. There are three sharing patterns:
+Cursor resolves the environment in this order: (1) `.cursor/environment.json` in the repo, (2) a personal saved environment in the Cursor account, (3) a team saved environment. Three sharing patterns exist:
 
 1. **In-repo copy (bkit default).** Each consumer repo carries `.cursor/Dockerfile` + `.cursor/environment.json`, copied from bkit's templates and owned by the repo. Cursor environments are functionally equivalent across consumers, and bkit ships base-toolchain updates as template changes the consumer adopts.
 2. **Personal saved environment (cross-repo).** Don't commit `.cursor/environment.json`. Configure a single environment in the Cursor account dashboard, and Cursor falls back to it for any session. Like any cross-repo environment, it holds one secret set for all repos. Prefer the per-repo default (#1) when repos have distinct secrets.
@@ -479,9 +520,10 @@ The routing logic lives in a single bkit-managed slash-command orchestrator (`.b
 <!-- prettier-ignore -->
 |  | Lives in the repo (bkit-managed) | Lives in the online dashboard / GitHub (manual, one-time) |
 | --- | --- | --- |
-| **Claude** | `.github/workflows/bkit-cloud.yml` — `claude` job (opt-in via `bkit install --auto=claude`; GitHub-tracker only). Two-tier gate: (1) free tier — job `if: contains(head_commit.message, 'bkit [auto route]')` (zero runner minutes for non-opted-in commits); (2) cheap tier — in-job `gh issue view {ISSUE} --json labels` re-checks `bkit:auto` (live kill switch); then dispatches `claude-code-action` as the Claude GitHub App (OIDC, `id-token: write`). | Claude credential: GitHub repo secret `ANTHROPIC_API_KEY` (`.bkit/.env` holds the same value as `BKIT_ANTHROPIC_API_KEY`) or keyless federation repo variables (§ Claude — workload identity federation). Claude GitHub App required (`/install-github-app`). The linked **GitHub issue** must carry `bkit:auto`. |
+| **Claude** | `.github/workflows/bkit-cloud.yml` — `claude` job (opt-in via `bkit install --auto=claude`; any wired tracker). Two-tier gate: (1) free tier — job `if: contains(head_commit.message, 'bkit [auto route]')` (zero runner minutes for non-opted-in commits); (2) cheap tier — the `context` job reads the issue's labels through `bkit issues fetch` on the tracker the repo records and re-checks `bkit:auto` (live kill switch); then dispatches `claude-code-action` as the Claude GitHub App (OIDC, `id-token: write`). | Claude credential: GitHub repo secret `BKIT_ANTHROPIC_API_KEY` (the same name `.bkit/.env` uses) or keyless federation repo variables (§ Claude — workload identity federation). Claude GitHub App required (`/install-github-app`). The linked tracker issue must carry `bkit:auto`. |
 | **Cursor** | Nothing — Cursor cloud agents have native triggers. | Cursor → Cloud Agents dashboard → Triggers → + Add trigger. Event: CI workflow completion on `feat/**` branches. Prompt (paste literally, no edits): `/bkit-auto $CI_STATUS $PR_NUMBER`. Concurrency: latest-supersedes. |
-| **OpenCode** | Same `.github/workflows/bkit-cloud.yml` — `opencode` job (opt-in via `bkit install --auto=opencode`; GitHub-tracker only). Same two-tier gate (same file, separate job). Dispatches via `opencode run "/bkit-auto $PHASE $ARG"`. No `id-token: write` — no OIDC; uses `github.token` for repo ops. | GitHub repo secret: `OPENCODE_PROVIDER_KEY` (set to your provider API key). Provider model committed in `.opencode/opencode.json`. The linked **GitHub issue** must carry `bkit:auto`. |
+| **OpenCode** | Same `.github/workflows/bkit-cloud.yml` — `opencode` job (opt-in via `bkit install --auto=opencode`; any wired tracker). Same two-tier gate (same file, separate job). Dispatches via `opencode run "/bkit-auto $PHASE $ARG"`. No `id-token: write` — no OIDC; uses `github.token` for repo ops. | GitHub repo secret: the installed provider's `BKIT_` key (`BKIT_OPENCODE_API_KEY`, `BKIT_OPENROUTER_API_KEY` or `BKIT_OLLAMA_API_KEY`). Provider model committed in `.opencode/opencode.json`. The linked tracker issue must carry `bkit:auto`. |
+| **Codex** | Same `.github/workflows/bkit-cloud.yml` — `codex` job (opt-in via `bkit install --auto=codex --codex`; any wired tracker). Same two-tier gate (same file, separate job). Dispatches `/bkit-auto $PHASE $ARG` through `openai/codex-action` with `sandbox: danger-full-access` (the runner is the sandbox) and a codex-home that trusts the workspace. | GitHub repo secret: `BKIT_OPENAI_API_KEY`. The linked tracker issue must carry `bkit:auto`. |
 
 **Why the dashboard prompt never needs re-pasting:** Cursor substitutes `$CI_STATUS` and `$PR_NUMBER` from the event payload at dispatch, so the pasted string is generic and timeless. When bkit's routing logic evolves, only the mirrored `.cursor/commands/bkit-auto.md` changes, and the dashboard stays untouched.
 
@@ -505,22 +547,43 @@ Flip the setting on both the org and the repo before the first router run. Other
 <!-- prettier-ignore -->
 | Secret / variable | Job | Why | Scope |
 | --- | --- | --- | --- |
-| `ANTHROPIC_API_KEY` secret | `claude` | `claude-code-action` authenticates against Anthropic. | API key with Claude access. Omit when using federation. |
+| `BKIT_ANTHROPIC_API_KEY` secret | `claude` | `claude-code-action` authenticates against Anthropic. | API key with Claude access. Omit when using federation. |
 | `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` variables | `claude` | Keyless alternative: the action trades the job's GitHub OIDC token for a short-lived Claude API token. | IDs, not secrets — repo **variables**. Optional `ANTHROPIC_SERVICE_ACCOUNT_ID` / `ANTHROPIC_WORKSPACE_ID`. § Claude — workload identity federation. |
-| `OPENCODE_PROVIDER_KEY` | `opencode` | Fanned out to every cloud provider's env var name (`BKIT_OPENROUTER_API_KEY`, `BKIT_OLLAMA_API_KEY`, `BKIT_OPENCODE_API_KEY`) so the `.opencode/opencode.json` `{env:VAR}` reference resolves whichever provider is installed. | Provider API key for whichever provider you configured. |
+| `BKIT_OPENCODE_API_KEY` / `BKIT_OPENROUTER_API_KEY` / `BKIT_OLLAMA_API_KEY` secret | `opencode` | The job passes each provider key under its own name, so the `.opencode/opencode.json` `{env:VAR}` reference resolves whichever provider is installed. | Set the key of the provider you configured. |
+| `BKIT_OPENAI_API_KEY` secret | `codex` | `openai/codex-action` authenticates against OpenAI. | OpenAI API key. |
+| `BKIT_LINEAR_API_KEY` secret | `context`, agent jobs | The label read and the agent's tracker verbs under `bkit.tracker.default` = `linear`. | Linear API key; step-scoped, never job-wide. |
+| `BKIT_JIRA_API_KEY` secret | `context`, agent jobs | Same, under `bkit.tracker.default` = `jira` (Jira needs the key only; site and email come from `package.json`). | Jira API token; step-scoped. |
 
-A `context` job (`Check runner credentials` step) checks both credentials and resolves the phase + arg once. It does nothing unless `package.json` `bkit.tracker.default` is `github` or unset, because Linear cloud runs start from Cursor's Linear integration and Jira runs locally only. Each runner job needs it, and runs only when its own credential is set:
+A `context` job (`Check runner credentials` and `Select agent job` steps) checks the credentials and resolves the phase + arg once. It reads the issue id from the branch or commit through `bkit fids parse` and the `bkit:auto` label through `bkit issues fetch`, both from the consumer's own bkit installed from its lockfile, on whichever tracker `bkit.tracker.default` names (GitHub, Linear or Jira). Each runner job needs `context`, and exactly one starts: the one `bkit.cloud.agent` names, when its credential is set.
 
-- The Claude credential is `ANTHROPIC_API_KEY`, or both federation variables. With only one of the two variables set, the job prints a `::notice::` naming the missing one, and the claude job does nothing.
-- Only the claude credential set → only the claude job runs.
-- Only `OPENCODE_PROVIDER_KEY` set → only the OpenCode job runs.
-- Both set → both jobs run (additive coexistence).
+- The Claude credential is `BKIT_ANTHROPIC_API_KEY`, or both federation variables. With only one of the two variables set, the job prints a `::notice::` naming the missing one, and the claude job does nothing.
+- Recorded agent `claude`, `opencode` or `codex` with its credential set → only that job runs.
+- Recorded agent with no credential → nothing starts; the log names the missing secret.
+- Recorded agent `cursor` or none → no router job starts.
+- A credential set for another agent is ignored, and the log lists it.
 
-No `BKIT_LINEAR_API_KEY` is needed, because `bkit-cloud.yml` is GitHub-tracker only for both jobs. The workflow grants `id-token: write` per job, for claude only (Claude GitHub App + federation token exchange). OpenCode has no OIDC.
+The tracker keys are read at step scope, never job-wide. The workflow grants `id-token: write` per job, for claude only (Claude GitHub App + federation token exchange). OpenCode and Codex have no OIDC.
+
+**Codex runner notes:** the `drop-sudo` step in `openai/codex-action` is irreversible, so a reused self-hosted runner loses sudo for later jobs: use an ephemeral runner. The action puts its own Node 24 on PATH. The job runs unguarded diffs (`sandbox: danger-full-access`), because the runner is the sandbox and the phase needs git, network and the repo's dependencies. Repo dependencies install before the action.
+
+**Gate outcomes (log and job summary):** the `context` job writes one `### bkit-cloud gate` row (`tracker | issue | verdict | reason | jobs`) and a log line. Every unreadable outcome starts no agent and exits green.
+
+<!-- prettier-ignore -->
+| Verdict / reason | Cause | Action |
+| --- | --- | --- |
+| `pass` | The issue carries `bkit:auto`. | None. |
+| `label-absent` | The issue lost `bkit:auto` (kill switch). | Re-add the label to resume. |
+| `no-issue` | No tracker issue is recorded for the run. | Link the issue (`bkit:fid=` marker or branch FID). |
+| `no-agent` | `bkit.cloud.agent` names no router job, or its credential is missing; the `jobs` column names the missing secret. | Set the named `BKIT_` secret, or run `bkit install --auto=<agent>`. |
+| `unreadable` `bkit-unavailable` | `node_modules/.bin/bkit` is absent: the lockfile install failed. | Fix the install step. |
+| `unreadable` `reason=auth` | The tracker refused the read; the line names the secret (`BKIT_LINEAR_API_KEY`, `BKIT_JIRA_API_KEY` or `GH_TOKEN`) and whether it is set. | Rotate or set that secret. |
+| `unreadable` `reason=<other>` / `exit-<N>` / `output-unparseable` | Service down, issue not found, or output the router cannot parse. | Re-run once the tracker answers. |
+
+The codex job writes a `### bkit-cloud codex` summary row: the action outcome, commits and comments landed since it started (`-` when unknown).
 
 ## Claude — workload identity federation
 
-The keyless claude job stores no long-lived `ANTHROPIC_API_KEY` in GitHub. `claude-code-action` asks GitHub for the job's OIDC token (issuer `https://token.actions.githubusercontent.com`, audience `https://api.anthropic.com`). Anthropic checks it against a federation rule and returns a short-lived Claude API token. The action refreshes it in the background on long runs.
+The keyless claude job stores no long-lived `BKIT_ANTHROPIC_API_KEY` in GitHub. `claude-code-action` asks GitHub for the job's OIDC token (issuer `https://token.actions.githubusercontent.com`, audience `https://api.anthropic.com`). Anthropic checks it against a federation rule and returns a short-lived Claude API token. The action refreshes it in the background on long runs.
 
 **Setup (one-time):**
 
@@ -535,7 +598,7 @@ The keyless claude job stores no long-lived `ANTHROPIC_API_KEY` in GitHub. `clau
    gh variable set ANTHROPIC_ORGANIZATION_ID --body='<organization-uuid>'
    # optional: ANTHROPIC_SERVICE_ACCOUNT_ID (svac_...), ANTHROPIC_WORKSPACE_ID
    ```
-4. Delete the key if one is set: `gh secret delete ANTHROPIC_API_KEY`. **A set key wins over federation:** the action uses the key, and federation never runs. `bkit check` flags both being set (`anthropic-api-key-shadows-federation`).
+4. Delete the key if one is set: `gh secret delete BKIT_ANTHROPIC_API_KEY`. **A set key wins over federation:** the action uses the key, and federation never runs. `bkit check` flags both being set (`anthropic-api-key-shadows-federation`).
 
 **Adopted copy predates federation:** The variables are set, but `.github/workflows/bkit-cloud.yml` lacks the `anthropic_federation_rule_id:` input, so the claude job sees no credential. `bkit check` flags it (`anthropic-federation-template-stale`). Re-copy from `.bkit/templates/.github/workflows/bkit-cloud.yml`, then re-apply your local edits (`runs-on`).
 
@@ -569,8 +632,8 @@ The slash command takes two args: `$CI_STATUS` in `success|failure|pass|fail` (n
 1. With a PR-number arg, it reads `gh pr view $ARG` for `headRefName`, `headRefOid`, `state`, and refuses non-open PRs. With a slug arg, it skips the PR lookup entirely.
 2. It extracts `{FID}` from the head branch (`feat/{FID}` convention). With a slug arg, `{ARG}` is the `{FID}`, allowlist-asserted before use. On the `dev` surface the workflow recovers it from the squash-merge commit scope (`feat({FID}): …`, tracker-agnostic), and falls back to the linked PR body's `bkit:fid=` marker. If either path fails → no-op, no dispatch.
 3. Stale-run guard. Pre-merge, it compares the latest CI run's `headSha` against the PR's current `headRefOid`. Post-merge on `dev`, it compares the most recently completed `dev` CI run's `headSha` against the triggering run's head SHA. A `git rev-parse origin/dev` comparison would mismatch on every legitimate dispatch, because ship's terminal close commit lands on `dev` while that CI run is still going. Close commits carry `[skip ci]`, so they never trigger CI and never become that most-recent-completed head. An empty run list fails open (dispatches).
-4. Opt-in gate: it refuses dispatch unless the linked GitHub issue carries the `bkit:auto` label.
-5. It appends a `bkit-auto → /bkit-{ship,debug}` line to the GitHub issue / PR comment thread.
+4. Opt-in gate: not checked in this file. The `bkit_gate` job in `bkit-cloud.yml` reads the `bkit:auto` label of the linked tracker issue (GitHub, Linear or Jira) before the router job starts, and starts nothing when it is absent.
+5. It appends a `bkit-auto → /bkit-{ship,debug}` line to the issue / PR comment thread.
 6. It invokes `/bkit-ship {FID}` (CI pass) or `/bkit-debug {FID} DEBUG_MODE=pr` (CI fail) through the `Skill` / `Task` tool. The dispatched skill owns the session lifecycle from there.
 
 Skip conditions emit a single GitHub-comment no-op line and exit 0. Only real failures (missing args, GitHub API unreachable, malformed state) take the Failure Path.
@@ -585,8 +648,8 @@ Skip conditions emit a single GitHub-comment no-op line and exit 0. Only real fa
   - The counter row (`type: "dev-dispatch"`) is committed to `dev` with `[skip ci]` before dispatch, and its presence on `origin/dev` is verified after one retry. A row that lands nowhere durable would make the cap unbounded.
   - When the cap is used up → no-op + `::notice::` for operator review. Delete the rows in `status.jsonl` to reset it.
 - **GitHub Actions runtime limit:** The host's job limit still applies. bkit bounds attempts and command waits, and sets no universal workflow-step deadline; the attempt count alone does not bound the job's duration.
-- **Concurrency:** `cancel-in-progress` is `true` for `feat/**` (latest-wins) and `false` for `dev`, so an in-flight `/bkit-debug` finishes instead of being cancelled mid-run with a half-written `status.jsonl` or a held worktree lock. GHA queues at most one pending run per group. The queued run re-checks the dispatch cap when it starts, so the same `{FID}` needs no manual re-trigger. The Cursor dashboard trigger is "latest-supersedes." The ship squash-merge is atomic, so mid-run cancels cannot corrupt PR state.
-- **`bkit-auto-dev` is one concurrency group for all FIDs.** GHA resolves `concurrency.group` from the trigger-payload context before the ctx step derives the `{FID}`, so the group cannot be keyed on it. When two different FIDs fail `dev` CI near-simultaneously, queue-collapse can drop the older, different FID's pending run. The stale-run guard detects it (its head SHA no longer matches the most-recent-completed `dev` CI run) and writes a `dev-dispatch-dropped` row to the job summary plus a `::warning::`, rather than discarding it silently. The row goes to the job summary, not a committed `status.jsonl`, because this branch is reached only when `dev` has already advanced. Committing the row would usually be a non-fast-forward, and the row would be lost in exactly the case it records.
+- **Concurrency:** `cancel-in-progress` is `true` for `feat/**` and `false` for `dev`, at the workflow level and on the Codex job. On `feat/**` a newer run replaces the one in flight (latest wins), so one branch never has two runs working and pushing at once. On `dev` a run in flight finishes, so an in-flight `/bkit-debug` is never cancelled mid-run with a half-written `status.jsonl` or a held worktree lock; GHA keeps at most one pending run per group, a newer pending run drops an older one, and the queued run's ctx step re-checks staleness and the dispatch cap when it starts, so the same `{FID}` needs no manual re-trigger. A run that will do nothing (a fork, a cancelled or skipped CI run, a commit without `bkit [auto route]`, a green `dev` run) gets its own `skip-{run id}` group, so it never queues behind or displaces a working run. The Cursor dashboard trigger is "latest-supersedes." The ship squash-merge is atomic, so mid-run cancels cannot corrupt PR state.
+- **`bkit-auto-dev` is one concurrency group for all FIDs.** GHA resolves `concurrency.group` from the trigger-payload context before the ctx step derives the `{FID}`, so the group cannot be keyed on it. When two different FIDs fail `dev` CI near-simultaneously, the newer pending run replaces the older, different FID's pending run. The stale-run guard detects it (its head SHA no longer matches the most-recent-completed `dev` CI run) and writes a `dev-dispatch-dropped` row to the job summary plus a `::warning::`, rather than discarding it silently. The row goes to the job summary, not a committed `status.jsonl`, because this branch is reached only when `dev` has already advanced. Committing the row would usually be a non-fast-forward, and the row would be lost in exactly the case it records.
 - **Both clouds together:** Nothing stops Claude + Cursor from dispatching against the same PR, and they would race. Pick one IDE per repo as the auto-router. The recommendation is Claude via GHA, which is runner-resident and Anthropic-maintained. Leave Cursor for ad-hoc Linear-dispatch work.
 
 # Caveats (both clouds)

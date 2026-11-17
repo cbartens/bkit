@@ -10,6 +10,8 @@ import {
   extractManagedBlock,
   findLineAnchoredMarkers,
   findUnmarkedCopy,
+  managedHead,
+  stripManagedWrapper,
 } from "./managed-block";
 
 // ---------------------------------------------------------------------------
@@ -324,5 +326,66 @@ describe("findUnmarkedCopy", () => {
 
   it("returns null when the block has no title", () => {
     expect(findUnmarkedCopy(rows(12), rows(12))).toBeNull();
+  });
+});
+
+describe("stripManagedWrapper historical notices", () => {
+  const wrap = (notice: string) =>
+    ["<!-- bkit:start -->", "", notice, "", "# Doc", "", "Body.", "", "<!-- bkit:end -->", ""].join(
+      "\n",
+    );
+
+  it("removes a v5 PolyForm-licensed notice with the wrapper", () => {
+    const notice =
+      "<!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->";
+    const r = stripManagedWrapper(wrap(notice));
+    expect(r.status).toBe("removed");
+    expect(r.content).not.toContain("bkit:managed");
+    expect(r.content).not.toContain("PolyForm");
+    expect(r.content).toBe("# Doc\n\nBody.\n");
+  });
+
+  it("removes a pre-6.0 do NOT edit notice with the wrapper", () => {
+    const notice =
+      "<!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run `bkit upgrade` to refresh -->";
+    const plain = "<!-- bkit:managed v4.5.0 — do NOT edit; run `bkit upgrade` to refresh -->";
+    for (const n of [notice, plain]) {
+      const r = stripManagedWrapper(wrap(n));
+      expect(r.status).toBe("removed");
+      expect(r.content).not.toContain("bkit:managed");
+      expect(r.content).not.toContain("do NOT edit");
+      expect(r.content).toBe("# Doc\n\nBody.\n");
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// managedHead
+// ---------------------------------------------------------------------------
+
+describe("managedHead", () => {
+  const head =
+    "# Title\n<!-- bkit:start -->\n<!-- managed-version: 1 -->\nBody\n<!-- bkit:end -->\n";
+  const tail = "\n## Project Instructions\nMine\n";
+
+  it("returns the text through the bkit:end line", () => {
+    expect(managedHead(head + tail)).toBe(head);
+    expect(managedHead(head + "\n## Other\n")).toBe(head);
+  });
+
+  it("returns null when the file has no markers", () => {
+    expect(managedHead("# Title\n\n## Project Instructions\n")).toBeNull();
+  });
+
+  it("returns null when the file has two bkit:end lines", () => {
+    expect(managedHead(head + "<!-- bkit:end -->\n" + tail)).toBeNull();
+  });
+
+  it("returns null when the file has a second bkit:start line below bkit:end", () => {
+    expect(managedHead(head + "<!-- bkit:start -->\n" + tail)).toBeNull();
+  });
+
+  it("returns null when bkit:end comes before bkit:start", () => {
+    expect(managedHead("<!-- bkit:end -->\nx\n<!-- bkit:start -->\ny\n" + tail)).toBeNull();
   });
 });

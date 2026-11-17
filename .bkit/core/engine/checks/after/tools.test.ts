@@ -10,7 +10,9 @@ import {
   detectWorkflowLintToolsMissing,
   detectBkitStubs,
   buildDepUpdaterSetupAdvisory,
+  detectProjectDocs,
 } from "./tools";
+import { LEGACY_STARTER_SOURCE_REVISION, syncProjectDocs } from "../../install/project-docs";
 
 // ---------------------------------------------------------------------------
 // Module-level mock for node:child_process
@@ -26,6 +28,19 @@ const { execSync, execFileSync, spawnSync } = vi.hoisted(() => ({
 
 vi.mock("node:child_process", () => ({ execSync, execFileSync, spawnSync }));
 
+// Pass-through wrapper over node:fs that records every readFileSync path. The module
+// namespace cannot be spied on, so the recording lives in the mock factory instead.
+const { fsReads } = vi.hoisted(() => ({ fsReads: [] as string[] }));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  const readFileSync = ((...args: Parameters<typeof actual.readFileSync>) => {
+    fsReads.push(String(args[0]));
+    return actual.readFileSync(...args);
+  }) as typeof actual.readFileSync;
+  return { ...actual, readFileSync, default: { ...actual, readFileSync } };
+});
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -33,6 +48,27 @@ vi.mock("node:child_process", () => ({ execSync, execFileSync, spawnSync }));
 let tmpDir: string;
 
 let originalCwd: string;
+
+/** Shipped text frozen at `revision` in tests/fixtures/shipped-text, by its path under `.bkit/shared/`. */
+const shippedText = (revision: string, rel: string): string =>
+  fs.readFileSync(path.join(originalCwd, "tests/fixtures/shipped-text", revision, rel), "utf8");
+
+/**
+ * A secret file planted in a folder beside `tmpDir`, and the `..` index row that reaches it
+ * from inside `tmpDir`. The caller removes `dir`.
+ */
+function plantOutside(name: string): { dir: string; row: string } {
+  const dir = `${tmpDir}-escape`;
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, name), "OUTSIDE-SECRET-CONTENT\n".repeat(20));
+  const row = `../${path.basename(dir)}/${name}`;
+  expect(fs.existsSync(path.join(tmpDir, row))).toBe(true);
+  return { dir, row };
+}
+
+/** The recorded `readFileSync` paths that resolve under `dir`. */
+const readsUnder = (dir: string): string[] =>
+  fsReads.map((r) => path.resolve(tmpDir, r)).filter((r) => r.startsWith(`${dir}${path.sep}`));
 
 let originalEnv: NodeJS.ProcessEnv;
 
@@ -411,5 +447,496 @@ describe("detectWorkflowLintToolsMissing", () => {
     expect(f?.id).toBe("workflow-lint-tools-missing");
     expect(f?.severity).toBe("advisory");
     expect(f?.detect).toContain("actionlint");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectProjectDocs — adoption and population advisories for the project documents
+// ---------------------------------------------------------------------------
+
+const STARTER_DIR = path.resolve(__dirname, "../../../../templates/docs");
+
+const INDEX_HEAD =
+  "<!-- bkit:start -->\nmanaged\n<!-- bkit:end -->\n\n## Project Documents\n\n" +
+  "| Doc | Design | Plan | Build | Debug | Ship | Scope |\n| --- | --- | --- | --- | --- | --- | --- |\n";
+
+function writeIndex(rows: Array<{ doc: string; scope?: string }>): void {
+  fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+  const body = rows
+    .map((r) => `| \`${r.doc}\` | ○ | ○ | ○ | ○ | ○ | ${r.scope ?? "Project doc."} |\n`)
+    .join("");
+  fs.writeFileSync(path.join(tmpDir, ".agents", "docs.md"), INDEX_HEAD + body);
+}
+
+function writeDoc(rel: string, text: string): void {
+  const abs = path.join(tmpDir, rel);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, text);
+}
+
+const POPULATED =
+  "# Security\n\nAuth uses session cookies issued by the api service; rate limits live in the edge proxy.\n" +
+  "Secrets come from the host secret store and never reach the repo.\n";
+
+function stripLegacyWrapper(text: string): string {
+  return text
+    .split("\n")
+    .filter(
+      (l) =>
+        l !== "<!-- bkit:start -->" &&
+        l !== "<!-- bkit:end -->" &&
+        !l.startsWith("<!-- bkit:managed"),
+    )
+    .join("\n");
+}
+
+function allText(findings: Array<{ detect: string; action: string }>): string {
+  return findings.map((f) => `${f.detect}\n${f.action}`).join("\n");
+}
+
+describe("detectProjectDocs", () => {
+  it("distinguishes missing and empty project documentation from populated candidates", () => {
+    writeDoc("docs/security.md", POPULATED);
+    writeDoc("docs/testing.md", "   \n\n");
+    writeDoc("docs/setup.md", "");
+    writeIndex([{ doc: "docs/security.md" }, { doc: "docs/testing.md" }, { doc: "docs/setup.md" }]);
+
+    const findings = detectProjectDocs(tmpDir);
+
+    // Every finding is an advisory with a detect and an action, never a blocker.
+    expect(findings.length).toBeGreaterThan(0);
+    for (const f of findings) {
+      expect(f.severity).toBe("advisory");
+      expect(f.id).toMatch(/^project-docs-/);
+      expect(f.detect.length).toBeGreaterThan(0);
+      expect(f.action.length).toBeGreaterThan(0);
+    }
+
+    const missing = findings.find((f) => f.id === "project-docs-missing");
+    expect(missing).toBeDefined();
+    expect(missing!.detect).toContain("docs/architecture.md");
+    expect(missing!.detect).toContain("docs/deployments.md");
+    expect(missing!.detect).not.toContain("docs/security.md");
+    expect(missing!.detect).not.toContain("docs/testing.md");
+    expect(missing!.action).toContain(".bkit/templates/docs/");
+    expect(missing!.action).toContain(".agents/docs.md");
+
+    const empty = findings.find((f) => f.id === "project-docs-unpopulated");
+    expect(empty).toBeDefined();
+    expect(empty!.detect).toContain("docs/testing.md");
+    expect(empty!.detect).toContain("docs/setup.md");
+    expect(empty!.detect).not.toContain("docs/security.md");
+
+    // The populated, indexed document is named by no finding.
+    expect(allText(findings)).not.toContain("docs/security.md");
+    // No claim that populated content is semantically complete.
+    expect(allText(findings).toLowerCase()).not.toContain("complete");
+    expect(findings.some((f) => f.id === "project-docs-index-missing")).toBe(false);
+  });
+
+  it("missing and unpopulated advisories name the adoption-order section", () => {
+    writeDoc(
+      "docs/architecture.md",
+      fs.readFileSync(path.join(STARTER_DIR, "architecture.md"), "utf-8"),
+    );
+    writeIndex([{ doc: "docs/architecture.md" }]);
+    const findings = detectProjectDocs(tmpDir);
+    for (const id of ["project-docs-missing", "project-docs-unpopulated"]) {
+      const finding = findings.find((f) => f.id === id);
+      expect(finding, id).toBeDefined();
+      expect(finding!.action, id).toContain("Project docs \u2014 adoption order");
+    }
+  });
+
+  it("an empty project doc is reported as project-docs-unpopulated", () => {
+    writeDoc("docs/testing.md", "  \n");
+    writeDoc("docs/security.md", POPULATED);
+    writeIndex([{ doc: "docs/testing.md" }, { doc: "docs/security.md" }]);
+    const findings = detectProjectDocs(tmpDir);
+    const unpopulated = findings.find((f) => f.id === "project-docs-unpopulated");
+    expect(unpopulated).toBeDefined();
+    expect(unpopulated!.detect).toContain("docs/testing.md");
+    expect(unpopulated!.detect).not.toContain("docs/security.md");
+    expect(findings.map((f) => f.id)).not.toContain("project-docs-empty");
+  });
+
+  it("a Not equivalent to docs/{topic}.md or docs/{topic}.mdx row does not silence project-docs-missing", () => {
+    writeDoc("handbook/sec-negated.md", POPULATED);
+    writeDoc("handbook/sec-mdx.md", POPULATED);
+    writeIndex([
+      { doc: "handbook/sec-negated.md", scope: "Not equivalent to `docs/security.md`" },
+      { doc: "handbook/sec-mdx.md", scope: "Equivalent to `docs/security.mdx`" },
+    ]);
+    const findings = detectProjectDocs(tmpDir);
+    const missing = findings.find((f) => f.id === "project-docs-missing");
+    expect(missing).toBeDefined();
+    expect(missing!.detect).toContain("docs/security.md");
+  });
+
+  it("recognizes current and migrated untouched starters", () => {
+    const starter = fs.readFileSync(path.join(STARTER_DIR, "architecture.md"), "utf-8");
+    // Current starter copied verbatim; a lightly edited placeholder-only copy of another starter.
+    writeDoc("docs/architecture.md", starter);
+    const techStarter = fs.readFileSync(path.join(STARTER_DIR, "technology.md"), "utf-8");
+    writeDoc("docs/technology.md", `${techStarter}\n\n\n`);
+    // A project that really wrote its document.
+    writeDoc("docs/security.md", POPULATED);
+    writeIndex([
+      { doc: "docs/architecture.md" },
+      { doc: "docs/technology.md" },
+      { doc: "docs/security.md" },
+    ]);
+
+    const legacy = shippedText(LEGACY_STARTER_SOURCE_REVISION, "docs/noise.md");
+    // Migrated: the ownership wrapper lines are gone, the text is the shipped legacy text.
+    const migrated = stripLegacyWrapper(legacy);
+    writeDoc("docs/noise.md", migrated);
+    writeIndex([
+      { doc: "docs/architecture.md" },
+      { doc: "docs/technology.md" },
+      { doc: "docs/security.md" },
+      { doc: "docs/noise.md" },
+    ]);
+
+    const findings = detectProjectDocs(tmpDir);
+    const unpopulated = findings.find((f) => f.id === "project-docs-unpopulated");
+    expect(unpopulated).toBeDefined();
+    expect(unpopulated!.severity).toBe("advisory");
+    expect(unpopulated!.detect).toContain("docs/architecture.md");
+    expect(unpopulated!.detect).toContain("docs/technology.md");
+    expect(unpopulated!.detect).toContain("docs/noise.md");
+    expect(unpopulated!.detect).not.toContain("docs/security.md");
+    // The action names the repair and the alternative evidence.
+    expect(unpopulated!.action).toContain("docs/architecture.md");
+    expect(unpopulated!.action.toLowerCase()).toContain("equivalent");
+    // Indexed-but-untouched still warns even though the index lists it.
+    expect(findings.some((f) => f.id === "project-docs-missing")).toBe(true);
+    expect(allText(findings)).not.toContain("docs/security.md");
+  });
+
+  it("resolves an indexed equivalent without a missing default warning", () => {
+    writeDoc("handbook/security.md", POPULATED);
+    writeDoc("handbook/ops-testing.md", POPULATED);
+    writeIndex([
+      { doc: "handbook/security.md" },
+      { doc: "handbook/ops-testing.md", scope: "Equivalent to docs/testing.md" },
+    ]);
+
+    const findings = detectProjectDocs(tmpDir);
+    const missing = findings.find((f) => f.id === "project-docs-missing");
+    expect(missing).toBeDefined();
+    expect(missing!.detect).not.toContain("docs/security.md");
+    expect(missing!.detect).not.toContain("docs/testing.md");
+    expect(missing!.detect).toContain("docs/architecture.md");
+    expect(allText(findings)).not.toContain("handbook/security.md");
+
+    // An out-of-tree target is never read: its content reaches no finding, and the finding
+    // names the unsafe path instead of calling the topic populated.
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-outside-"));
+    const escape = plantOutside("noise.md");
+    try {
+      fs.writeFileSync(path.join(outside, "design.md"), "OUTSIDE-SECRET-CONTENT\n".repeat(20));
+      fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+      fs.symlinkSync(path.join(outside, "design.md"), path.join(tmpDir, "docs", "design.md"));
+      writeIndex([
+        { doc: "docs/design.md" },
+        { doc: escape.row, scope: "Equivalent to docs/noise.md" },
+      ]);
+      fsReads.length = 0;
+      const again = detectProjectDocs(tmpDir);
+      expect(readsUnder(outside)).toEqual([]);
+      expect(readsUnder(escape.dir)).toEqual([]);
+      expect(allText(again)).not.toContain("OUTSIDE-SECRET-CONTENT");
+      const ambiguous = again.find((f) => f.id === "project-docs-ambiguous");
+      expect(ambiguous).toBeDefined();
+      expect(ambiguous!.detect).toContain("docs/design.md");
+      expect(ambiguous!.severity).toBe("advisory");
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+      fs.rmSync(escape.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps an indexed equivalent warning-free and in-tree without spying on the fs namespace", () => {
+    writeDoc("handbook/security.md", POPULATED);
+    writeDoc("handbook/ops-testing.md", POPULATED);
+    writeIndex([
+      { doc: "handbook/security.md" },
+      { doc: "handbook/ops-testing.md", scope: "Equivalent to docs/testing.md" },
+    ]);
+    fsReads.length = 0;
+    const findings = detectProjectDocs(tmpDir);
+    const missing = findings.find((f) => f.id === "project-docs-missing");
+    expect(missing).toBeDefined();
+    expect(missing!.detect).not.toContain("docs/security.md");
+    expect(missing!.detect).not.toContain("docs/testing.md");
+    expect(missing!.detect).toContain("docs/architecture.md");
+
+    // The `..` row reaches a real planted file next to the repository, so a read of it shows.
+    const outside = plantOutside("noise.md");
+    try {
+      writeIndex([{ doc: outside.row, scope: "Equivalent to docs/noise.md" }]);
+      fsReads.length = 0;
+      const again = detectProjectDocs(tmpDir);
+      expect(readsUnder(outside.dir)).toEqual([]);
+      expect(allText(again)).not.toContain("OUTSIDE-SECRET-CONTENT");
+    } finally {
+      fs.rmSync(outside.dir, { recursive: true, force: true });
+    }
+  });
+  /** The v6.1.1 shipped text of a topic as it was rendered into a consumer repo. */
+  function renderedV611(topic: string, branch: string): string {
+    return shippedText("v6.1.1", `docs/${topic}.md`)
+      .replace(
+        "{{BKIT_MANAGED_MARKER}}",
+        "<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->",
+      )
+      .replace(/\{\{DEFAULT_BRANCH\}\}/g, branch);
+  }
+
+  it("recognizes the v6.1.1 untouched security starter as unpopulated", () => {
+    writeDoc("docs/security.md", renderedV611("security", "main"));
+    writeIndex([{ doc: "docs/security.md" }]);
+    const unpopulated = detectProjectDocs(tmpDir).find((f) => f.id === "project-docs-unpopulated");
+    expect(unpopulated).toBeDefined();
+    expect(unpopulated!.detect).toContain("docs/security.md");
+  });
+
+  it("recognizes a legacy deployments starter rendered with default branch dev", () => {
+    writeDoc("docs/deployments.md", renderedV611("deployments", "dev"));
+    writeIndex([{ doc: "docs/deployments.md" }]);
+    const unpopulated = detectProjectDocs(tmpDir).find((f) => f.id === "project-docs-unpopulated");
+    expect(unpopulated).toBeDefined();
+    expect(unpopulated!.detect).toContain("docs/deployments.md");
+  });
+
+  it("names every unusable indexed row when none of them can be read", () => {
+    writeIndex([{ doc: "old/security.md" }, { doc: "older/security.md" }]);
+    const findings = detectProjectDocs(tmpDir);
+    const ambiguous = findings.find((f) => f.id === "project-docs-ambiguous");
+    expect(ambiguous).toBeDefined();
+    expect(ambiguous!.detect).toContain("old/security.md");
+    expect(ambiguous!.detect).toContain("older/security.md");
+  });
+
+  it("returns an advisory instead of throwing when docs is a regular file", () => {
+    fs.writeFileSync(path.join(tmpDir, "docs"), "not a directory\n");
+    writeIndex([{ doc: "docs/security.md" }]);
+    let findings: ReturnType<typeof detectProjectDocs> = [];
+    expect(() => {
+      findings = detectProjectDocs(tmpDir);
+    }).not.toThrow();
+    const ambiguous = findings.find((f) => f.id === "project-docs-ambiguous");
+    expect(ambiguous).toBeDefined();
+    expect(ambiguous!.severity).toBe("advisory");
+    expect(ambiguous!.detect).toContain("docs/");
+  });
+
+  it("does not advise bkit upgrade for a default doc that sync leaves to an indexed equivalent", () => {
+    writeDoc("docs/security.md", POPULATED);
+    writeDoc("engineering/security.md", POPULATED);
+    writeIndex([{ doc: "engineering/security.md", scope: "Equivalent to docs/security.md" }]);
+    syncProjectDocs(tmpDir, { dryRun: false });
+    const promised = detectProjectDocs(tmpDir)
+      .filter((f) => f.id === "project-docs-unindexed")
+      .filter((f) => f.detect.includes("docs/security.md"))
+      .map((f) => f.action)
+      .join("\n");
+    // Sync either registered the doc (no advisory) or the advisory must not promise upgrade will.
+    expect(promised).not.toContain("bkit upgrade");
+  });
+
+  it("reports an ambiguous legacy wrapper left in a project document", () => {
+    writeDoc(
+      "docs/security.md",
+      "<!-- bkit:start -->\n# Security\n\nAuth uses session cookies issued by the api service.\n",
+    );
+    writeIndex([{ doc: "docs/security.md" }]);
+    const findings = detectProjectDocs(tmpDir);
+    const text = allText(findings);
+    expect(text).toContain("docs/security.md");
+    expect(text).toContain("bkit:start");
+    const cleanup = findings.find((f) => f.detect.includes("bkit:start"));
+    expect(cleanup).toBeDefined();
+    expect(cleanup!.severity).toBe("advisory");
+  });
+
+  it("does not promise bkit upgrade for an unindexed doc whose wrapper is ambiguous", () => {
+    writeDoc(
+      "docs/security.md",
+      "<!-- bkit:start -->\n# Security\n\nAuth uses session cookies issued by the api service.\n",
+    );
+    writeIndex([]);
+    const findings = detectProjectDocs(tmpDir);
+    expect(findings.some((f) => f.id === "project-docs-cleanup")).toBe(true);
+    const actions = findings
+      .filter((f) => f.id === "project-docs-unindexed")
+      .map((f) => f.action)
+      .join("\n");
+    expect(actions).toContain("once the wrapper is gone");
+    expect(actions).not.toContain("to register the default paths");
+  });
+
+  it("does not promise bkit upgrade for an unindexed doc while the index holds an unreadable row", () => {
+    writeDoc("docs/security.md", POPULATED);
+    writeIndex([]);
+    fs.appendFileSync(
+      path.join(tmpDir, ".agents", "docs.md"),
+      "| Arch notes (docs/notes.md) | ○ | ○ | ○ | ○ | ○ | Notes. |\n",
+    );
+    const findings = detectProjectDocs(tmpDir);
+    const unindexed = findings
+      .filter((f) => f.id === "project-docs-unindexed")
+      .filter((f) => f.detect.includes("docs/security.md"));
+    expect(unindexed.length).toBeGreaterThan(0);
+    const actions = unindexed.map((f) => f.action).join("\n");
+    expect(actions).toContain("once the row is repaired");
+    expect(actions).not.toContain("to register the default paths");
+  });
+
+  it("reports an index row through a regular file as ambiguous instead of throwing", () => {
+    fs.writeFileSync(path.join(tmpDir, "README.md"), "# readme\n");
+    writeIndex([{ doc: "README.md/security.md" }]);
+    let findings: ReturnType<typeof detectProjectDocs> = [];
+    expect(() => {
+      findings = detectProjectDocs(tmpDir);
+    }).not.toThrow();
+    const ambiguous = findings.find((f) => f.id === "project-docs-ambiguous");
+    expect(ambiguous).toBeDefined();
+    expect(ambiguous!.severity).toBe("advisory");
+  });
+
+  it("reports a NUL-byte index path as ambiguous instead of throwing", () => {
+    writeIndex([{ doc: "docs/a\u0000/security.md" }]);
+    let findings: ReturnType<typeof detectProjectDocs> = [];
+    expect(() => {
+      findings = detectProjectDocs(tmpDir);
+    }).not.toThrow();
+    const ambiguous = findings.find((f) => f.id === "project-docs-ambiguous");
+    expect(ambiguous).toBeDefined();
+    expect(ambiguous!.severity).toBe("advisory");
+  });
+
+  it("consults a later valid same-topic row when the first indexed row is stale", () => {
+    writeDoc("eng/security.md", POPULATED);
+    writeIndex([{ doc: "old/security.md" }, { doc: "eng/security.md" }]);
+    const findings = detectProjectDocs(tmpDir);
+    const missing = findings.find((f) => f.id === "project-docs-missing");
+    expect(missing).toBeDefined();
+    expect(missing!.detect).not.toContain("docs/security.md");
+    expect(missing!.detect).toContain("docs/architecture.md");
+  });
+
+  it("consults a later valid equivalent row when the first is out of tree", () => {
+    writeDoc("eng/security.md", POPULATED);
+    writeIndex([
+      { doc: "../shared/security.md", scope: "Equivalent to docs/security.md" },
+      { doc: "eng/security.md", scope: "Equivalent to docs/security.md" },
+    ]);
+    const findings = detectProjectDocs(tmpDir);
+    expect(findings.some((f) => f.id === "project-docs-ambiguous")).toBe(false);
+    expect(allText(findings)).not.toContain("../shared/security.md");
+    const missing = findings.find((f) => f.id === "project-docs-missing");
+    expect(missing).toBeDefined();
+    expect(missing!.detect).not.toContain("docs/security.md");
+  });
+
+  it("classifies a starter copy that differs only in whitespace as unpopulated", () => {
+    const starter = fs.readFileSync(path.join(STARTER_DIR, "security.md"), "utf-8");
+    const lines = starter.split("\n");
+    const i = lines.findIndex((l) => /^[A-Za-z]\S* \S/.test(l));
+    expect(i).toBeGreaterThanOrEqual(0);
+    lines[i] = lines[i]!.replace(" ", "  ");
+    writeDoc("docs/security.md", lines.join("\n"));
+    writeIndex([{ doc: "docs/security.md" }]);
+    const unpopulated = detectProjectDocs(tmpDir).find((f) => f.id === "project-docs-unpopulated");
+    expect(unpopulated).toBeDefined();
+    expect(unpopulated!.detect).toContain("docs/security.md");
+  });
+
+  it("classifies an indented legacy starter copy as unpopulated", () => {
+    const legacy = shippedText(LEGACY_STARTER_SOURCE_REVISION, "docs/security.md");
+    const lines = stripLegacyWrapper(legacy).split("\n");
+    const i = lines.findIndex((l) => /^[A-Za-z]/.test(l));
+    expect(i).toBeGreaterThanOrEqual(0);
+    lines[i] = `  ${lines[i]}`;
+    writeDoc("docs/security.md", lines.join("\n"));
+    writeIndex([{ doc: "docs/security.md" }]);
+    const unpopulated = detectProjectDocs(tmpDir).find((f) => f.id === "project-docs-unpopulated");
+    expect(unpopulated).toBeDefined();
+    expect(unpopulated!.detect).toContain("docs/security.md");
+  });
+
+  /** A starter's introduction (every line above its title) followed by text a project wrote. */
+  function introThenFilled(topic: string, filled: string): string {
+    const lines = fs.readFileSync(path.join(STARTER_DIR, `${topic}.md`), "utf-8").split("\n");
+    const title = lines.findIndex((l) => l.startsWith("# "));
+    expect(title).toBeGreaterThan(0);
+    return `${lines.slice(0, title).join("\n")}\n${filled}`;
+  }
+
+  it("reports a filled project doc that keeps the starter introduction as unpopulated", () => {
+    writeDoc("docs/security.md", introThenFilled("security", POPULATED));
+    writeIndex([{ doc: "docs/security.md" }]);
+    const unpopulated = detectProjectDocs(tmpDir).find((f) => f.id === "project-docs-unpopulated");
+    expect(unpopulated).toBeDefined();
+    expect(unpopulated!.detect).toContain("docs/security.md");
+    expect(unpopulated!.detect).toContain("introduction");
+    expect(unpopulated!.action).toContain("delete the introduction");
+  });
+
+  it("does not report a filled project doc that quotes the starter opener below its title", () => {
+    writeDoc("docs/security.md", `${POPULATED}\n> Starter document. Quoted from the template.\n`);
+    writeIndex([{ doc: "docs/security.md" }]);
+    expect(allText(detectProjectDocs(tmpDir))).not.toContain("docs/security.md");
+  });
+
+  it("names an absent docs/components.md in project-docs-missing", () => {
+    writeIndex([]);
+    const missing = detectProjectDocs(tmpDir).find((f) => f.id === "project-docs-missing");
+    expect(missing).toBeDefined();
+    expect(missing!.detect).toContain("docs/components.md");
+  });
+
+  it.each([
+    ["empty", () => "  \n"],
+    [
+      "the untouched starter",
+      () => fs.readFileSync(path.join(STARTER_DIR, "components.md"), "utf-8"),
+    ],
+    ["headings only", () => "# Components\n\n## Responsibilities\n\n## Open questions\n"],
+    [
+      "filled below the starter introduction",
+      () => introThenFilled("components", "# Components\n\nThe api service owns sign-in.\n"),
+    ],
+  ])("reports a docs/components.md that is %s as unpopulated", (_label, text) => {
+    writeDoc("docs/components.md", text());
+    writeIndex([]);
+    const findings = detectProjectDocs(tmpDir);
+    const unpopulated = findings.find((f) => f.id === "project-docs-unpopulated");
+    expect(unpopulated).toBeDefined();
+    expect(unpopulated!.detect).toContain("docs/components.md");
+    const missing = findings.find((f) => f.id === "project-docs-missing");
+    expect(missing!.detect).not.toContain("docs/components.md");
+  });
+
+  it("names a filled docs/components.md in no finding, indexed or not", () => {
+    writeDoc("docs/components.md", "# Components\n\nThe api service owns sign-in and sessions.\n");
+    writeIndex([]);
+    expect(allText(detectProjectDocs(tmpDir))).not.toContain("docs/components.md");
+  });
+
+  it("reads the Scope of a row without a trailing pipe", () => {
+    writeDoc("eng/sec-notes.md", POPULATED);
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".agents", "docs.md"),
+      INDEX_HEAD + "| `eng/sec-notes.md` | ○ | ○ | ○ | ○ | ○ | Equivalent to docs/security.md\n",
+    );
+    const findings = detectProjectDocs(tmpDir);
+    const missing = findings.find((f) => f.id === "project-docs-missing");
+    expect(missing).toBeDefined();
+    expect(missing!.detect).not.toContain("docs/security.md");
+    expect(missing!.detect).toContain("docs/architecture.md");
   });
 });

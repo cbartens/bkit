@@ -2,7 +2,7 @@
 
 {{BKIT_MANAGED_MARKER}}
 
-<!-- Note: @bkit-plan-generate fills this template. The plan lives at `docs/plans/{YYYYMM}/{FID}-plan.md`, the canonical month bucket, where `{YYYYMM}` is the month the first workflow run for `{FID}` created it, set once. Logs sit at `docs/plans/{YYYYMM}/logs/{FID}/`, and may be deleted. The canonical copy is stamped with a `bkit:anchor` block that records the base commit (`baseSha`), its ref (`baseRef`) and the design it targets (`designPath`, `designBaseSha`). NEVER write or edit that block by hand. -->
+<!-- Note: @bkit-plan-generate fills this template. The plan lives at `docs/plans/{YYYYMM}/{FID}-plan.md`, the canonical month bucket, where `{YYYYMM}` is the month the first workflow run for `{FID}` created it, set once. Logs sit at `docs/plans/{YYYYMM}/logs/{FID}/`, and may be deleted. The canonical copy is stamped with a `bkit:anchor` block that records the base commit (`baseSha`), its ref (`baseRef`) and the design it targets (`designPath`, `designBaseSha`). NEVER write or edit that block by hand. When you edit this template, follow `.bkit/authoring.md` § Doc Templates. -->
 
 # [Plan Title] Implementation Plan
 
@@ -75,6 +75,7 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 | [e.g., the API endpoint enforces tenant isolation] | Integration | [e.g., `packages/api/[feature].integration.test.ts`] | 2 |
 | [e.g., the real third-party API returns the expected shape and a boundary-only identity, not just "did not throw"] | @live (golden) | [e.g., `packages/[pkg]/[feature].live.test.ts`] | 2 |
 | [e.g., the new migration replays from empty and the seed loads] | fresh-DB replay | [e.g., `packages/db/migrations/*`] (replayed by `bkit-tests-migration`) | 1 |
+| [e.g., `setStatus` accepts `archived` and still rejects an unknown status] | Unit | [e.g., `packages/api/src/items/setStatus.test.ts`] | 3 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -102,10 +103,12 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 > These are the unknowns and assumptions this plan relies on. An unresolved question is a risk, and a wrong assumption breaks what follows. **If** there are none → write `None`.
 
 - **Assumption:** [what the plan takes as given] → [what breaks if it is wrong]
-- **Open Question:** [the decision needed] → [who resolves it, and how]
-  - **Options:** A) [option] — [trade-off] · B) [option] — [trade-off] · C) [option] — [trade-off, optional]
-  - **Recommended:** A) [option] — [why, in one line]
-  - **Default if unanswered:** [what the agent proceeds with]
+- **Q{n} — [title]:** [the decision needed, in plain English] → [who resolves it, and how]
+  - A) [option] — [trade-off]
+  - B) [option] — [trade-off]
+  - C) [option] — [trade-off] (optional)
+  - Recommended: A) [option] — [why]
+  - Default if unanswered: [the plan assumes A | the plan stops at Gate 1 until you answer]
 
 ### 👤 ✅ Human Confirmation
 
@@ -158,7 +161,7 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 - [ ] **Existing-Solution Search (reuse over duplicate):** the in-repo, dependency and ecosystem searches are recorded in `Reuse Inventory`.
 - [ ] **User Context:** access to the files is confirmed, and missing user information is requested.
 - [ ] **Project Context:** the relevant `docs/knowledge.jsonl` and `docs/decisions.jsonl` rows are read.
-- [ ] **Testing & Quality:** the testing strategy matches `docs/testing.md`.
+- [ ] **Project Documents:** `docs/architecture.md`, `docs/technology.md`, `docs/security.md` and `docs/testing.md` are assessed through the `.agents/docs.md` index (a missing or starter-only document is a warning, not a stop), and the plan's strategy matches `docs/testing.md`. Record each source in `Documentation Consultation`.
 - [ ] **Prerequisite Plans:** [the plans to finish first. **If** none → `None`.]
 
 ### Conditional
@@ -167,6 +170,7 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 - [ ] **Schema State:** the database state is confirmed against `docs/data-schema.md`.
 - [ ] **Architecture & UI:** the topology is checked against `docs/architecture.md`, and any UI against `docs/design.md`.
 - [ ] **Observability:** logs, audit tables and traces follow `docs/observability.md`.
+- [ ] **Deployments & Setup:** release, CI and branch behaviour follows `docs/deployments.md`, and local-setup changes follow `docs/setup.md`.
 - [ ] **Notifications:** the alert or toast tier follows the notifications doc.
 
 ### 🔒 Gate 1: Prerequisites Check
@@ -178,6 +182,21 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 - [ ] **Reuse Inventory complete:** every capability has a row with `Search performed` and `Decision` filled in.
 - [ ] **Reuse reasons:** every `NEW` row cites its reason.
 - [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
+
+## Documentation Consultation
+
+[Read the `.agents/docs.md` index when it exists, and consult each applicable topic's recommended document or a valid indexed equivalent. Always assess `docs/architecture.md`, `docs/technology.md`, `docs/security.md` and `docs/testing.md`. Consult `docs/data-schema.md` for database changes, `docs/design.md` for UI, `docs/observability.md` for logging, `docs/deployments.md` for release or CI behaviour, and `docs/noise.md` or `docs/setup.md` when relevant. A missing index, a missing or empty document, or a starter-only document is a warning: continue from repository evidence, and never stop the plan. Mark an irrelevant topic not applicable with the reason. Initially set to `PENDING`.]
+
+<!-- prettier-ignore -->
+| Topic | Recommended path | Applies | Source used (path and section) | Coverage | Gap and action |
+| --- | --- | --- | --- | --- | --- |
+| [architecture] | `docs/architecture.md` | [yes / no — reason] | [the path and section actually read, or `none`] | [covered / partial / none] | [the gap, the alternative evidence, the action. **If** none → `None`.] |
+
+Carry each required read and each doc update into the runbook task that needs it (`READ:` and `UPDATE:` lines).
+
+## Documentation Warnings
+
+[One JSON object per line in a fenced `jsonl` block, with the fields `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action`, all non-empty (`"None available"` when no alternative evidence exists). Example line: `{"topic": "security", "gap": "starter-only", "recommendedPath": "docs/security.md", "alternativeEvidence": "The CI configuration defines token permissions.", "action": "Populate the security document with the project's credential and permission boundaries."}`. **If** every applicable topic is covered → write `None`. A warning never blocks the plan. Initially set to `PENDING`.]
 
 ## Data Schema Integration
 
@@ -307,6 +326,17 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 
 <!-- bkit:task 2 end -->
 
+<!-- bkit:task 3 start -->
+
+- [ ] **TASK 3:** [e.g., Accept the `archived` status]
+  - **UPDATE:** `ItemStatus` in `packages/api/src/items/schema.ts`: [e.g., adds `archived`]
+  - **DEPENDS ON:** 2
+  - **DONE WHEN:** [e.g., `setStatus` stores `archived`, and still rejects an unknown status]
+  - **TEST FIRST:**
+    - `packages/api/src/items/setStatus.test.ts` `rejects an unknown status` fails on [e.g., `archived` being rejected] — TASK 2's test, taken over because this task changes what it asserts
+
+<!-- bkit:task 3 end -->
+
 <!-- bkit:group 1 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
@@ -314,8 +344,8 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 - [ ] **No bolt-on:** every `[NEW]` file traces to a `Reuse Inventory` `NEW` row.
 - [ ] **Extensions landed:** every `EXTEND` landed in the artifact its row names.
 - [ ] **No gate weakened:** no gate was weakened.
-- [ ] **Red before code:** the tests step recorded every planned test of the group red, or as an `updated` existing test, before its code step ran.
-- [ ] **Tests unchanged:** every planned test case matches the lines its red row recorded.
+- [ ] **Red before code:** the tests step recorded every planned test of the group red, or as an `updated` existing test, before its code step ran. A later task that names an earlier task's test takes it over: the build reports the takeover and does not refuse it.
+- [ ] **Tests unchanged:** every planned test case matches the lines its red row recorded, or a code step's `BLOCKED` line names the change for the owner.
 - [ ] **Unproven tests:** each planned test with no proven red is cleared only by a human-committed `TEST EXCEPTION` field.
 - [ ] **Gate 2 — Verified:** every box above is checked.
 

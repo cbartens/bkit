@@ -9,11 +9,13 @@
 // lock this caller owns (same token, else same workflow and feature), so a Failure
 // Path that never got the lock cannot delete the holder's.
 
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 
 import {
+  createExclusive,
   fold,
   lastRun,
   statusTimestamp,
@@ -23,8 +25,10 @@ import {
 import {
   CommandError,
   EXIT,
+  git,
   parseJson,
   repoRoot,
+  runTool,
   statusRelPath,
   utcMonth,
   type CommandSpec,
@@ -43,6 +47,8 @@ export const EXIT_SPLIT_BUCKET = 7;
 export const EXIT_NOT_OWNER = 4;
 /** Exit code: the lock file is still there after removing it. */
 export const EXIT_REMOVE_FAILED = 5;
+/** Exit code: another run of the feature holds the lock and is still stepping. */
+export const EXIT_LOCK_BUSY = 8;
 
 const KINDS = ["workflow"] as const;
 type Kind = (typeof KINDS)[number];
@@ -112,24 +118,102 @@ export function readHolder(file: string): Holder | undefined {
 /** Create `file` only if absent (`set -C`); false when someone else holds it. */
 export function tryCreate(file: string, line: string): boolean {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const fd = openExclusive(file);
-  if (fd === undefined) return false;
-  fs.writeSync(fd, `${line}\n`);
-  fs.closeSync(fd);
-  return true;
-}
-
-function openExclusive(file: string): number | undefined {
-  try {
-    return fs.openSync(file, "wx");
-  } catch (err) {
-    // EEXIST is the expected "someone holds it" answer; anything else is a real error.
-    if ((err as NodeJS.ErrnoException).code === "EEXIST") return undefined;
-    throw err;
-  }
+  return createExclusive(file, `${line}\n`);
 }
 
 const newToken = () => randomBytes(4).toString("hex");
+
+export interface PublicationLock {
+  path: string;
+  token: string;
+  owner: { host: string; pid: number; startTime: string };
+}
+
+/** The OS start identity distinguishes a live reused PID from a recorded owner. */
+function processStart(pid: number, timeoutMs = 1000): string | null {
+  const result = runTool("ps", ["-p", String(pid), "-o", "lstart="], process.cwd(), {
+    timeoutMs: Math.max(50, Math.min(1000, timeoutMs)),
+  });
+  return result.found && result.status === 0 && result.stdout.trim() !== ""
+    ? result.stdout.trim()
+    : null;
+}
+
+function publicationHolder(file: string): PublicationLock | null {
+  const parsed = parseJson(fs.readFileSync(file, "utf8"));
+  if (!parsed.ok || typeof parsed.value !== "object" || parsed.value === null) return null;
+  const raw = parsed.value as Partial<PublicationLock>;
+  return typeof raw.token === "string" &&
+    /^[a-f0-9]{32}$/.test(raw.token) &&
+    typeof raw.path === "string" &&
+    typeof raw.owner?.host === "string" &&
+    Number.isInteger(raw.owner.pid) &&
+    raw.owner.pid > 0 &&
+    typeof raw.owner.startTime === "string" &&
+    Number.isFinite(Date.parse(raw.owner.startTime))
+    ? { path: file, token: raw.token, owner: raw.owner }
+    : null;
+}
+
+/** A separate best-effort lock for one issue and invocation; age never establishes death. */
+export async function acquirePublicationLock(
+  cwd: string,
+  options: { target: string; invocation: string; timeoutMs?: number },
+): Promise<PublicationLock | null> {
+  try {
+    const end = performance.now() + Math.min(30_000, Math.max(0, options.timeoutMs ?? 30_000));
+    const common = git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+    const startTime = processStart(process.pid, end - performance.now());
+    if (!common || !startTime || !options.target || !options.invocation) return null;
+    const digest = createHash("sha256")
+      .update(`${options.target}\0${options.invocation}`)
+      .digest("hex");
+    const file = path.join(common, "bkit-outbox", "publication-locks", `${digest}.lock`);
+    const lock: PublicationLock = {
+      path: file,
+      token: randomBytes(16).toString("hex"),
+      owner: { host: os.hostname(), pid: process.pid, startTime },
+    };
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    do {
+      if (tryCreate(file, JSON.stringify(lock))) return lock;
+      const holder = publicationHolder(file);
+      if (!holder || holder.owner.host !== lock.owner.host) return null;
+      let dead = false;
+      try {
+        process.kill(holder.owner.pid, 0);
+      } catch (error) {
+        dead = (error as NodeJS.ErrnoException).code === "ESRCH";
+      }
+      if (dead) {
+        if (publicationHolder(file)?.token !== holder.token) return null;
+        fs.unlinkSync(file);
+        if (tryCreate(file, JSON.stringify(lock))) return lock;
+        continue;
+      }
+      if (processStart(holder.owner.pid, end - performance.now()) !== holder.owner.startTime)
+        return null;
+      const remaining = end - performance.now();
+      if (remaining <= 0) return null;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(20, remaining)));
+    } while (performance.now() <= end);
+    return null;
+  } catch {
+    // Lock failures select standalone publication rather than fail substantive work.
+    return null;
+  }
+}
+
+/** Remove only this publication token; filesystem errors leave append unavailable. */
+export async function releasePublicationLock(lock: PublicationLock): Promise<boolean> {
+  try {
+    if (publicationHolder(lock.path)?.token !== lock.token) return false;
+    fs.unlinkSync(lock.path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const lockLine = (workflow: string, fid: string, token: string) =>
   `${statusTimestamp()} ${workflow} ${fid} ${token}`;
@@ -152,6 +236,17 @@ export interface WorkflowLockResult {
   reclaimed: { holder: string; reason: "finished" | "stale" | "orphaned" } | null;
 }
 
+/** The run holding a live workflow lock: who, since when, and when it last stepped. */
+export interface LockHeldBy {
+  workflow: string | null;
+  /** When the holder took the lock (its lock line's timestamp). */
+  since: string | null;
+  /** The holder's last status step; null when it took the lock this instant and has none yet. */
+  lastStepAt: string | null;
+  idleSeconds: number | null;
+  line: string;
+}
+
 /** Why a held workflow lock is still live, or why it may be reclaimed. */
 function liveReason(
   root: string,
@@ -159,7 +254,7 @@ function liveReason(
   fid: string,
   holder: Holder,
   now: number,
-): { live: string } | { reason: "finished" | "stale" | "orphaned" } {
+): { live: LockHeldBy } | { reason: "finished" | "stale" | "orphaned" } {
   const rel = statusRelPath(month, fid);
   const worktreeCopy = path.join(root, ".worktrees", fid, rel);
   const own = fs.existsSync(worktreeCopy) ? worktreeCopy : path.join(root, rel);
@@ -168,7 +263,16 @@ function liveReason(
   const lastAt = run?.steps.at(-1)?.at;
   if (run?.status === "IN_PROGRESS" && lastAt) {
     const idle = Math.floor((now - Date.parse(lastAt)) / 1000);
-    if (idle < WORKFLOW_LOCK_IDLE_S) return { live: `idle ${idle}s` };
+    if (idle < WORKFLOW_LOCK_IDLE_S)
+      return {
+        live: {
+          workflow: holder.workflow ?? null,
+          since: holder.at ?? null,
+          lastStepAt: lastAt,
+          idleSeconds: idle,
+          line: holder.line,
+        },
+      };
   }
   if (run === undefined) return { reason: "orphaned" };
   return { reason: run.status === "IN_PROGRESS" ? "stale" : "finished" };
@@ -211,13 +315,27 @@ export function workflowLockFresh(root: string, fid: string): boolean {
   });
 }
 
-export function acquireWorkflowLock(opts: {
+/** A lock another live run holds: nothing was taken or removed. */
+export interface WorkflowLockBusy {
+  path: string;
+  month: string;
+  heldBy: LockHeldBy;
+}
+
+const busyMessage = (fid: string, by: LockHeldBy) =>
+  `workflow already running for ${fid} (workflow=${by.workflow ?? "?"}, ${by.idleSeconds === null ? "just started" : `idle ${by.idleSeconds}s`})`;
+
+/**
+ * Take the feature's workflow lock, reclaiming an idle holder's. A holder still
+ * stepping keeps its lock, and the result names it in `heldBy`.
+ */
+export function tryAcquireWorkflowLock(opts: {
   cwd: string;
   workflow: string;
   fid: string;
   month?: string;
   log: (m: string) => void;
-}): WorkflowLockResult {
+}): WorkflowLockResult | WorkflowLockBusy {
   const root = repoRoot(opts.cwd);
   const month = resolveMonth(root, opts.fid, opts.month);
   const file = workflowLockPath(root, month, opts.fid);
@@ -227,16 +345,38 @@ export function acquireWorkflowLock(opts: {
 
   const holder = readHolder(file) ?? { line: "" };
   const verdict = liveReason(root, month, opts.fid, holder, Date.now());
-  if ("live" in verdict) {
-    throw new CommandError(
-      EXIT.NO,
-      `workflow already running for ${opts.fid} (workflow=${holder.workflow ?? "?"}, ${verdict.live})`,
-    );
-  }
+  if ("live" in verdict) return { path: file, month, heldBy: verdict.live };
   opts.log(`reclaiming ${verdict.reason} lock for ${opts.fid}: ${holder.line}`);
   fs.rmSync(file, { force: true });
-  if (!tryCreate(file, line)) throw new CommandError(EXIT.NO, `lock contended for ${opts.fid}`);
+  if (!tryCreate(file, line)) {
+    // Another acquirer took the lock between the removal and this create.
+    const winner = readHolder(file) ?? { line: "" };
+    return {
+      path: file,
+      month,
+      heldBy: {
+        workflow: winner.workflow ?? null,
+        since: winner.at ?? null,
+        lastStepAt: null,
+        idleSeconds: null,
+        line: winner.line,
+      },
+    };
+  }
   return { path: file, month, token, reclaimed: { holder: holder.line, reason: verdict.reason } };
+}
+
+/** {@link tryAcquireWorkflowLock}, refusing with {@link EXIT_LOCK_BUSY} when a live run holds the lock. */
+export function acquireWorkflowLock(opts: {
+  cwd: string;
+  workflow: string;
+  fid: string;
+  month?: string;
+  log: (m: string) => void;
+}): WorkflowLockResult {
+  const lock = tryAcquireWorkflowLock(opts);
+  if ("heldBy" in lock) throw new CommandError(EXIT_LOCK_BUSY, busyMessage(opts.fid, lock.heldBy));
+  return lock;
 }
 
 // ---------------------------------------------------------------------------
@@ -305,29 +445,46 @@ export const locksCommand: CommandSpec = {
   summary: "Acquire and release the per-feature workflow lock.",
   verbs: {
     acquire: {
-      summary: "Take the workflow lock, reclaiming a dead holder's.",
+      summary:
+        "Take the workflow lock, reclaiming a dead holder's; a live holder exits 8 and prints heldBy.",
       use: "workflow",
       flags: [KIND_FLAG, LOCK_WORKFLOW_FLAG, FID_FLAG, MONTH_FLAG],
       output: {
         kind: "workflow",
         path: "absolute path of the lock file",
-        token: "this holder's token; pass it to release",
+        token: "this holder's token; pass it to release (null when busy)",
         month: "the month bucket",
         reclaimed: "{holder, reason: finished|stale|orphaned}; null when none",
+        heldBy:
+          "{workflow, since, lastStepAt, idleSeconds, line} of the live run that keeps the lock; null when this call took it",
+        route:
+          "go when this call took the lock; stop when a live run keeps it (exit 8). An error exit prints no route",
+        message:
+          "for stop: the line for the owner naming the holder, when it took the lock and last stepped, and when this run can start again; empty for go",
       },
       exitCodes: {
         [EXIT_SPLIT_BUCKET]: "the feature has logs in more than one month bucket",
+        [EXIT_LOCK_BUSY]:
+          "another run of the feature holds the lock and stepped in the last 30 minutes; nothing was taken or changed",
       },
       run: (ctx) => {
         const kind = kindOf(ctx);
-        const lock = acquireWorkflowLock({
+        const fid = String(ctx.flags.fid);
+        const lock = tryAcquireWorkflowLock({
           cwd: ctx.cwd,
           workflow: String(ctx.flags.workflow),
-          fid: String(ctx.flags.fid),
+          fid,
           month: str(ctx.flags.month),
           log: ctx.log,
         });
-        ctx.emit({ kind, ...lock });
+        if ("heldBy" in lock) {
+          const by = lock.heldBy;
+          const message = `${by.workflow ?? "another run"} has held ${fid} since ${by.since ?? "an unknown time"} and last stepped at ${by.lastStepAt ?? "no step yet"}. Nothing changed; this run can start again once that run ends or has been idle ${WORKFLOW_LOCK_IDLE_S / 60} minutes.`;
+          ctx.emit({ kind, ...lock, token: null, reclaimed: null, route: "stop", message });
+          ctx.log(busyMessage(fid, lock.heldBy));
+          return EXIT_LOCK_BUSY;
+        }
+        ctx.emit({ kind, ...lock, heldBy: null, route: "go", message: "" });
         return EXIT.OK;
       },
     },

@@ -52,8 +52,55 @@ function payloadPaths(): string[] {
 }
 
 /**
+ * The ten project documents ship as starters under `docs/`. They are the project's documents
+ * once copied, so a prompt or rule may name them (and their file names) in a qualified read
+ * (applicability, equivalents, warn and continue); `#864 — qualified project document reads`
+ * below checks the qualification. Executable and configuration templates stay forbidden.
+ */
+const PROJECT_DOC_NAMES: ReadonlySet<string> = new Set(
+  [
+    "architecture",
+    "technology",
+    "security",
+    "data-schema",
+    "testing",
+    "deployments",
+    "observability",
+    "design",
+    "noise",
+    "setup",
+  ].flatMap((topic) => [`docs/${topic}.md`, `${topic}.md`]),
+);
+
+/**
+ * Destinations of `.bkit/templates.md` § Contract rows that copy one sample file to a path
+ * with another name (`prettierignore.example` → `.prettierignore`).
+ */
+function renamedDestinations(): string[] {
+  const doc = fs.readFileSync(path.join(getCoreRoot(), ".bkit", "templates.md"), "utf-8");
+  const section = doc.slice(doc.indexOf("## Contract"));
+  const start = section.indexOf("\n| ");
+  const table = section.slice(start, section.indexOf("\n\n", start));
+  const single = (cell: string) => {
+    const paths = [...cell.matchAll(/`([^`]+)`/g)].map((m) => m[1]!);
+    return paths.length === 1 ? paths[0]! : null;
+  };
+  return table
+    .split("\n")
+    .slice(3)
+    .map((row) => row.split("|").map((cell) => cell.trim()))
+    .flatMap(([, , copyFrom = "", to = ""]) => {
+      const from = single(copyFrom);
+      const dest = single(to);
+      if (!from?.startsWith(".bkit/templates/") || from.endsWith("/") || !dest) return [];
+      return path.posix.basename(from) === path.posix.basename(dest) ? [] : [dest];
+    });
+}
+
+/**
  * Literal strings that name a template path:
  * - every template's full path (`.github/workflows/bkit-ci.yml`, `docs/capabilities.md`);
+ * - every Contract destination whose name differs from its sample's (`.prettierignore`);
  * - every top-level folder holding only templates, with its slash (`.husky/`, `scripts/`);
  * - every template file name with an extension that no owned file shares (`bkit-ci.yml`);
  *   a bare word like `pre-commit` is ordinary prose, and `settings.json` is also an owned file.
@@ -68,7 +115,14 @@ function forbiddenNames(): string[] {
   const fileNames = templates
     .map((rel) => path.posix.basename(rel))
     .filter((name) => name.slice(1).includes(".") && !ownedNames.has(name));
-  return [...new Set([...templates, ...topFolders.map((top) => `${top}/`), ...fileNames])];
+  return [
+    ...new Set([
+      ...templates,
+      ...renamedDestinations(),
+      ...topFolders.map((top) => `${top}/`),
+      ...fileNames,
+    ]),
+  ].filter((name) => !PROJECT_DOC_NAMES.has(name));
 }
 
 /**
@@ -122,9 +176,12 @@ describe("no workflow or prompt names a template path", () => {
     const names = forbiddenNames();
     const templates = shippedPaths();
     expect(templates.length).toBeGreaterThan(0);
-    for (const rel of templates) expect(names, rel).toContain(rel);
+    for (const rel of templates.filter((t) => !PROJECT_DOC_NAMES.has(t))) {
+      expect(names, rel).toContain(rel);
+    }
     for (const rel of [
-      ".prettierignore",
+      "prettierignore.example",
+      "lintstagedrc.example.json",
       ".cursor/Dockerfile",
       ".serena/project.yml",
       ".graphifyignore",
@@ -136,6 +193,8 @@ describe("no workflow or prompt names a template path", () => {
     ]) {
       expect(names, rel).toContain(rel);
     }
+    expect(names).toContain(".prettierignore");
+    expect(names).toContain(".lintstagedrc.json");
     expect(names).toContain("bkit-ci.yml");
     expect(names).toContain("bkit-renovate.yml");
     expect(names).toContain(".husky/");
@@ -171,5 +230,58 @@ describe("no workflow or prompt names a template path", () => {
         .map(({ line, n }) => `${n}: ${name} — ${line.trim().slice(0, 120)}`),
     );
     expect(hits).toEqual([]);
+  });
+});
+
+describe("#864 — qualified project document reads", () => {
+  const DOC_TOPICS = [
+    "architecture",
+    "technology",
+    "security",
+    "data-schema",
+    "testing",
+    "deployments",
+    "observability",
+    "design",
+    "noise",
+    "setup",
+  ];
+  const docPaths = DOC_TOPICS.map((t) => `docs/${t}.md`);
+
+  /** True when the paragraph around a doc mention states applicability and warn-and-continue. */
+  const qualified = (paragraph: string): boolean =>
+    /\b(when|if)\b[^.]*\b(present|exists|adopted|applies|applicable|relevant|touch)/i.test(
+      paragraph,
+    ) && /warn/i.test(paragraph);
+
+  function unqualifiedMentions(): string[] {
+    return corpus().flatMap(({ file, text }) =>
+      text
+        .split(/\n\s*\n/)
+        .filter((paragraph) => docPaths.some((doc) => paragraph.includes(doc)))
+        .filter((paragraph) => !qualified(paragraph))
+        .map((paragraph) => `${file}: ${paragraph.trim().slice(0, 100)}`),
+    );
+  }
+
+  it("allows qualified project document reads and rejects mandatory template dependencies", () => {
+    const names = forbiddenNames();
+    // The ten starters are project documents now: a named, qualified read is allowed.
+    for (const doc of docPaths) expect(names, doc).not.toContain(doc);
+    // Executable and configuration templates stay forbidden dependencies.
+    for (const rel of [".husky/", "scripts/", "bkit-ci.yml", ".graphifyignore"]) {
+      expect(names, rel).toContain(rel);
+    }
+
+    // The qualification rule itself.
+    expect(
+      qualified(
+        "Read `docs/testing.md` when present and the step touches tests; warn and continue if it is missing.",
+      ),
+    ).toBe(true);
+    expect(qualified("Read `docs/testing.md` first.")).toBe(false);
+
+    const unqualified = unqualifiedMentions();
+    expect(unqualified).toEqual([]);
   });
 });

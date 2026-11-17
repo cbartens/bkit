@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   MISSING,
   checkedTable,
+  oneLine,
   markdownTable,
   parseMarkdownTable,
   parseText,
@@ -260,5 +261,21 @@ describe("parseText", () => {
     ["a line with no key", "just text\n"],
   ])("returns null for %s", (_label, text) => {
     expect(parseText(text)).toBeNull();
+  });
+});
+
+describe("oneLine", () => {
+  it.each([
+    ["a line break", "a\nb", "a b"],
+    ["CRLF and blank lines", "a\r\n\r\nb", "a b"],
+    ["a tab and other control characters", "a\tb\u0000c\u007fd", "a b c d"],
+    ["surrounding white space", "  a \n ", "a"],
+  ])("folds %s to one line", (_label, value, expected) => {
+    expect(oneLine(value)).toBe(expected);
+  });
+
+  it("caps the length with an ellipsis and leaves a short value whole", () => {
+    expect(oneLine("abcdef", 4)).toBe("abc…");
+    expect(oneLine("abcd", 4)).toBe("abcd");
   });
 });

@@ -6,10 +6,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getCoreRoot, getTemplatesRoot } from "../../shared/package-roots";
 import { detectContextFetchMissing } from "../before/context-fetch";
 import { buildTrackerSetupAdvisory } from "../after/github";
-import { buildDepUpdaterSetupAdvisory } from "../after/tools";
+import { buildDepUpdaterSetupAdvisory, detectProjectDocs } from "../after/tools";
+import { PROJECT_DOC_TOPICS, projectDocPath } from "../../install/project-docs";
 import { COMPLY_PHASES, TIPS_CONTEXTS } from "../../cli";
 import { ALL_WORKFLOWS, EVERY_CONTEXT, SETUP_TIPS, type SetupTip } from "./catalogue";
-import { STAR_TIP_ID, dropTipSilencedAdvisories, isTipSilenced, orderForWorkflow } from "./index";
+import {
+  STAR_TIP_ID,
+  collectTips,
+  dropTipSilencedAdvisories,
+  isTipSilenced,
+  orderForWorkflow,
+} from "./index";
 import type { PreflightFinding } from "../before/index";
 
 const tip = (id: string): SetupTip => SETUP_TIPS.find((t) => t.id === id)!;
@@ -209,6 +216,16 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("gh-mcp").fires(cwd)).toBe(false);
   });
 
+  it("gh-mcp stays quiet about the token inside the pre-push hook's inner run", () => {
+    pkg({ tracker: { default: "github" } });
+    write(".mcp.json", JSON.stringify({ mcpServers: { github: { url: "https://x" } } }));
+    vi.stubEnv("CI", "");
+    vi.stubEnv("BKIT_GH_TOKEN", "");
+    expect(tip("gh-mcp").fires(cwd)).toBe(true);
+    vi.stubEnv("BKIT_PRE_PUSH_LOGGED", "1");
+    expect(tip("gh-mcp").fires(cwd)).toBe(false);
+  });
+
   it.each([
     ["github", ["BKIT_GH_TOKEN=x"]],
     ["linear", ["BKIT_GH_TOKEN=x", "BKIT_LINEAR_API_KEY=y"]],
@@ -354,6 +371,33 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("cloud").fires(cwd)).toBe(false);
   });
 
+  it("cloud tip names the Claude GitHub App and BKIT_ANTHROPIC_API_KEY only for cloud.agent claude", () => {
+    const cloudText = (): string => {
+      const t = collectTips(cwd).tips.find((x) => x.id === "cloud")!;
+      return `${t.ask} ${t.steps}`;
+    };
+    pkg({ cloud: { agent: "claude" } });
+    const claude = cloudText();
+    expect(claude).toContain("BKIT_ANTHROPIC_API_KEY");
+    expect(claude).toContain("Claude");
+    expect(claude).toContain("bkit-cloud-bootstrap.sh");
+    for (const agent of ["opencode", "codex", "cursor"]) {
+      pkg({ cloud: { agent } });
+      const variant = cloudText();
+      expect(variant, agent).not.toContain("BKIT_ANTHROPIC_API_KEY");
+      expect(variant, agent).not.toContain("bkit-cloud-bootstrap.sh");
+      expect(variant, agent).not.toMatch(/Claude (GitHub )?App/);
+    }
+  });
+
+  it("cloud tip for codex names --codex and BKIT_OPENAI_API_KEY", () => {
+    pkg({ cloud: { agent: "codex" } });
+    const t = collectTips(cwd).tips.find((x) => x.id === "cloud")!;
+    const text = `${t.ask} ${t.steps}`;
+    expect(text).toContain("--codex");
+    expect(text).toContain("BKIT_OPENAI_API_KEY");
+  });
+
   it("ci-workflow follows a renamed bkit.testing.ciWorkflow", () => {
     pkg({ testing: { ciWorkflow: "ci.yml" } });
     expect(tip("ci-workflow").fires(cwd)).toBe(true);
@@ -428,6 +472,37 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("min-push").fires(cwd)).toBe(false);
   });
 
+  it("pre-push-pr-conflict fires only for a hook without merge-tree", () => {
+    expect(tip("pre-push-pr-conflict").fires(cwd)).toBe(false);
+    write(".husky/pre-push", "pnpm -s bkit ci push-gate\n");
+    expect(tip("pre-push-pr-conflict").fires(cwd)).toBe(true);
+    write(
+      ".husky/pre-push",
+      'PUSH_BRANCH_SHA="$l"\ngit merge-tree --write-tree --name-only "$BASE" "$SHA"\n',
+    );
+    expect(tip("pre-push-pr-conflict").fires(cwd)).toBe(false);
+  });
+
+  it("pre-push-pr-conflict fires for a hook with merge-tree but no PUSH_BRANCH_SHA", () => {
+    write(".husky/pre-push", 'git merge-tree --write-tree --name-only "$BASE" "$SHA"\n');
+    expect(tip("pre-push-pr-conflict").fires(cwd)).toBe(true);
+    write(
+      ".husky/pre-push",
+      'PUSH_BRANCH_SHA="$local_sha"\ngit merge-tree --write-tree --name-only "$BASE" "$PUSH_BRANCH_SHA"\n',
+    );
+    expect(tip("pre-push-pr-conflict").fires(cwd)).toBe(false);
+  });
+
+  it("pre-push-direnv fires only for a hook without direnv exec in a repo with .envrc", () => {
+    expect(tip("pre-push-direnv").fires(cwd)).toBe(false);
+    write(".husky/pre-push", "pnpm -s bkit ci push-gate\n");
+    expect(tip("pre-push-direnv").fires(cwd)).toBe(false);
+    write(".envrc", "export FOO=1\n");
+    expect(tip("pre-push-direnv").fires(cwd)).toBe(true);
+    write(".husky/pre-push", 'BKIT_PRE_PUSH_LOGGED=1 direnv exec . sh "$0" "$@"\n');
+    expect(tip("pre-push-direnv").fires(cwd)).toBe(false);
+  });
+
   it("disk-prune fires only once a pre-push hook exists without either step file", () => {
     expect(tip("disk-prune").fires(cwd)).toBe(false);
     write(".husky/pre-push");
@@ -466,6 +541,116 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("bkit-output-json").fires(cwd)).toBe(false);
   });
 
+  describe("project-docs", () => {
+    const POPULATED_DOC =
+      "# Doc\n\nThe api service issues session cookies; the edge proxy applies the rate limits.\n";
+    const INDEX_HEAD =
+      "<!-- bkit:start -->\nmanaged\n<!-- bkit:end -->\n\n## Project Documents\n\n" +
+      "| Doc | Design | Plan | Build | Debug | Ship | Scope |\n| --- | --- | --- | --- | --- | --- | --- |\n";
+
+    /** The `project-docs` tip, asserted present so a missing entry fails with a clear message. */
+    const projectDocsTip = (): SetupTip => {
+      const found = SETUP_TIPS.find((t) => t.id === "project-docs");
+      expect(found, "project-docs tip is in the catalogue").toBeDefined();
+      return found!;
+    };
+
+    /**
+     * Write every project doc as `texts[topic]` (populated by default) and index them all, plus a
+     * populated `docs/components.md`.
+     */
+    const writeProjectDocs = (texts: Partial<Record<string, string>> = {}) => {
+      write("docs/components.md", POPULATED_DOC);
+      const rows: string[] = [];
+      for (const topic of PROJECT_DOC_TOPICS) {
+        const rel = projectDocPath(topic);
+        write(rel, texts[topic] ?? POPULATED_DOC);
+        rows.push(`| \`${rel}\` | ○ | ○ | ○ | ○ | ○ | Project doc. |\n`);
+      }
+      write(".agents/docs.md", INDEX_HEAD + rows.join(""));
+    };
+
+    const starterText = (topic: string): string =>
+      fs.readFileSync(path.join(getTemplatesRoot(), "docs", `${topic}.md`), "utf-8");
+
+    it("project-docs tip fires when a project doc is missing", () => {
+      writeProjectDocs();
+      fs.rmSync(path.join(cwd, "docs", "security.md"));
+      expect(detectProjectDocs(cwd).map((f) => f.id)).toContain("project-docs-missing");
+      expect(projectDocsTip().fires(cwd)).toBe(true);
+    });
+
+    it("project-docs tip fires when docs/components.md is missing", () => {
+      writeProjectDocs();
+      fs.rmSync(path.join(cwd, "docs", "components.md"));
+      expect(detectProjectDocs(cwd).map((f) => f.id)).toEqual(["project-docs-missing"]);
+      expect(projectDocsTip().fires(cwd)).toBe(true);
+    });
+
+    it("project-docs tip stays silent when every project doc is populated and indexed", () => {
+      writeProjectDocs();
+      expect(detectProjectDocs(cwd).map((f) => f.id)).toEqual([]);
+      expect(projectDocsTip().fires(cwd)).toBe(false);
+    });
+
+    it("project-docs tip names the two project-docs advisory ids", () => {
+      const t = projectDocsTip();
+      expect([...advisoriesOf(t)]).toEqual(["project-docs-missing", "project-docs-unpopulated"]);
+      expect(t.caution).toBeTruthy();
+    });
+
+    it("project-docs tip stays silent for a Not applicable data-schema and a header-only noise", () => {
+      writeProjectDocs({
+        "data-schema":
+          "# Data schema\n\n## Overview\n\nNot applicable: no persistent store\n\n## Open questions\n",
+        noise:
+          "# Noise\n\n## Downgrades\n\n| Date | Signal | Where | Change | Trigger | Why it is safe | Recheck when |\n| --- | --- | --- | --- | --- | --- | --- |\n",
+      });
+      expect(detectProjectDocs(cwd).map((f) => f.id)).toEqual([]);
+      expect(projectDocsTip().fires(cwd)).toBe(false);
+    });
+
+    it("project-docs tip fires when a project doc is an unchanged starter copy", () => {
+      writeProjectDocs({ architecture: starterText("architecture") });
+      expect(detectProjectDocs(cwd).map((f) => f.id)).toContain("project-docs-unpopulated");
+      expect(projectDocsTip().fires(cwd)).toBe(true);
+    });
+
+    it("project-docs tip fires when a project doc is empty", () => {
+      writeProjectDocs({ testing: "" });
+      expect(detectProjectDocs(cwd).map((f) => f.id)).toContain("project-docs-unpopulated");
+      expect(projectDocsTip().fires(cwd)).toBe(true);
+    });
+
+    it("project-docs tip stays silent when project-docs-missing is ignored", () => {
+      pkg({ advisories: { ignore: ["project-docs-missing"] } });
+      writeProjectDocs();
+      fs.rmSync(path.join(cwd, "docs", "security.md"));
+      expect(projectDocsTip().fires(cwd)).toBe(true);
+      const result = collectTips(cwd);
+      expect(result.tips.map((t) => t.id)).not.toContain("project-docs");
+      expect(result.suppressed.map((s) => s.id)).toContain("project-docs");
+    });
+
+    it("ignoring project-docs-missing drops the unpopulated advisory and keeps project-docs-index-missing", () => {
+      pkg({ advisories: { ignore: ["project-docs-missing"] } });
+      write("docs/architecture.md", starterText("architecture"));
+      const findings = detectProjectDocs(cwd);
+      const ids = findings.map((f) => f.id);
+      expect(ids).toEqual(
+        expect.arrayContaining([
+          "project-docs-missing",
+          "project-docs-unpopulated",
+          "project-docs-index-missing",
+        ]),
+      );
+      const kept = dropTipSilencedAdvisories(findings, cwd).map((f) => f.id);
+      expect(kept).not.toContain("project-docs-missing");
+      expect(kept).not.toContain("project-docs-unpopulated");
+      expect(kept).toContain("project-docs-index-missing");
+    });
+  });
+
   describe("bkit-upgrade", () => {
     const pin = (version: string) =>
       write(".bkit/version", JSON.stringify({ pinnedVersion: version }));
@@ -499,6 +684,69 @@ describe("SETUP_TIPS — detection", () => {
       cache("6.1.0");
       vi.stubEnv("BKIT_NO_UPDATE_CHECK", "1");
       expect(tip("bkit-upgrade").fires(cwd)).toBe(true);
+    });
+  });
+
+  describe("project-goals", () => {
+    /** The ask the person sees: the per-repo `resolve` text when the tip has one. */
+    const askFor = (t: SetupTip, dir: string): string => (t.resolve?.(dir) ?? t).ask;
+    const rules = (goals: string | null) =>
+      write(
+        ".agents/rules.md",
+        "<!-- bkit:end -->\n\n## Project Rules\n\n" +
+          (goals === null ? "" : `## Project Goals\n\n${goals}\n`) +
+          "\n## Project Settings\n\nnone\n",
+      );
+
+    it("project-goals fires when the rules file has no Project Goals heading", () => {
+      rules(null);
+      expect(tip("project-goals").fires(cwd)).toBe(true);
+    });
+
+    it("project-goals fires when the section holds only commented examples", () => {
+      rules(
+        "What this project optimises for.\n\n<!-- Examples:\n- **Correct over fast:** x\n-->\n",
+      );
+      expect(tip("project-goals").fires(cwd)).toBe(true);
+    });
+
+    it("project-goals stays quiet when the section holds one bullet, and when there is no rules file", () => {
+      expect(tip("project-goals").fires(cwd)).toBe(false); // no rules file
+      rules("- **Correct over fast:** A wrong answer costs more than a slow one.");
+      expect(tip("project-goals").fires(cwd)).toBe(false);
+    });
+
+    it("project-goals stays quiet when a second Project Goals section holds a goal", () => {
+      write(
+        ".agents/rules.md",
+        "<!-- bkit:end -->\n\n## Project Rules\n\n## Project Goals\n\n<!-- Examples:\n- x\n-->\n\n" +
+          "## Project Settings\n\nnone\n\n## Project Goals\n\n- **Correct over fast:** x\n",
+      );
+      expect(tip("project-goals").fires(cwd)).toBe(false);
+    });
+
+    it("project-goals ask says to fill the section when the heading already exists", () => {
+      rules("What this project optimises for.\n\n<!-- Examples:\n- x\n-->\n");
+      const t = tip("project-goals");
+      expect(t.fires(cwd)).toBe(true);
+      const ask = askFor(t, cwd);
+      expect(ask).toMatch(/fill/i);
+      expect(ask).toMatch(/already|existing/i);
+      expect(ask).not.toMatch(/^Add a `## Project Goals` section/);
+    });
+
+    it("project-goals stays quiet when the goals are a numbered list", () => {
+      rules("1. **Correct over fast:** x");
+      expect(tip("project-goals").fires(cwd)).toBe(false);
+      rules("1) **Correct over fast:** x");
+      expect(tip("project-goals").fires(cwd)).toBe(false);
+    });
+
+    it("project-goals stays quiet when the goals use * bullets", () => {
+      rules("* **Correct over fast:** x");
+      expect(tip("project-goals").fires(cwd)).toBe(false);
+      rules("+ **Correct over fast:** x");
+      expect(tip("project-goals").fires(cwd)).toBe(false);
     });
   });
 

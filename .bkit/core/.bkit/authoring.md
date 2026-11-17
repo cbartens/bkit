@@ -225,7 +225,7 @@ This section applies to `.bkit/core/prompts/*.md`, `.bkit/core/workflows/*.md`, 
 
 ## Docs
 
-This section applies to `.agents/**`, `.bkit/*.md` and `docs/*.md`. § All Agent-Read Files applies as well.
+This section applies to `.agents/**`, `.bkit/*.md`, `docs/*.md` and `.bkit/templates/docs/*.md`. § All Agent-Read Files applies as well.
 
 - **Rules header:** Open every doc with a `> [!CAUTION]` box holding `**Purpose:**` and `**Rules:**`.
   - Why: The box tells an agent what belongs in the doc and how to edit it before it reads the rest. The **Authoring** rule in `.agents/rules.md` has every agent follow it.
@@ -237,6 +237,31 @@ This section applies to `.agents/**`, `.bkit/*.md` and `docs/*.md`. § All Agent
 
 - **Index:** Give each new doc one row in `.agents/docs.md`, with the phases that read it and a one-line scope, and copy no text from the doc into it.
   - Why: The index is how agents find docs. Every prompt's Process starts by reading `.agents/docs.md` and loading the docs it lists for the task.
+
+- **Mermaid for diagrams:** Draw every diagram of flow, order, dependency or relationship as Mermaid; directory trees and command output stay plain text.
+  - Why: Mermaid renders on GitHub and reads as text to an agent, while ASCII art breaks when edited and misreads in a diff. A doc needs no chart, but a chart it has follows this rule.
+  - Say in one sentence what the arrows mean, and use node names from the doc's tables.
+  - Keep a chart to about 15 nodes, and split larger ones with `subgraph` or a second chart.
+  - Use only `flowchart`, `sequenceDiagram`, `erDiagram` or `stateDiagram-v2`, quote every label, and set no colours, `style` or `classDef`.
+  - Example: `.bkit/core/.bkit/templates.md` § Project docs — adoption order.
+
+- **Project-doc starters:** A starter in `.bkit/templates/docs/*.md` opens with a rules box holding **Purpose**, the rules, **Not here** and **Update when**.
+  - Why: A person or the `bkit-utility-update-documentation` prompt fills a starter, and each works from the starter alone, so the starter carries the steps and the rules.
+  - **Purpose** says what the doc holds and the question it answers, with no "Read before …" clause, because the phase columns of `.agents/docs.md` say when to read it.
+  - **Not here** names what belongs elsewhere and where. **Update when** names the events that change the doc.
+  - A section marked `> **bkit practice:**` keeps its heading text and stays a separate section from the project's blanks.
+  - Example: `.bkit/templates/docs/components.md`.
+
+- **Starter facts only:** In a starter in `.bkit/templates/docs/*.md`, write the current state with no history, take every fact from code, config or an approved spec, and never copy template example text as a fact.
+  - Why: Agents act on what a doc says, so a stale or invented line causes wrong work.
+  - Put each unknown under `## Open questions`.
+
+- **Starter: write once, link elsewhere:** In a starter in `.bkit/templates/docs/*.md`, write each topic once, link to it from other docs, and name the file that holds a value instead of typing the value.
+  - Why: A second copy of a value goes stale and contradicts the first.
+  - Use a table for facts, and prose only for reasoning.
+
+- **Starter empty state:** In a starter in `.bkit/templates/docs/*.md`, write `Not applicable: {reason}` for a doc, or a section, that does not apply to the project.
+  - Why: A reason separates a doc that does not apply from one nobody filled in.
 
 ## Prompts and Workflows
 
@@ -485,8 +510,9 @@ A doc template is the skeleton of a document an agent fills in: the plan (`docs/
 | Build | `@bkit-build-plan-tasks` | Works each task until its `DONE WHEN` holds, and logs `DONE` or `BLOCKED`. It never edits a planned test and never ticks a task box. |
 | Verify | `@bkit-build-plan-verify`, then `bkit tasks tick` | Checks each task against the code. The engine ticks the tasks that pass. |
 
-- **Template is shape, prompt owns rules:** A template holds headings, tables, placeholders, checkbox labels, owner callouts and the markers the engine parses, and nothing else.
+- **Fill-in steps in the template, acting rules in the prompt:** A template holds headings, tables, placeholders, checkbox labels, owner callouts, the markers the engine parses and the instructions for filling it in; the rules for acting on it live in the prompts.
   - Why: Different agents write, review, convert, build and verify the plan, and a rule in the template reaches all of them, whether it applies or not.
+  - Project-doc starters in `.bkit/templates/docs/*.md` carry their own fill-in steps, because no prompt fills them.
   - Every rule for filling, reviewing or acting on a template lives in the prompt that acts on it, as a labelled Contract bullet worded the same in every prompt that carries it. `.bkit/instructions.md` § Template Instructions names the prompts that carry each rule and keeps their wording identical.
   - Exception: **Audit templates carry their procedure**.
   - Example (`docs/templates/bkit-plan.md` § Agent Execution Runbook): the plan template holds the shape of a task block.
@@ -628,17 +654,26 @@ This section applies to `.bkit/core/workflows/*.md`. § Prompts and Workflows ap
     - [ ] Each unconfirmed item deferred (`decisions pending --defer`)
     ```
 
-- **Human questions:** Only the orchestrator asks the owner, in the session, with every question of the round in one plain-text message, never through a subagent or a host question tool.
+- **Human questions:** Only the orchestrator asks the owner, in the session, in plain text, never through a subagent or a host question tool, at every question point.
   - Why: The owner answers a whole round at once and may answer with one word, so "yes" must safely take the recommendations and a letter must map to exactly one option. Recording the wait and the reply lets a resumed run see where it stopped.
   - Each question takes this shape:
     ```markdown
-    **Q{n} — {title}:** {the question, worded so that "yes" accepts the recommendation}
-    Options: A) {option} / B) {option}
-    Recommended: A) {option}
+    **Q{n} — {title}:** {what you are deciding, in plain English, worded so "yes" takes the recommendation}
+    A) {option} — {what happens if you pick it}
+    B) {option} — {what happens if you pick it}
+    Recommended: A) {option} — {why}
+    Default if unanswered: {what happens}
     ```
-  - A question no agent can settle (a hard blocker) has `No recommendation` in place of the `Recommended:` line.
-  - Number questions from `Q1`, and letter options `A)`, `B)`, `C)` in order.
-  - Say what the owner must decide and what each option does, in plain English, before naming any file, test or identifier.
+  - Number questions from `Q1`, and letter options `A)`, `B)`, `C)` in order, one option per line.
+  - Say what the owner must decide, what each option does and the reason for the recommendation, in plain English, before naming any file, test or identifier.
+  - `Default if unanswered:` takes one phrase from this closed set, and joins two with `; `: `the run waits for you`, `taken as A when nobody can be asked`, `the run stops when nobody can be asked`, `the plan assumes A`, `the plan stops at Gate 1 until you answer`, `the design assumes A`, `written as a needs-decision deferral`.
+  - A point that never has a recommendation drops the "yes" half of the question and of the reply line.
+  - A question no agent can settle (a hard blocker) has `Recommended: none — {why}` in place of a recommendation, and "yes" never answers it.
+  - The stop option reads `Stop — the run ends here with a handover; the next run resumes here` mid-run, and `Stop — nothing changes; the run can be started again` at Step 1.
+  - End each message once with the reply line, naming what "stop" does at that point: `Reply with a letter per question, or "yes" to take every recommendation. "stop" ends here with a handover; the next run resumes here.`
+  - When a round has 3 or more questions, add `Or say "one by one" and I'll ask them one at a time.` The "one by one" route counts as the one turn or pause it replaces, and follows the count of questions asked in the message.
+  - A step that needs an action, not a decision, writes `**Action needed — {title}:** {what to do}. Then say "continue".`
+  - Before a status file exists, write no status rows. Wait with `end turn → wait for the answer; no status file yet`.
   - Look facts up in the repo, docs and tools. Ask the owner only for decisions.
   - Run each round in this order:
     1. Narrate the round.
@@ -646,11 +681,21 @@ This section applies to `.bkit/core/workflows/*.md`. § Prompts and Workflows ap
     3. End the turn.
     4. When the reply arrives, record it with `bkit status row --type=owner-answer` before doing anything else.
   - Before the branches of a step that routes on the answer, say that a reply naming a letter (`B`, `B)` or `B) {option}`) means the option that letter labels.
-  - Example (`bkit-debug.md` § Loop Question): "yes" stops the loop, which is the recommendation. The question already gives the reason, so the `Recommended:` line needs none.
+  - Example (`bkit-debug.md` § Loop Question): the count did not fall.
     ```markdown
-    **Q1 — Fix:** The last fix attempt left no fewer failures. Stop here instead of trying again?
-    Options: A) Stop / B) Try again
-    Recommended: A) Stop
+    **Q1 — Fix:** The count did not fall between the first and the last round (4 → 4). Stop here instead of trying again?
+    A) Stop — the run ends here with a handover; the next run resumes here
+    B) Try again — another round runs with the same limit
+    Recommended: A) Stop — another round is unlikely to change a count that stayed at 4
+    Default if unanswered: the run waits for you
+    ```
+  - Example (`bkit-build.md` § Verify gap): a task fails its check.
+    ```markdown
+    **Q1 — Gap:** Task 3 still fails its check after the fix. Accept it as it is?
+    A) Accept — the task is logged as accepted and the build continues
+    B) Fix now — the fix runs again before the build continues
+    Recommended: B) Fix now — the failing check is in code this plan changed
+    Default if unanswered: taken as A when nobody can be asked
     ```
   - Example (`bkit-design.md` § Step 3 — Grill): the shape for a round of several questions.
 

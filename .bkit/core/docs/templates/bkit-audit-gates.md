@@ -2,7 +2,7 @@
 
 {{BKIT_MANAGED_MARKER}}
 
-<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. -->
+<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. When you edit this template, follow `.bkit/authoring.md` § Doc Templates. -->
 
 # Gate Candidates
 
@@ -35,8 +35,10 @@ Maintenance sweeps find breakage, and none of them prevents the next one. Siblin
 - Required status checks and a merge queue (e.g., GitHub rulesets).
 - OpenSSF Scorecard checks, at the Scorecard version read.
 - DORA continuous integration capability.
-- bkit block of `docs/testing.md` (bkit version from `.bkit/version`): § CI test tiers (the bkit scaffold); § Accepted divergences; § Step names say whether a red is real; § Composite actions: two rules that fail silently; § JUnit reports for bkit
-- bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Commit-message force tags; § Workflow-file limits GitHub does not enforce visibly; § Ship gate + bookkeeping
+- bkit block of `docs/testing.md` (bkit version from `.bkit/version`): § CI test tiers (the bkit scaffold); § Accepted divergences; § Step names say whether a red is real; § Composite actions: two rules that fail silently
+- `.bkit/workflows.md` § Local gate scripts (Failure count from JUnit reports)
+- bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Workflow-file limits GitHub does not enforce visibly
+- `.bkit/workflows.md` § Test and release mechanics (Commit-message force tags; Ship gate + bookkeeping)
 - bkit block of `docs/design.md` (bkit version from `.bkit/version`): § Machine-checked reference
 
 ### Scope

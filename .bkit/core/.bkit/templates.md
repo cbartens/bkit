@@ -13,7 +13,7 @@
 
 ## What each template is for
 
-The adoption order is the `bkit tips` order. The machine lock has no tip, so adopt it when test gates or local services need to run one at a time across checkouts. The health check has no tip either: the `bkit-stub-health` advisory raises it while your CI copy keeps that stub. The sections below give each template's install steps and traps.
+The adoption order of the tool templates is the `bkit tips` order; for the project docs it is § Project docs — adoption order. The machine lock has no tip, so adopt it when test gates or local services need to run one at a time across checkouts. The health check has no tip either: the `bkit-stub-health` advisory raises it while your CI copy keeps that stub. The sections below give each template's install steps and traps.
 
 <!-- prettier-ignore -->
 | Template | What it's for | Skip it and |
@@ -33,12 +33,13 @@ The adoption order is the `bkit tips` order. The machine lock has no tip, so ado
 | Secrets sync | One local file → every secret store; proves copies match without printing values. | Hand-copied secrets drift: "works for me, broken in production". |
 | Issue forms | Three forms (idea, well-defined change, bug) asking for what design, plan / build and debug read first. | Issues arrive as a title and a line; agents guess at scope, "done" and repro steps. |
 | graphify | Code map (`docs/capabilities.md`) agents check before building something again. | Agents rediscover structure each run; ripple effects missed. |
+| Component map | Purpose-based overview of the repository's responsibilities and main journeys. | Readers have to infer what the system does from implementation details. |
 | Dependabot / Renovate | Small grouped update PRs; pinned Actions; security fixes skip the queue. | Updates pile into one large risky upgrade. |
 | Trivy | Fails CI on a known-vulnerable package in any language, a risky container or cluster setting, or a committed secret; a daily run catches advisories with no fix yet. | A vulnerable package or leaked key merges unnoticed; an advisory with no fixed release never shows up anywhere. |
 | Prettier tables | One edited cell = one changed row in the diff. | A one-word table edit diffs as the whole table. |
 | tmp/ prune | Each push deletes scratch files agents left in `tmp/` untouched for a week. | `tmp/` keeps growing; old logs and scratch files are never cleared. |
 | Disk prune | Your own cleanup steps (build caches, Docker, simulators) run on commit, on push, and before a worktree is made on a low disk. bkit deletes nothing itself. | Caches fill the disk until no worktree can be made; every workflow stops. |
-| Machine lock | Named locks run one gate at a time across repositories; the unnamed lock protects local services every worktree shares. A second run waits and names the holder. | Test gates compete for CPU, or a reset stops the stack under another worktree's test run. |
+| Machine lock | Named locks run one gate at a time across repositories; the unnamed lock protects local services every worktree shares. A second run waits and names the holder, and `run` stops a command that holds the tests lock past the hold limit. | Test gates compete for CPU, a reset stops the stack under another worktree's test run, or a hung gate holds the lock and every push waits. |
 | Cursor editor + cloud agent | Format-on-save, recommended extensions, Cursor cloud-agent image. | Cursor edits miss project formatting; no Cursor cloud agent. |
 | Launchd GUI env | macOS apps opened from the Dock get the same tokens as the terminal. | Dock-launched editors start signed out. |
 
@@ -52,8 +53,8 @@ The adoption order is the `bkit tips` order. The machine lock has no tip, so ado
 | Health check | `.bkit/templates/.github/workflows/bkit-health.yml` | `.github/workflows/bkit-health.yml` | that file |
 | Cloud-agent workflow | `.bkit/templates/.github/workflows/bkit-cloud.yml` | `.github/workflows/bkit-cloud.yml` | that file |
 | Git hooks (Husky) | `.bkit/templates/.husky/pre-commit`, `.bkit/templates/.husky/pre-push` | `.husky/pre-commit`, `.husky/pre-push` | both files |
-| Prettier ignore list | `.bkit/templates/.prettierignore` | `.prettierignore` | that file |
-| lint-staged | `.bkit/templates/.lintstagedrc.json` | `.lintstagedrc.json` | that file |
+| Prettier ignore list | `.bkit/templates/prettierignore.example` | `.prettierignore` | that file |
+| lint-staged | `.bkit/templates/lintstagedrc.example.json` | `.lintstagedrc.json` | that file |
 | Vale | `.bkit/templates/.vale.ini`, `.bkit/templates/.vale/styles/Bkit/` | `.vale.ini`, `.vale/styles/Bkit/` | `.vale.ini` + the four Bkit styles |
 | slop-scan | `.bkit/templates/slop-scan.config.json`, `.bkit/templates/scripts/slop/bkit-slop-type-suppression.mjs` | `slop-scan.config.json`, `scripts/slop/bkit-slop-type-suppression.mjs` | both files |
 | Oxlint | `.bkit/templates/.oxlintrc.json` | `.oxlintrc.json` | that file |
@@ -67,14 +68,15 @@ The adoption order is the `bkit tips` order. The machine lock has no tip, so ado
 | Serena | `.bkit/templates/scripts/serena/`, `.bkit/templates/.serena/project.yml` | `scripts/serena/`, `.serena/project.yml`, merge `bkit-serena.mcp.json` into `.mcp.json` | `project.yml` only |
 | Issue forms | `.bkit/templates/.github/ISSUE_TEMPLATE/` | `.github/ISSUE_TEMPLATE/` | the forms you use |
 | graphify | `.bkit/templates/scripts/graphify/`, `.bkit/templates/.graphifyignore`, `.bkit/templates/docs/capabilities.md` | same paths at the repo root | `docs/capabilities.md` |
+| Component map | `.bkit/templates/docs/components.md` | `docs/components.md` | the populated document |
 | Secrets sync | `.bkit/templates/scripts/secrets/` | `scripts/secrets/` | both files; never `bkit-secrets-state.json` |
 | Prettier tables | `.bkit/templates/scripts/prettier/bkit-insert-ignore.mjs` | `scripts/prettier/` | that file |
 | tmp/ prune | `.bkit/templates/scripts/cleanup/bkit-tmp-prune.mjs` | `scripts/cleanup/` | that file |
 | Disk prune | `.bkit/templates/scripts/cleanup/bkit-disk-prune.mjs`, `bkit-disk-prune.machine.mjs` | `scripts/cleanup/bkit-disk-prune.mjs`, `~/.config/bkit/disk-prune.mjs` | `scripts/cleanup/bkit-disk-prune.mjs` only |
-| Machine lock | `.bkit/templates/scripts/ci/bkit-machine-lock.sh` | `scripts/ci/` | that file |
+| Machine lock | `.bkit/templates/scripts/ci/bkit-machine-lock.sh`, `bkit-test-awake.mjs` | `scripts/ci/` | both files |
 | Local test sleep prevention | `.bkit/templates/scripts/ci/bkit-test-awake.mjs`, `bkit-test-awake.test.mjs` | `scripts/ci/` | both files |
 | Context-fetch blocks | `.bkit/templates/context/bkit-<provider>.md` | below `<!-- bkit:end -->` in `.agents/context.md` | the blocks you use |
-| Cloud SessionStart hook | `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` | `.claude/hooks/bkit-cloud-bootstrap.sh` | that file |
+| Cloud SessionStart hook | `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` | `.claude/hooks/bkit-cloud-bootstrap.sh` | that file; it compares `BKIT_CLOUD_ALLOWLIST_FINGERPRINT` with `.bkit/allowlist.json` and warns on a mismatch, and `bkit check` raises `cloud-bootstrap-fingerprint-missing` for a copy that never reads the variable |
 
 Placeholders: the copies keep them raw, so replace each one in your copy:
 
@@ -83,14 +85,14 @@ Placeholders: the copies keep them raw, so replace each one in your copy:
 | --- | --- | --- | --- |
 | `{{DEFAULT_BRANCH}}` | `bkit-ci.yml` (`on.push` / `on.pull_request` branches; stub comments), `bkit-trivy.yml` (`on.push` / `on.pull_request` branches), `bkit-health.yml` (`on.workflow_run` branches) | your production branch | `origin/HEAD` unless it is `dev`, else `main` |
 | `{{PRODUCTION_URL}}` | `bkit-health.yml` (`env.PRODUCTION_URL`) | the origin production serves | `https://example.com` |
-| `{{NODE_VERSION}}` | `bkit-ci.yml` (`actions/setup-node` `node-version`, both lanes) | your Node major, or swap the line for `node-version-file: .nvmrc` | `.nvmrc`, then `engines.node`, then `22` |
+| `{{NODE_VERSION}}` | `bkit-ci.yml` (`actions/setup-node` `node-version`, both lanes), `bkit-cloud.yml` (`actions/setup-node` `node-version`, the context job's bkit install) | your Node major, or swap the line for `node-version-file: .nvmrc` | `.nvmrc`, then `engines.node`, then `22` |
 | `{{CLOUD_RUNNER}}` | `bkit-cloud.yml` (`runs-on`, all three jobs) | a runner label | `ubuntu-latest` |
 | `{{SCRIPT_PATH}}` | `bkit-launchd.plist` (`ProgramArguments`) | absolute path to the loader script, outside a TCC-protected folder (see § Launchd GUI environment) | `/Users/<you>/.config/bkit/bkit-launchd-env.sh` |
 | `{{ENV_FILE}}` | `bkit-launchd.plist` (`ProgramArguments`, `WatchPaths`) | absolute path to your env file | `/Users/<you>/.config/bkit/launchd.env` |
 
 - `bkit install` / `bkit upgrade` refresh `.bkit/templates/` to the package's templates, unsubstituted. `bkit check` fails on a stale copy. `bkit uninstall` removes the folder, never an adopted copy.
 - **What changed on upgrade.** `bkit upgrade` lists the changed, added and removed template paths. For each one you adopted, run `diff .bkit/templates/<path> <path>`, and merge what you want. The placeholder lines differ by design. `git diff .bkit/templates` in the upgrade commit shows the package change.
-- Repo gates that scan the whole repo (prettier, Vale, slop-scan, eslint, tsc) must ignore `.bkit/templates/`. The `.prettierignore`, `.vale.ini`, `slop-scan.config.json` and `.oxlintrc.json` templates already do. Check that your adopted copy does too.
+- Repo gates that scan the whole repo (prettier, Vale, slop-scan, eslint, tsc) must ignore `.bkit/templates/`. The `prettierignore.example`, `.vale.ini`, `slop-scan.config.json` and `.oxlintrc.json` templates already do. Check that your adopted copy does too.
 - Templates are written in Node unless the tool they wrap already needs another runtime (graphify and Serena: Python and shell launchers; git hooks: POSIX `sh`; local stack lock: bash and perl, because shell runners source it).
 - `bkit.dependencies.updater` names the adopted updater (`"renovate"` / `"dependabot"`). Install fills it from the config present. `"none"` skips the install-time absence advisory. `bkit check` blocks when the setting and the configs disagree.
 - No template has a manifest key. `docs/templates/bkit-audit-adoption.md` lists every template on each run, as adopted and wired, or as not adopted with the reason.
@@ -194,6 +196,8 @@ pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
 - **If** the stack is not Node → point each gate at your own commands, and keep the gate names.
 - `bkit:test:file` runs one test file and writes a JUnit report to `$BKIT_TEST_REPORT`. bkit appends the file's repo-relative path. `/bkit-build` reads the report for test-first. It is not seeded, and `test-file-script-missing` fires until it is declared.
   - Vitest: `"bkit:test:file": "vitest run --reporter=default --reporter=junit --outputFile.junit=\"$BKIT_TEST_REPORT\""`.
+  - jest: `jest --runTestsByPath` with the `jest-junit` reporter and `JEST_JUNIT_OUTPUT_FILE="$BKIT_TEST_REPORT"`.
+  - **If** jest gets the path without `--runTestsByPath` → it reads the path as a regex, so a folder such as `(tabs)` matches no file and no report is written.
   - Call the runner directly, not through a caching task runner.
 - `bkit:lint:file` lints one test file with the static gate's rules, and exits 0 when clean. bkit appends the path. `bkit tests red` runs it on each planned test file before running the file, and records a `lint` gap for the file's tests while it fails. It is not seeded, and `lint-file-script-missing` fires once `bkit:test:file` is declared without it.
   - ESLint: `"bkit:lint:file": "eslint --max-warnings=0"`.
@@ -203,7 +207,7 @@ pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
 
 ## Local test sleep prevention
 
-Copy `.bkit/templates/scripts/ci/bkit-test-awake.mjs` and its adjacent test into `scripts/ci/`. Install its command-launching dependency with `pnpm add -D cross-spawn@7.0.6`; it handles Windows package-command shims and argument escaping. Prefix each local test script, including individual-file runners, with `node scripts/ci/bkit-test-awake.mjs`. Wrap a complete command chain with `--shell` and one double-quoted command string. Leave CI calling the same scripts.
+Copy `.bkit/templates/scripts/ci/bkit-test-awake.mjs` and its adjacent test into `scripts/ci/`. Install its command-launching dependency with `pnpm add -D cross-spawn@7.0.6`; it handles Windows package-command shims and argument escaping, and the wrapper loads it only on Windows. Prefix each local test script, including individual-file runners, with `node scripts/ci/bkit-test-awake.mjs`. Wrap a complete command chain with `--shell` and one double-quoted command string. Leave CI calling the same scripts.
 
 ```json
 {
@@ -215,7 +219,7 @@ Copy `.bkit/templates/scripts/ci/bkit-test-awake.mjs` and its adjacent test into
 
 Keep each script's existing runner flags and report settings when adding the prefix. Run the wrapper's tests with `node --test scripts/ci/bkit-test-awake.test.mjs`. For a direct runner invocation, use `node scripts/ci/bkit-test-awake.mjs pnpm exec vitest run path/to/example.test.ts`.
 
-On macOS, the wrapper holds `caffeinate -is -w` against its own process and releases it when the command exits. It forwards cancellation to the command and retains the caller's process group so external hard timeouts still reach the tests. POSIX `--shell` chains stop after cancellation and wait for descendant cleanup. Signals reach command owners first; surviving orphan roots receive cancellation after their owner exits. Live owners retain responsibility for their descendants and machine-lock lifetime. A command that starts cleanup children during cancellation must wait for them before exiting. If process inspection is unavailable, the wrapper reports that limitation and waits for foreground completion or a successful cleanup inspection. Linux and Windows do not require `caffeinate`. Test timeouts are unchanged. Keep the lid open; `docs/testing.md` § Local test sleep prevention describes the limits.
+On macOS, the wrapper holds `caffeinate -is -w` against its own process and releases it when the command exits. It forwards cancellation to the command and retains the caller's process group so external hard timeouts still reach the tests. POSIX `--shell` chains stop after cancellation and wait for descendant cleanup. Signals reach command owners first; surviving orphan roots receive cancellation after their owner exits. Live owners retain responsibility for their descendants and machine-lock lifetime. A command that starts cleanup children during cancellation must wait for them before exiting. If process inspection is unavailable, the wrapper reports that limitation and waits for foreground completion or a successful cleanup inspection. Linux and Windows do not require `caffeinate`. Test timeouts are unchanged. A Ctrl-C at the terminal already reaches the command, so the wrapper does not send INT again, but a `--shell` chain still waits for descendant cleanup. `--hold-s <N> [--grace-s <G>] [--stopped-file <P>] [--pass-fds <A,B>] --` before the command is the machine lock's hold limit (§ Machine lock): after N seconds the wrapper stops the command and every process under it and exits 124. `--stopped-file` names a file the wrapper creates as that stop starts, so a caller can tell it from the command's own 124. `--pass-fds` hands the command the listed open descriptors above 2, which it otherwise does not receive. Leave it to the lock script; a test script does not pass it. Keep the lid open; `.bkit/workflows.md` § Test and release mechanics describes the limits.
 
 `bkit tests` already protects the commands it launches using the packaged wrapper. Adopt this template for direct scripts and hooks. Existing consumer-owned scripts are not rewritten on upgrade.
 
@@ -269,13 +273,16 @@ A post-CI router that runs bkit workflows:
 - Failed `dev` CI → `/bkit-debug {FID}`.
 - `workflow_dispatch` runs any phase.
 
-A `context` job resolves the phase and argument once. Then two runner jobs follow, each skipped without its secret: `claude` (`claude-code-action`, https://github.com/anthropics/claude-code-action) and `opencode` (`opencode run`, https://opencode.ai/docs/github/). `bkit install --auto=claude|opencode` points at this file. The full recipe is in `.bkit/cloud.md` § Post-CI auto-routing.
+A `context` job resolves the phase and argument once. Then three runner jobs follow, and only the one `bkit.cloud.agent` names starts, when its secret is set: `claude` (`claude-code-action`, https://github.com/anthropics/claude-code-action), `opencode` (`opencode run`, https://opencode.ai/docs/github/) and `codex` (`openai/codex-action`, https://github.com/openai/codex-action). `bkit install --auto=claude|opencode|codex` points at this file. The full recipe is in `.bkit/cloud.md` § Post-CI auto-routing.
 
-- Install: `bkit install --auto=claude` (points at the `.claude/hooks/bkit-cloud-bootstrap.sh` template) or `--auto=opencode` (needs `--opencode=<provider>` first). Both need `--tracker=github`.
-- Secrets for `claude`: `ANTHROPIC_API_KEY`, or keyless with the `ANTHROPIC_FEDERATION_RULE_ID` and `ANTHROPIC_ORGANIZATION_ID` repo variables, plus the Claude GitHub App (`/install-github-app`).
-- Secrets for `opencode`: `OPENCODE_PROVIDER_KEY`.
+- Install: `bkit install --auto=claude` (points at the `.claude/hooks/bkit-cloud-bootstrap.sh` template), `--auto=opencode` (needs `--opencode=<provider>` first) or `--auto=codex` (needs `--codex`). Each works with any wired tracker (GitHub, Linear or Jira).
+- Secrets for `claude`: `BKIT_ANTHROPIC_API_KEY`, or keyless with the `ANTHROPIC_FEDERATION_RULE_ID` and `ANTHROPIC_ORGANIZATION_ID` repo variables, plus the Claude GitHub App (`/install-github-app`).
+- Secrets for `opencode`: the installed provider's key, one of `BKIT_OPENCODE_API_KEY`, `BKIT_OPENROUTER_API_KEY`, `BKIT_OLLAMA_API_KEY`.
+- Secrets for `codex`: `BKIT_OPENAI_API_KEY`.
+- Tracker secrets: `BKIT_LINEAR_API_KEY` under Linear, `BKIT_JIRA_API_KEY` under Jira. The workflow reads them at step scope.
 - Repo Actions permissions: read and write, with PR creation allowed.
-- Adapt: `{{CLOUD_RUNNER}}` in all three jobs.
+- Adapt: `{{CLOUD_RUNNER}}` in all four jobs.
+- The `codex` job runs `drop-sudo` on the runner (irreversible), so use an ephemeral runner.
 - Traps:
   - The file runs bkit by command name, so a changed invocation reaches you only as a changed template path on `bkit upgrade`. Diff it on every upgrade.
   - The OpenCode install version is a plain argument. The `# renovate:` comment above it lets the example `renovate.json5` bump it.
@@ -285,7 +292,7 @@ A `context` job resolves the phase and argument once. Then two runner jobs follo
 
 `pre-commit` runs `bkit:gate:format`. `pre-push` runs `bkit check` first, so a drifted install fails in seconds. Then it runs `bkit:gate:static-unit-integration` when package.json declares it, else `bkit:gate:static-unit` (`bkit:gate:static` on revert branches / commits; `bkit:gate:min` on a min push). It also runs the CI-suppressing-token guards, the dependency audit (§ Dependency audit) and the `tmp/` prune (§ tmp/ prune). Each hook ends by starting the disk prune (§ Disk prune).
 
-Pre-push re-runs itself once with all its output copied to `tmp/pre-push.log`, which is rewritten on each push. It prints that path first and last, with the exit code. `--no-verify` and a checkout without husky (a linked worktree) write no log.
+Pre-push re-runs itself once with all its output copied to `tmp/pre-push.log`, which is rewritten on each push. It prints that path first and last, with the exit code. `--no-verify` and a checkout without husky (a linked worktree) write no log. When the repo has an `.envrc`, `direnv` is on `PATH` and `CI` is unset, the inner run goes through `direnv exec .`, so the gate loads `.envrc` itself. On every path, with or without direnv, the gate unsets the bkit tooling keys (`BKIT_GH_TOKEN`, `BKIT_LINEAR_API_KEY`, `BKIT_JIRA_API_KEY`, `BKIT_ANTHROPIC_API_KEY`, `BKIT_CURSOR_API_KEY`, `BKIT_OPENCODE_API_KEY`, `BKIT_OPENROUTER_API_KEY`, `BKIT_OLLAMA_API_KEY`, `BKIT_OPENAI_API_KEY`) however they were loaded, plus every key `.bkit/.env` names. An `.envrc` that direnv cannot load blocks in seconds, before `bkit check`, and prints direnv's own output; only when direnv reports the file untrusted does it add the `direnv allow .` fix. A repo whose hook copy lacks this gets the `pre-push-direnv` tip.
 
 Workflows care because they commit and push without `--no-verify`, so a failing hook stops a workflow. The throwaway `.worktrees/_land-{FID}` checkout runs its selected gate explicitly before pushing, with hooks disabled (§ One landing routine in `.bkit/workflows.md`). Reference: https://typicode.github.io/husky/.
 
@@ -298,13 +305,15 @@ chmod +x .husky/pre-commit .husky/pre-push
 - Adapt: repo-only checks go below the bkit lines in each hook. What a gate runs belongs in the `bkit:gate:*` script, not the hook.
 - Min push:
   - **If** every file changed since each pushed commit left `origin/dev` (else `origin/main`) is one bkit writes or one `bkit.testing.minPushPaths` adds → `bkit:gate:min` replaces the full gate, and `MIN_PUSH=1`.
-  - The hook passes each remote-old and pushed-new commit as `bkit ci min-push --update=<old>:<new>`. A fast-forward bookkeeping increment also qualifies when a successful local full-gate receipt covers an ancestor of the old commit and every change since that checked commit is allowed.
-  - `bkit ci push-gate --gate=<script>` runs the selected consumer script. A successful deepest full push gate records its clean, unchanged commit and script definitions in the repository's Git metadata. A failed or interrupted full check prevents reuse of earlier evidence until a later full check succeeds. Minimum and revert gates create no full-gate evidence. Receipts are local; a new clone starts without them.
-  - What bkit writes = ship's `--scope=pr` allow-list (`.bkit/workflows.md` § `/bkit-ship` — 14 steps) plus `docs/plans/**`.
+  - The hook passes each remote-old and pushed-new commit as `bkit ci min-push --update=<old>:<new>`. A fast-forward bookkeeping increment also qualifies when a successful local full-gate receipt covers an ancestor of the old commit and every change since that checked commit is allowed. A new branch qualifies the same way: a receipt on an ancestor of the pushed commit, with only bookkeeping paths changed since it and no later failure, takes the minimum gate.
+  - `bkit ci push-gate --gate=<script>` runs the selected consumer script. A successful deepest full push gate records its clean, unchanged commit and script definitions in the repository's Git metadata. A failed or interrupted full check prevents reuse of earlier evidence until a later full check succeeds. A check still running blocks reuse too; one whose process has exited without finishing counts as failed, and the next full check on that commit clears it. A tests-lock wait that gives up (the lock script's exit 75, with `gave-up` in its status file) is not a check, so it leaves the evidence as it was. `bkit tests run` records the same receipt when it runs the deepest full gate (build Step 12) without `--changed-since`; there, uncommitted paths inside the min-push (bookkeeping) paths do not block it, since every engine call appends to `status.jsonl`, and any uncommitted code, a lock wait (exit 81) or a lighter gate records none. Minimum and revert gates create no full-gate evidence. Receipts are local; a new clone starts without them.
+  - What bkit writes = ship's `--scope=pr` allow-list (`.bkit/workflows.md` § `/bkit-ship` — 12 steps) plus `docs/plans/**` and `docs/audits/**`.
+  - A change to a top-level `docs/templates/bkit-audit-*.md` also counts as written by bkit when the file's text through its single `<!-- bkit:end -->` line is the same at both ends of the range, so only the `Project Instructions` section below it changed. A new, deleted or renamed template, a second marker line, or any change at or above the marker keeps the full gate. A template with CRLF line endings never qualifies, because a marker followed by `\r` is not line-anchored. Other templates, such as `docs/templates/bkit-plan.md`, keep the full gate. "What bkit writes" in the `bkit ci min-push` summary covers the audit reports and the audit templates' project sections.
   - The setting takes `package.json` globs: `*` matches one folder and `**` any depth. The default is `[]`, which leaves what bkit writes alone, because the setting only adds to it.
   - `bkit ci min-push` decides from files, never from `[skip ci]`, because that is a typed label and GitHub reads the last commit only.
-  - Empty trigger commits need checked-ancestor evidence. Missing evidence, unreadable ranges, rewritten history, or any outgoing ref carrying new code keeps the full gate. A new branch can still qualify from its complete bookkeeping-only branch diff.
+  - Empty trigger commits need checked-ancestor evidence. Missing evidence, unreadable ranges, rewritten history, or any outgoing ref carrying new code keeps the full gate. A new branch qualifies from a receipted ancestor plus bookkeeping-only commits, or from its complete bookkeeping-only branch diff; a new branch with code after the receipted ancestor keeps the full gate.
 - Min-push paths: list only files that no code, build or test reads.
+  - The floor already covers `docs/plans/**` and `docs/audits/**`, so the setting lists neither.
   - Never list `docs/**`, because a doc can be test input.
   - **If** a test reads a ledger → put that test into `bkit:gate:min`.
 - `[skip ci]` guards:
@@ -312,6 +321,13 @@ chmod +x .husky/pre-commit .husky/pre-push
   - With a PR open, `bkit ci bookkeeping-push --from=<remote head>` lets the push through when every file changed since the head the remote holds is on ship's `--scope=pr` allow-list. Such a push adds nothing that CI has not tested at that head.
   - A rewritten head or a code file still blocks.
   - On `dev` / `main`, the skip-CI check uses the complete branch diff, independently of local gate receipts. Code cannot skip CI merely because its local gate passed.
+- PR conflict check:
+  - A fast check, run before `bkit check` and the gate. One `gh pr list --head <branch> --state open` lookup (every branch but `dev` / `main`) gives the PR number and its base; the `[skip ci]` guard reads the number from it.
+  - **If** the branch has an open PR → the hook fetches the base from `origin`, then runs `git merge-tree --write-tree --name-only` on `origin/<base>` and the pushed commit. Conflicts → the push is blocked, naming the files and the fix. This holds for a min push too, because a conflicting PR never starts CI.
+  - **If** `gh` is missing or fails, the clone is shallow (fix: `git fetch --unshallow`), the base fetch fails, or `git merge-tree` fails for another reason → the hook warns that the check was skipped, and the push goes on. No open PR → no fetch and no message.
+  - The lookup keeps same-repo PRs plus a cross-repository PR whose head repository is the push target. A fork PR with the same head branch name that is not the push target is ignored. It asks for up to 1000 open PRs; if a full page comes back with no match, the conflict check warns and skips, and the `[skip ci]` guard blocks a `[skip ci]` head, because it cannot tell that no PR is open. The base is fetched with an explicit refspec, and the trial merge ignores the work tree's `.gitattributes`, as GitHub does, so a `merge=union` ledger conflict blocks.
+  - `BKIT_PR_CONFLICT_CHECK=false` skips the whole check with one stderr line. `/bkit-ship` sets it on every push, because the conflict is what Step 4 merges away and a `dev` that moves after Step 4 is left to the Step 10 merge gate's `--fresh-base`. `/bkit-debug` sets it on its feature-branch pushes, so fix commits always reach `origin`.
+  - A repo whose hook copy lacks this gets the `pre-push-pr-conflict` tip.
 - Slop base:
   - **If** the push is to `dev` **and** `scripts/ci/lanes/bkit-resolve-push-base.mjs` is copied → the hook runs it with `--local --branch=dev --head=<pushed sha>`, and exports `SLOP_BASE_REF` as CI's push base. That base is the head of the last green CI push run on `dev`, else `origin/dev`. The hook prints the base and its source.
   - Pre-push and CI slop then share a base, so a finding that an earlier red push landed fails locally too.
@@ -332,13 +348,15 @@ chmod +x .husky/pre-commit .husky/pre-push
 pnpm add -D prettier@^3.5.3
 ```
 
-1. Copy `.prettierignore` before the first `prettier --write`. bkit writes `.claude/`, `.cursor/`, `.opencode/`, `.mcp.json`, `.bkit/.env.example` and `docs/roadmap.md` in its own layout, so prettier reformatting them fights the next `bkit install` (`bkit check` drift).
+1. Copy `.bkit/templates/prettierignore.example` to `.prettierignore` before the first `prettier --write`. bkit writes `.claude/`, `.cursor/`, `.opencode/`, `.mcp.json`, `.bkit/.env.example` and `docs/roadmap.md` in its own layout, so prettier reformatting them fights the next `bkit install` (`bkit check` drift).
 2. Add `format:check` (§ Gate tool scripts). Reference: https://prettier.io/docs/install.
 
 - Keep the `.bkit/templates/` line.
 - Keep the three `docs/plans/*/logs/*/` gate-log lines: build and debug commit raw `bkit tests run` output there, and `format:check` fails on it.
 
 ## lint-staged — `.lintstagedrc.json`
+
+Copy `.bkit/templates/lintstagedrc.example.json` to `.lintstagedrc.json`. The samples under `.bkit/templates/` carry non-dotfile names so prettier and lint-staged do not read them as live config; `bkit upgrade` removes the old dotfile-named samples (`.lintstagedrc.json`, `.prettierignore`) from `.bkit/templates/`. bkit writes no lint-staged config into your repo: when `bkit:gate:format` runs `lint-staged` without a `--config` path, lint-staged is a dependency and no config exists, install, check and upgrade print `no root lint-staged config — commits will fail. Fix: cp .bkit/templates/lintstagedrc.example.json .lintstagedrc.json` after their own log prefix (`[bkit-install]`, `[bkit-check]`, `[bkit-upgrade]`).
 
 It runs prettier over staged files. `bkit:gate:format` (the pre-commit hook) calls it. Reference: https://github.com/lint-staged/lint-staged.
 
@@ -391,6 +409,8 @@ cp .bkit/templates/scripts/slop/bkit-slop-type-suppression.mjs scripts/slop/
 
 It fails `lint` on a test that cannot fail. Oxlint (a fast linter) runs five rules on test files only, with all other checks off. It fits JS / TS repos with Vitest or Jest. Reference: https://oxc.rs/docs/guide/usage/linter.html.
 
+- The `.bkit/templates/.oxlintrc.json` sample keeps its dotfile name: oxlint run from a consumer root as `oxlint -c .oxlintrc.json` reports a violating test file at the root and reports nothing for the same file under `.bkit/templates/`, so the sample does not act as live config.
+
 ```bash
 pnpm add -D oxlint@^1.87.0 oxlint-tsgolint@^7.0.2004
 cp .bkit/templates/.oxlintrc.json .oxlintrc.json
@@ -433,6 +453,7 @@ direnv allow
 ```
 
 - Adapt: add one `dotenv_if_exists <path>` line per extra env file.
+- The pre-push hook loads `.envrc` itself on push (§ Git hooks — Husky), so an agent's shell that never loaded it still pushes with it. Run `direnv allow .` once per folder, or the push blocks.
 - `unset` the keys that must stay out of the shell. They are dropped from the cloud env blocks too.
 
 ## Launchd GUI environment — tokens for Dock-launched apps
@@ -501,7 +522,7 @@ gh api -X PUT 'repos/{owner}/{repo}/vulnerability-alerts'
 gh api -X PUT 'repos/{owner}/{repo}/automated-security-fixes'
 ```
 
-Renovate (Mend): commit `.github/renovate.json5` on the default branch, then install the App at https://github.com/apps/renovate in the GitHub UI. There is no `gh` equivalent.
+Renovate (Mend): commit `.github/renovate.json5` on the default branch, then install the App at https://github.com/apps/renovate in the GitHub UI. `gh` has no equivalent.
 
 Renovate (self-hosted): also copy `bkit-renovate.yml`, then set its platform token. Use a fine-grained PAT for one owner, and a classic one across owners. The permissions are in `docs/deployments.md` § Dependency updaters.
 
@@ -513,13 +534,13 @@ gh secret set BKIT_GH_TOKEN
 - The examples extend `config:best-practices`:
   - Major bumps wait for a tick on the Dependency Dashboard (`dependencyDashboardApproval`).
   - `lockFileMaintenance` runs monthly.
-  - PRs rebase only on conflict.
+  - Renovate never rebases an open PR by itself (`rebaseWhen: "never"`). A PR that conflicts waits until you tick its rebase checkbox.
 - A `# renovate: datasource=<ds> depName=<name>` comment above a pinned CLI version (Dockerfile, `bkit-cloud.md`, workflows) lets the example `customManagers` entry bump it.
 - For checksum-paired pins (Vale, gh, jq, Node, actionlint), update the sha256 by hand in the same PR. `Check Pinned Checksums` in `bkit-ci.yml` (`bkit ci pins`) fails the PR until the Dockerfile's hashes match.
 - `bkit-renovate.yml` pins `renovate-version` to an exact release. The same kind of `# renovate:` comment keeps it current.
 - `enabled: false` on a Renovate package rule does not stop digest pinning. Use `ignorePaths` to keep Renovate off a file.
 - Land the config on the default branch before the bot runs. The examples set `baseBranchPatterns: ["dev"]`.
-- The App install, the self-hosted token, the private-package host rule and CVE handling are in `docs/deployments.md` § Dependency updaters.
+- The App install and the self-hosted token are in `docs/deployments.md` § Dependency updaters. CVE handling is in `docs/deployments.md` § Manual CVE handling (when an alert fires).
 
 ## Dependency audit — known-vulnerable dependencies fail the push
 
@@ -623,7 +644,7 @@ The PyPI name is `serena-agent`, and the CLI is `serena`. PyPI `serena` is an un
 
 ## Issue forms — `.github/ISSUE_TEMPLATE/`
 
-Issues are the first input every workflow reads. There is one form per way work starts, and each form's intro names its next command. The section names, syntax and machine-read lines are in `.bkit/trackers.md` § Issue shapes. The forms are for the GitHub tracker only, because Linear and Jira have their own templates. Reference: https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms.
+Issues are the first input every workflow reads. Each way work starts has one form, and each form's intro names its next command. The section names, syntax and machine-read lines are in `.bkit/trackers.md` § Issue shapes. These forms serve the GitHub tracker alone, because Linear and Jira have their own templates. Reference: https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms.
 
 <!-- prettier-ignore -->
 | Form | Use when | Next step | Asks for |
@@ -642,6 +663,84 @@ Issues are the first input every workflow reads. There is one form per way work 
 - `labels:` applies `enhancement` / `bug` only when the repo has them. Missing labels are skipped, never created.
 - Never add `bkit:*` labels, because workflows own them.
 - **If** the repo has existing forms → copy only the `bkit-*` files you want. The names never collide.
+
+## Project documents — starters and the index
+
+Twelve project docs ship as starters in `.bkit/templates/docs/`: architecture, technology, security, data-schema, testing, deployments, observability, design, noise and setup, plus components (§ Component map — purpose and responsibilities) and capabilities (§ graphify — map). Copy a starter to `docs/{topic}.md` and add a matching row to `.agents/docs.md` `## Project Documents` in the same change; install and upgrade refresh only the starter, never your copy. A doc you keep under another name takes a row whose Scope says `Equivalent to docs/{topic}.md`, and install then adds no second row. A prompt that reads one of these docs applies it only when the doc is present and warns when it is not. Fill the starters in the order of § Project docs — adoption order.
+
+## Project docs — adoption order
+
+Fill the project docs in waves, because each doc reads facts the earlier ones record. Each starter's **Fill these first** line lists the docs in the **Fill these first** column below.
+
+<!-- prettier-ignore -->
+| Wave | Doc | Fill these first |
+| --- | --- | --- |
+| 1 | `docs/idea.md` | — |
+| 2 | `docs/components.md` | `docs/idea.md` |
+| 3 | `docs/technology.md` | `docs/components.md` |
+| 3 | `docs/design.md` | `docs/components.md` |
+| 4 | `docs/architecture.md` | `docs/technology.md` |
+| 4 | `docs/setup.md` | `docs/technology.md` |
+| 5 | `docs/security.md` | `docs/architecture.md` |
+| 5 | `docs/testing.md` | `docs/architecture.md` |
+| 5 | `docs/observability.md` | `docs/architecture.md` |
+| 6 | `docs/data-schema.md` | `docs/security.md` |
+| 6 | `docs/deployments.md` | `docs/testing.md`, `docs/observability.md` |
+| 6 | `docs/noise.md` | `docs/observability.md` |
+| 7 | `docs/capabilities.md` | `docs/deployments.md` |
+
+A solid arrow means the first doc must exist before the second is started. A dotted arrow means the second doc starts without the first, but one section of it is finished or checked against the first, so come back to it once the first exists.
+
+```mermaid
+flowchart LR
+    IDEA["idea.md"] --> COMP["components"]
+    COMP --> TECH["technology"]
+    COMP --> DES["design"]
+    TECH -.-> DES
+    TECH --> ARCH["architecture"]
+    TECH --> SET["setup"]
+    ARCH -.-> SET
+    SEC -.-> SET
+    ARCH --> SEC["security"]
+    ARCH --> TEST["testing"]
+    ARCH --> OBS["observability"]
+    SEC -.-> OBS
+    SEC --> DATA["data-schema"]
+    DATA -.-> SEC
+    TEST --> DEP["deployments"]
+    OBS --> DEP
+    OBS --> NOISE["noise"]
+    DATA -.-> DEP
+    DATA -.-> TEST
+    DEP --> CAP["capabilities"]
+```
+
+The dotted arrows:
+
+- **technology → design:** the colour and spacing variables table waits for technology to pick the styling tool. The rest of design does not.
+- **architecture → setup:** the local services section (database, queues) is filled once architecture names them.
+- **security → setup:** the environment variables table grows as security names secrets.
+- **security → observability:** the log format section is checked against security's list of personal data, so none of it gets logged.
+- **data-schema → testing:** the test data section (fixtures, seed, a fresh store per tier) is finished against the schema.
+- **data-schema → deployments:** the migrations-at-deploy-time section waits for the schema.
+- **data-schema → security:** the "Where stored" column of the PII table in `docs/security.md` is finished against `docs/data-schema.md`.
+
+`docs/idea.md` is the owner's free-form notes. It has no template, is not indexed in `.agents/docs.md`, and stays after `docs/components.md` exists. The components starter reads these facts from it:
+
+- Who the users are, the problem they have and the result they get.
+- The platforms the app runs on.
+- What the app does without a network connection.
+- What must update live.
+- The scale the app must handle.
+- The hard external requirements, such as a law, a contract or a partner's interface.
+
+**If** `docs/idea.md` is absent → the components starter takes the same facts from the README, an approved specification or the owner's answers.
+
+## Component map — purpose and responsibilities
+
+Follow the removable population guide in `.bkit/templates/docs/components.md` to create `docs/components.md`. It covers evidence gathering for existing and planned repositories, component selection, example rows, document registration and completion checks.
+
+The project owns the populated document. Installation and upgrades refresh the template source without overwriting the adopted copy. Neither graphify nor Floorplan is required; the template's rules header defines the boundaries between the purpose-based overview and other documentation.
 
 ## graphify — map
 
@@ -696,7 +795,7 @@ graphify-out/
 - `.graphifyignore` merges `.gitignore`.
 - Keep `package.json` in the corpus. Excluding it drops the workspace `name` fields that graphify resolves package imports with, and the graph still looks complete.
 - Keep `tsconfig.json` out, because graphify reads `paths` regardless.
-- Always run `scripts/graphify/bkit-graphify.sh`, which passes `--code-only` and `--no-label` and unsets API keys. There is no persistent LLM-off setting.
+- Always run `scripts/graphify/bkit-graphify.sh`, which passes `--code-only` and `--no-label` and unsets API keys. No persistent LLM-off setting exists.
 
 <!-- prettier-ignore -->
 | Command | Does |
@@ -707,12 +806,15 @@ graphify-out/
 | `pnpm bkit:graph:rollup` | Package and module views, plus `docs/capabilities.md` and its diagram copies. |
 | `pnpm bkit:graph:check` | Rebuild and fail if `docs/capabilities.md` is not what this tree produces, or a diagram copy differs from it. Reads uncommitted edits. Shipped as a self-skipping CI step (every push and pull request; on a PR, GitHub's test merge into the base); enabled in bkit's own CI. |
 | `bash scripts/graphify/bkit-graphify.sh check-at <rev>` | `check` in a throwaway checkout of `<rev>` (default HEAD); pre-push gate runs it on the commit pushed to dev. |
-| `pnpm bkit:graph:refresh` | Rebuild register in a throwaway checkout of the staged files (the index) → copy over `docs/capabilities.md` → rewrite the diagram copies. Stage the change first, so a run before its commit builds the new state. Fixes a red gate; commit result. |
+| `pnpm bkit:graph:refresh` | Rebuild register in a throwaway checkout of the staged files (the index) → replace the generated region of `docs/capabilities.md` → rewrite the diagram copies. Stage the change first, so a run before its commit builds the new state. Fixes a red gate; commit result. |
 | `pnpm bkit:graph:scoped [path]` | One subtree. Default `apps/web/src`. |
 | `pnpm bkit:graph:graphml` | Opt-in GraphML for Gephi / yEd. |
 
 - `docs/graphify-out/` holds the raw `graph.json`, and `docs/graphify-out/reports/` holds the derived views.
-- Copy `.bkit/templates/docs/capabilities.md` → `docs/capabilities.md` before the first rollup, because the Overrides block must exist. `pnpm bkit:graph:rollup` rewrites it after that.
+- Copy `.bkit/templates/docs/capabilities.md` → `docs/capabilities.md` before the first rollup.
+- `rollup`, `register` and `refresh` rewrite only the generated region of `docs/capabilities.md`: the text between its `<!-- graphify:start -->` line and its `<!-- graphify:end -->` line. The rest of the file is the project's.
+  - **If** the doc lacks exactly one marker pair in that order → the run stops and writes nothing.
+  - **If** the doc has no marker and its rules box says the whole file is generated → the run rebuilds it from the starter and keeps its Overrides block.
 - To add a capability, add a rule in `bkit-graph-drift-rules.json`: lane, owner module, one literal marker. The shipped rules JSON has one example row. Replace it.
 - The marker is a literal that only the owner should contain (a host, a header, a marker string). Never use the owner's exported function name, because every legitimate caller then reads as `bypassed`.
 
@@ -909,11 +1011,11 @@ cp .bkit/templates/scripts/cleanup/bkit-disk-prune.machine.mjs ~/.config/bkit/di
 
 ## Machine lock
 
-The machine lock queues test gates across repositories and protects shared local services across worktrees. Copy the script and wire it into the commands that need the lock. An unwired repository takes no lock. The script requires Bash 3.2+ and `/usr/bin/perl`.
+The machine lock queues test gates across repositories and protects shared local services across worktrees. Copy the script and wire it into the commands that need the lock. An unwired repository takes no lock. The script requires Bash 3.2+ and `/usr/bin/perl`. A `run` that takes the `tests` lock also needs `node` on `PATH` and the current `bkit-test-awake.mjs` (one that takes `--hold-s`) beside the script, because that file enforces the hold limit; without them that `run` exits 73.
 
 ```bash
 mkdir -p scripts/ci
-cp .bkit/templates/scripts/ci/bkit-machine-lock.sh scripts/ci/
+cp .bkit/templates/scripts/ci/bkit-machine-lock.sh .bkit/templates/scripts/ci/bkit-test-awake.mjs scripts/ci/
 ```
 
 <!-- prettier-ignore -->
@@ -930,10 +1032,27 @@ cp .bkit/templates/scripts/ci/bkit-machine-lock.sh scripts/ci/
   - `release_local_stack_lock [name]` frees the lock early.
   - `local_stack_lock_holder [name]` prints the holder, or every holder of `tests` slots.
   - `local_stack_lock_file [name]` prints the lock file path.
-- `run ["<who>"] [--lock <name>] -- <command> [args…]` passes the command's exit status on. Exit 2 means usage, 73 means the lock could not be taken (including lock order), and 75 means the wait gave up. Omit `<who>` to use `LOCAL_STACK_LOCK_WHO`, else `npm_lifecycle_event`, else `run`.
+- `run ["<who>"] [--lock <name>] -- <command> [args…]` passes the command's exit status on. Exit 2 means usage, 73 means the lock could not be taken (including lock order), 75 means the wait gave up, and 124 means the hold limit stopped the command. Omit `<who>` to use `LOCAL_STACK_LOCK_WHO`, else `npm_lifecycle_event`, else `run`.
+- Hold limit: a `run` that took the `tests` lock holds it at most `LOCAL_STACK_LOCK_HOLD_S` seconds (whole number >= 1, default 3600; any other value falls back to 3600 with one note). The limit counts every second the command runs, including time it spends waiting inside the lock.
+  - At the limit, `run` sends TERM to the command and every process started under it, then KILL to those still running after `LOCAL_STACK_LOCK_HOLD_GRACE_S` seconds (whole number >= 0, default 10). It then frees the lock, prints a `[machine-lock]` line naming the holder, the limit and the time held, and exits 124. A command that ends before the stop keeps its own exit status.
+  - Only `run` enforces the limit, and only the `run` that took the `tests` lock. These have no limit:
+    - every other named lock and the unnamed stack lock, since a run may hold those for hours;
+    - a nested `run` that reuses its live parent's lock;
+    - `CI=true` / `CI=1`, which takes no lock;
+    - a runner that sources the script and calls `take_local_stack_lock`.
+  - The holder enforces the limit because the OS never hands the lock to a waiter while the holder is alive. A run waiting for the lock takes it within a second of the stop.
+  - Under the limit, the command must be a program on `PATH`, because `run` starts it with `exec`. A shell function or builtin fails with exit 127 or 126; wrap shell code in `sh -c '…'`.
+  - `run` starts the command under `node bkit-test-awake.mjs --hold-s <limit> --grace-s <grace> --stopped-file <file>` from the script's folder, and that supervisor does the stop, creates the file and exits 124. `run` reads exit 124 as a hold-limit stop only when that file exists; otherwise 124 is the command's own. A supervisor that cannot create the file still stops the command, and `run` reports that 124 as the command's own. Without `node` on `PATH`, or with that file missing or without `--hold-s`, `run` frees the lock, names the file, writes `outcome=refused` and exits 73.
+  - If the supervisor itself is killed, `run` frees the lock and exits with its status while the command may still be running.
+  - The supervisor lists the processes under the command once a second with the first `ps` on `PATH` and its `lstart` column (procps on Linux), so it also stops a process whose parent has exited. Without a `ps` that prints `lstart`, such as a slim image with no procps or a BusyBox `ps`, it prints one note and the limit stops only the command itself, not the processes under it.
+  - A process whose parent exits within a second of starting it may survive the stop. It does not hold the lock, so the lock is still freed, but it may keep the caller's output pipe open, and a caller that reads that pipe to its end then waits for that process.
+  - The command keeps the caller's process group and stdin, so it still reads the terminal and gets Ctrl-C. TERM, INT and HUP sent to `run` are passed on to the command (INT only when `run` does not have the terminal, since Ctrl-C reaches the command directly); `run` keeps the lock until the command ends, then exits with the signal's status. A signal that arrives once the hold-limit stop has started is not passed on, and the exit stays 124.
+  - Give one long gate a longer limit by prefixing that gate's `package.json` script, for example `"bkit:gate:e2e": "LOCAL_STACK_LOCK_HOLD_S=10800 bash scripts/ci/bkit-machine-lock.sh run --lock tests -- <gate command>"`. Every other gate keeps the 3600-second default.
+- Status file: when `LOCAL_STACK_LOCK_STATUS_FILE` names a path and `run` exits 75, 73 or 124, `run` writes that file (a temp file beside it, then a rename) as three lines: `lock=<name>`, `outcome=gave-up`, `outcome=refused` or `outcome=held-too-long`, and `holder=<each holder's note, joined by "; ">` (for `held-too-long`, the stopped run's own note). The caller reads the outcome from the exit code and this file, never from the printed lines. `run` unsets the variable for its command, so a nested wrapper never writes the caller's file. `bkit tests run`, `bkit tests changed` and `bkit branches push` create the file and read it.
+- `slots` prints `slots=N workers=N` for the current environment and exits 0; it is the one place the slot rule lives. `queue [--lock <name>]` prints one `<who> — <checkout>` line per waiting run and held place, in queue order, and exits 0 with no output when nobody waits. `jump [--lock <name>] <who> [<checkout>]` moves that run to the front: exit 0 printing its line, 1 when none matches, 3 when several match (printing them), 73 when the marker cannot be written. `queue` and `jump` default to the `tests` lock.
 - Named locks use `~/.cache/bkit/machine-lock/<name>.lock`, with no repository prefix. The holder line identifies the caller's checkout. A child inherits `LOCAL_STACK_LOCK_OWNER_<key>` and reuses only that named lock while its owner is alive.
-- The `tests` lock has `BKIT_TEST_SLOTS` slots (whole number >= 1, default 1; an invalid value falls back to 1 with one note). Slot 1 uses `tests.lock`; later slots use `tests.<k>.lock`. The waiting note names every holder.
-- Taking `tests` exports `BKIT_TEST_WORKERS` = max(1, floor(cores / slots) - 1). Pass it to your runner, for example `vitest run --maxWorkers="$BKIT_TEST_WORKERS"` inside the wrapped command. Cores come from `getconf _NPROCESSORS_ONLN`, else `nproc`, else `sysctl -n hw.ncpu`, else 1.
+- The `tests` lock has `BKIT_TEST_SLOTS` slots (whole number >= 1). The default is 2 slots on a machine with 8 or more cores when the run is local, else 1; every other runtime defaults to 1 slot. A run is not local when `BKIT_RUNTIME` is set to anything but `LOCAL`; with `BKIT_RUNTIME` unset, it is not local when `.bkit/.runtime-cursor` exists in the main checkout or `CLAUDE_CODE_REMOTE` is set to anything but empty, `false`, `0` or `no` in any case. An invalid value falls back to that default with one note. Set `BKIT_TEST_SLOTS` per machine, never per repo. The value is per process: set it in every place runs start from (the shell profile and each host's user-level settings) or nowhere, because runs that read different values can hold `tests` slots at once. Slot 1 uses `tests.lock`; later slots use `tests.<k>.lock`. The waiting note names every holder.
+- Taking `tests` exports `BKIT_TEST_WORKERS` = max(1, floor(cores / slots) - 1), and `slots` prints the same number before any lock is taken. Pass it to your runner, for example `vitest run --maxWorkers="$BKIT_TEST_WORKERS"` inside the wrapped command. Cores come from `getconf _NPROCESSORS_ONLN`, else `nproc`, else `sysctl -n hw.ncpu`, else 1.
 - Take locks in this order: `tests`, other named locks, then the unnamed stack lock. A request for `tests` while this shell or a live parent holds another lock is refused. A request for a named lock while holding the stack lock is also refused.
 - The unnamed stack lock keeps `~/.cache/bkit/local-stack-lock/<stack>.lock` and `LOCAL_STACK_LOCK_OWNER` / `LOCAL_STACK_LOCK_PID`. A consumer's adopted copy keeps working and excludes this copy on the same stack.
   - `<stack>` is `BKIT_LOCAL_STACK`, else the main checkout's folder name, so every worktree finds the same lock.
@@ -942,6 +1061,15 @@ cp .bkit/templates/scripts/ci/bkit-machine-lock.sh scripts/ci/
 - Lock paths use `$XDG_CACHE_HOME/bkit/` when set. A small Perl process holds the file lock and exits within a second of its caller, however the caller ends.
 - Wait: `LOCAL_STACK_LOCK_WAIT_S` when set, else 60 seconds without a TTY, else 3600 seconds. Waiting notes name the budget and holders once a minute; the give-up line names the holder again.
 - A named release records held seconds by checkout in `<name>.last`, with one tab-separated line per checkout. A waiting note and give-up line name the current holder's `last run took <N>m<N>s`, or `no earlier run`.
+- Waiters are served in the order they started waiting. Each wait-mode take keeps a flock-held ticket in `<name>.queue/` beside its lock file (the unnamed stack lock uses `<stack>.queue/`), named `<monotonic seconds>-<pid>`, and a waiter tries the lock only when no earlier live ticket blocks it. Every lock shares this queue, including each `tests` slot.
+  - A ticket holds the waiter's line on its first line and `slots=N`, the slots it asks for, on its second. A waiter may take slot `k` only while no live ticket ahead of it asks for `k` or more slots, so waiters asking for the same count keep arrival order, a 1-slot waiter ahead never blocks slot 2, and a ticket with no `slots=` line asks for every slot.
+  - A ticket whose waiter died, or whose helper was killed, is skipped and removed; a waiter that gives up or is signalled drops its ticket.
+  - A waiter that gives up leaves its ticket as `<ticket>.held` for 120 seconds; the same run (same name and checkout) asking again within that time takes its place back. Older held places are deleted. Names that are neither tickets nor held places are left alone.
+  - The waiting note names the place in line (`2nd in line`). `try_local_stack_lock` never joins the line and reports busy (`N waiting in line`) while any live ticket exists, even when the lock is free.
+  - A waiter stopped (for example with `SIGSTOP`) while first in line holds the line: `ls` the queue folder to see who is first.
+  - A queue folder that cannot be created, or a ticket that cannot be written, refuses the take with the queue path (`run` exits 73).
+  - `bkit tests jump <run>` asks the template's copy of the script (`jump --lock tests`) to move one waiting run to the front of the `tests` line by writing a `<ms>.jump` marker in `tests.queue/`; it exits 3 when the script cannot read the queue or write the marker. The holder keeps the lock, the newest jump goes first, and the marker goes when that run takes the lock or no waiting run matches it. `--checkout <path>` picks one when several runs share the name. Every use needs the human's approval (a host `ask`; denied on Codex, which cannot ask), so an agent cannot approve its own jump.
+  - `bkit upgrade` replaces an unedited copy of `scripts/ci/bkit-machine-lock.sh` from a shipped release with the current template. It leaves an edited copy alone and warns to merge the template by hand when the copy has no queue, never names `LOCAL_STACK_LOCK_STATUS_FILE` or has no `LOCAL_STACK_LOCK_HOLD_S` hold limit; until merged, a wait that gives up reads as a gate failure (exit 1) instead of exit 81, and a hung run holds the lock until someone stops it. Beside such a lock copy it writes a missing `scripts/ci/bkit-test-awake.mjs` from the template and replaces an unedited shipped copy; it leaves an edited copy without `--hold-s` alone and warns to merge the template by hand, and until then every `run` that holds the tests lock is refused with exit 73.
 - `CI=true` / `CI=1` makes every lock a no-op.
-- `bkit tests run` and `bkit tests changed` pass `--lock-wait-s` and their run name to a wrapped gate; a tests-lock give-up of this run maps 75 → 81 with `lockHolder`, and a tests-lock refusal maps 73 → 4. A lock wait writes no `test-run` status row. Light runs (`red`, `green`, `bkit:test:file`) take no tests lock. Nested wraps reuse their live parent's tests lock. See `docs/testing.md` § Tests lock for host wait budgets.
+- `bkit tests run` and `bkit tests changed` pass `--lock-wait-s`, their run name and a fresh `LOCAL_STACK_LOCK_STATUS_FILE` to a wrapped gate; exit 75 with `lock=tests` and `outcome=gave-up` in that file maps to 81 with `lockHolder` from `holder=`, and exit 73 with `outcome=refused` or exit 124 with `outcome=held-too-long` maps to 4 (could not run: a `test-run` row with a null verdict, never `FAIL`). Without that file, a 75, 73 or 124 is a gate failure (exit 1). A lock wait writes no `test-run` status row. Light runs (`red`, `green`, `bkit:test:file`) take no tests lock. Nested wraps reuse their live parent's tests lock. See `.bkit/workflows.md` § Test and release mechanics for host wait budgets.
 - Fix hints and docs name the locked scripts, never the raw command (`supabase db reset`, `docker compose down`), because the raw command skips the lock. See `.agents/rules.md` § Shared local stack.

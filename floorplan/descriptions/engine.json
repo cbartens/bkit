@@ -1,0 +1,24 @@
+{
+  "files": {
+    ".bkit/core/engine/cli.ts": {
+      "name": "Command entry point",
+      "description": "Reads command options and starts the matching installation or workflow operation."
+    },
+    ".bkit/core/engine/tools/cli-doc.ts": {
+      "name": "Command reference updater",
+      "description": "Keeps the generated command reference aligned with the available commands."
+    },
+    ".bkit/core/engine/tools/grammar-density.ts": {
+      "name": "Instruction grammar checks",
+      "description": "Measures article usage in assistant instructions to detect overly compressed wording."
+    },
+    ".bkit/core/engine/tools/instructions-sources.ts": {
+      "name": "Instruction source checks",
+      "description": "Compares copied rules and hook text with their authoritative sources."
+    },
+    ".bkit/core/engine/tools/instructions.ts": {
+      "name": "Shared instruction updater",
+      "description": "Checks and synchronizes repeated wording across workflows, prompts and reference documents."
+    }
+  }
+}

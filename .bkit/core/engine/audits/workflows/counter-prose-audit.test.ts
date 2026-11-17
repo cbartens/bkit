@@ -605,6 +605,9 @@ const COUNTER_STEP_MAP: Record<string, string[]> = {
   "build-plan-verify": ["build-plan-verify"],
   "build-plan-gaps-remediate": ["build-plan-verify"],
   "build-group-gate": ["build-plan-verify"],
+  "build-plan-verify-holistic": ["build-plan-verify-holistic"],
+  "build-plan-gaps-remediate-holistic": ["build-plan-verify-holistic"],
+  "build-holistic-gate": ["build-plan-verify-holistic"],
   "build-plan-convert": ["build-plan-convert"],
   "build-challenge": ["build-challenge"],
   "build-decision": ["build-decision"],
@@ -620,8 +623,6 @@ const COUNTER_STEP_MAP: Record<string, string[]> = {
   "plan-review": ["plan-review"],
   "plan-apply-review": ["plan-apply-review"],
   "ship-merge-pr": ["ship-merge-pr"],
-  "ship-failure-diagnose": ["ship-merge-pr"],
-  "ship-failure-remediate": ["ship-merge-pr"],
 };
 
 interface MappingViolation {
@@ -795,4 +796,39 @@ describe.each([
       }
     });
   }
+});
+
+describe("9. holistic loop wiring (build Step 10)", () => {
+  const build = () => readRepo(".bkit/core/workflows/bkit-build.md");
+
+  it("holistic rounds route and grant on build.holistic within the run", () => {
+    const lines = build()
+      .split("\n")
+      .filter((l) => /counters (?:route|grant)\b.*HOLISTIC_ATTEMPT/.test(l));
+    const route = lines.filter((l) => /counters route\b/.test(l));
+    const grant = lines.filter((l) => /counters grant\b/.test(l));
+    expect(route.length).toBeGreaterThan(0);
+    expect(grant.length).toBeGreaterThan(0);
+    for (const l of [...route, ...grant]) {
+      expect(l).toContain("--of=build-plan-gaps-remediate-holistic:next");
+      expect(l).toContain("--point=build.holistic");
+      expect(l).not.toContain("--since-clean");
+      expect(l).not.toContain("--all-runs");
+    }
+    expect(build()).not.toContain("--since-clean");
+  });
+
+  it("holistic report and fix log names carry the run number", () => {
+    const text = build();
+    expect(text).not.toMatch(/build-plan-verify-holistic-\{HOLISTIC_ATTEMPT\}/);
+    expect(text).not.toMatch(/build-plan-gaps-remediate-holistic-\{HOLISTIC_ATTEMPT\}/);
+    expect(text).not.toMatch(/build-plan-verify-holistic-<attempt>/);
+    expect(text).not.toMatch(/build-plan-gaps-remediate-holistic-<attempt>/);
+    expect(text).toContain("build-plan-verify-holistic-{RUN}-{HOLISTIC_ATTEMPT}.md");
+    expect(text).toContain("build-plan-verify-holistic-{RUN}-<attempt>.md");
+    expect(text).toContain("build-plan-gaps-remediate-holistic-{RUN}-{HOLISTIC_ATTEMPT}-log.md");
+    expect(text).toContain("build-plan-gaps-remediate-holistic-{RUN}-<attempt>-log.md");
+    expect(text).toContain("build-plan-gaps-remediate-holistic-{RUN}-*-log.md");
+    expect(text).not.toMatch(/build-plan-gaps-remediate-holistic-\*-log\.md/);
+  });
 });

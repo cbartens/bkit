@@ -8,14 +8,21 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   CommandError,
   EXIT,
+  INVOCATION_FLAG,
+  NoWriteRejection,
   SKIP_CI_TOKEN,
+  UncertainEffect,
+  classifyLockOutcome,
   commandHelp,
   ghUnavailable,
+  lockStatusFile,
   parseFlags,
+  readLockStatus,
   repoRoot,
   resolveActiveRun,
   runCommand,
   runGit,
+  runGh,
   runTool,
   statusLocation,
   utcMonth,
@@ -34,6 +41,7 @@ const FLAGS: FlagSpec[] = [
   { name: "artifact", type: "string", repeatable: true, help: "artifact path" },
   { name: "dry-run", type: "boolean", help: "report only" },
 ];
+const LIB_ORIGINAL_PATH = process.env.PATH ?? "";
 
 const usage = (fn: () => unknown) => {
   try {
@@ -696,6 +704,58 @@ describe("runGit / runTool output limit", () => {
     for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
   });
 
+  it("bounds a slow child with an optional deadline and classifies timeout", async () => {
+    const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-lib-deadline-")));
+    dirs.push(cwd);
+    const marker = path.join(cwd, "child-survived");
+    const code = `setTimeout(()=>require('node:fs').writeFileSync(${JSON.stringify(marker)},'alive'),1000)`;
+    const started = performance.now();
+    const options = { input: undefined, timeoutMs: 80 };
+    const result = runTool(process.execPath, ["-e", code], cwd, options);
+    expect(performance.now() - started).toBeLessThan(700);
+    expect(result.found).toBe(true);
+    expect(result.status).not.toBe(0);
+    expect(result.status).not.toBe(127);
+    expect(result.stderr).toMatch(/timeout|timed.out|ETIMEDOUT/i);
+    const bin = path.join(cwd, "bin");
+    fs.mkdirSync(bin);
+    fs.writeFileSync(
+      path.join(bin, "gh"),
+      `#!/bin/sh\nexec "${process.execPath}" -e ${JSON.stringify(code)}\n`,
+      { mode: 0o755 },
+    );
+    const deadlineGh: (
+      cwd: string,
+      args: string[],
+      input?: string,
+      env?: Record<string, string>,
+      options?: { timeoutMs?: number },
+    ) => ReturnType<typeof runGh> = runGh;
+    const ghStarted = performance.now();
+    const ghResult = deadlineGh(
+      cwd,
+      [],
+      undefined,
+      { PATH: `${bin}:${LIB_ORIGINAL_PATH}` },
+      options,
+    );
+    expect(performance.now() - ghStarted).toBeLessThan(700);
+    expect(ghResult).toMatchObject({ ok: false, missing: false });
+    expect(ghUnavailable(ghResult)).toBe(false);
+    expect(ghResult.stderr).toMatch(/timeout|timed.out|ETIMEDOUT/i);
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    expect(fs.existsSync(marker)).toBe(false);
+    expect(
+      runTool(process.execPath, ["-e", "process.stdout.write('unchanged')"], cwd),
+    ).toMatchObject({ found: true, status: 0, stdout: "unchanged" });
+    fs.writeFileSync(path.join(bin, "gh"), "#!/bin/sh\nprintf 'unchanged\\n'\n", { mode: 0o755 });
+    expect(runGh(cwd, [], undefined, { PATH: `${bin}:${LIB_ORIGINAL_PATH}` })).toMatchObject({
+      ok: true,
+      stdout: "unchanged",
+      missing: false,
+    });
+  });
+
   /** A repo holding one blob of `bytes` bytes; returns its sha for `git cat-file -p`. */
   function repoWithBlob(bytes: number) {
     const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-lib-buf-")));
@@ -788,5 +848,304 @@ describe("resolveActiveRun", () => {
     const { cwd, status } = treeWithOneRun();
     const run = resolveActiveRun({ cwd, fid: "901-x", month: "202611" });
     expect(run).toEqual({ workflow: "build", file: status, bookRoot: cwd });
+  });
+});
+
+describe("explicit invocation context", () => {
+  const PROBE: CommandSpec = {
+    noun: "probe",
+    summary: "invocation probe",
+    verbs: {
+      show: {
+        summary: "emits the invocation the shared flag resolved",
+        use: "workflow",
+        flags: [
+          INVOCATION_FLAG,
+          { name: "workflow", type: "string", help: "asserted workflow" },
+          { name: "file", type: "string", help: "asserted status.jsonl" },
+        ],
+        output: { invocation: "the resolved invocation, or null" },
+        run: (ctx) => {
+          ctx.emit({ invocation: ctx.invocation ?? null });
+          return 0;
+        },
+      },
+    },
+  };
+  const REL = "docs/plans/202611/logs/860-x/status.jsonl";
+
+  const invocationRepo = () => {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-lib-inv-")));
+    cleanups.push(root);
+    spawnSync("git", ["init", "-q", "-b", "dev"], { cwd: root });
+    fs.mkdirSync(path.dirname(path.join(root, REL)), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, REL),
+      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-11-09T10:00:00Z" })}\n`,
+    );
+    return root;
+  };
+  const cleanups: string[] = [];
+  afterEach(() => {
+    for (const d of cleanups.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  async function call(cwd: string, specs: CommandSpec[], argv: string[]) {
+    const out: string[] = [];
+    const err: string[] = [];
+    const code = await runCommand([...argv, "--json"], specs, {
+      classicVerbs: new Set(["status"]),
+      cwd,
+      io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
+    });
+    return { code, out: out.join(""), err: err.join("") };
+  }
+
+  it("rejects stale cross-worktree invocation and conflicting overrides", async () => {
+    const a = invocationRepo();
+    const b = invocationRepo();
+    const issued = await call(a, COMMANDS, [
+      "status",
+      "invocation",
+      "--workflow=build",
+      "--step=build-branch-sync",
+      `--file=${REL}`,
+    ]);
+    expect(issued.code).toBe(0);
+    const id = (JSON.parse(issued.out) as { invocation: string }).invocation;
+    expect(id).not.toBe("");
+
+    // Control: the checkout that issued it resolves it to its own run and status file.
+    const ok = await call(a, [PROBE], ["probe", "show", `--invocation=${id}`]);
+    expect(ok.code).toBe(0);
+    expect(
+      (JSON.parse(ok.out) as { invocation: Record<string, unknown> }).invocation,
+    ).toMatchObject({
+      workflow: "build",
+      step: "build-branch-sync",
+      statusPath: path.join(a, REL),
+    });
+
+    // Another checkout, a forged id and each conflicting override are refused, with no output.
+    const other = await call(b, [PROBE], ["probe", "show", `--invocation=${id}`]);
+    expect(other.code).toBe(EXIT.USAGE);
+    expect(other.err).toMatch(/invocation/i);
+    expect(other.out).toBe("");
+
+    const forged = await call(a, [PROBE], ["probe", "show", "--invocation=inv-forged"]);
+    expect(forged.code).toBe(EXIT.USAGE);
+    expect(forged.out).toBe("");
+
+    const wrongWorkflow = await call(
+      a,
+      [PROBE],
+      ["probe", "show", `--invocation=${id}`, "--workflow=debug"],
+    );
+    expect(wrongWorkflow.code).toBe(EXIT.USAGE);
+    expect(wrongWorkflow.err).toMatch(/conflict/i);
+    expect(wrongWorkflow.out).toBe("");
+
+    const wrongFile = await call(
+      a,
+      [PROBE],
+      ["probe", "show", `--invocation=${id}`, `--file=${path.join(b, REL)}`],
+    );
+    expect(wrongFile.code).toBe(EXIT.USAGE);
+    expect(wrongFile.err).toMatch(/conflict/i);
+    expect(wrongFile.out).toBe("");
+  });
+
+  it("writes the engine-call row for an invocation-bound command", async () => {
+    const a = invocationRepo();
+    const issued = await call(a, COMMANDS, [
+      "status",
+      "invocation",
+      "--workflow=build",
+      "--step=build-branch-sync",
+      `--file=${REL}`,
+    ]);
+    expect(issued.code).toBe(0);
+    const id = (JSON.parse(issued.out) as { invocation: string }).invocation;
+
+    const seen: Array<{ noun: string; verb: string; cwd: string; invocation: unknown }> = [];
+    const journal = {
+      call: (i: { noun: string; verb: string; cwd: string; flags: Record<string, unknown> }) => {
+        seen.push({ noun: i.noun, verb: i.verb, cwd: i.cwd, invocation: i.flags["invocation"] });
+      },
+      failure: () => {},
+    };
+    const io = { stdout: () => {}, stderr: () => {} };
+    const bound = await runCommand(["probe", "show", `--invocation=${id}`, "--json"], [PROBE], {
+      classicVerbs: new Set(["status"]),
+      cwd: a,
+      io,
+      journal,
+    });
+    expect(bound).toBe(0);
+    expect(seen).toEqual([{ noun: "probe", verb: "show", cwd: a, invocation: id }]);
+
+    // A refused invocation never reaches the journal.
+    const refused = await runCommand(
+      ["probe", "show", "--invocation=inv-forged", "--json"],
+      [PROBE],
+      {
+        classicVerbs: new Set(["status"]),
+        cwd: a,
+        io,
+        journal,
+      },
+    );
+    expect(refused).toBe(EXIT.USAGE);
+    expect(seen).toHaveLength(1);
+  });
+});
+
+describe("bounded correction eligibility", () => {
+  const verbThrowing = (make: () => Error): CommandSpec => ({
+    noun: "probe",
+    summary: "correction probe",
+    verbs: {
+      go: {
+        summary: "throws what the test gives it",
+        use: "workflow",
+        flags: [],
+        output: {},
+        run: () => {
+          throw make();
+        },
+      },
+    },
+  });
+
+  async function fail(make: () => Error, journal?: Parameters<typeof runCommand>[2]["journal"]) {
+    const out: string[] = [];
+    const err: string[] = [];
+    const code = await runCommand(["probe", "go", "--json"], [verbThrowing(make)], {
+      classicVerbs: new Set(),
+      cwd: os.tmpdir(),
+      io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
+      ...(journal === undefined ? {} : { journal }),
+    });
+    return { code, out: out.join(""), err: err.join("") };
+  }
+
+  const errorOf = (out: string) => (JSON.parse(out) as { error: Record<string, unknown> }).error;
+
+  it("exposes no-write correction eligibility only for declared pre-effect validation", async () => {
+    // Declared pre-effect validation: the structured error says nothing was written and a correction may follow.
+    const declared = await fail(
+      () =>
+        new NoWriteRejection(EXIT.USAGE, "row 2 has no summary", {
+          scope: "ledgers-append:failures",
+          substep: "append",
+        }),
+    );
+    expect(declared.code).toBe(EXIT.USAGE);
+    expect(declared.err).toContain("row 2 has no summary");
+    expect(errorOf(declared.out)).toMatchObject({
+      code: EXIT.USAGE,
+      message: "row 2 has no summary",
+      effects: "none",
+      correctable: true,
+      scope: "ledgers-append:failures",
+      substep: "append",
+    });
+
+    // A generic failure carries no declaration, so it never gets retry permission.
+    const generic = await fail(() => new CommandError(EXIT.USAGE, "bad flag"));
+    expect(generic.code).toBe(EXIT.USAGE);
+    expect(generic.out).not.toContain('correctable":true');
+    expect(generic.out).toBe("");
+
+    // A failure after an effect began is never correctable, whatever its exit code.
+    const post = await fail(() => new UncertainEffect(EXIT.NO, "append response lost"));
+    expect(post.code).toBe(EXIT.NO);
+    expect(errorOf(post.out)).toMatchObject({ effects: "uncertain", correctable: false });
+    expect(errorOf(post.out)).not.toHaveProperty("scope");
+
+    // A gate or permission refusal is a plain command error and stays uncorrectable.
+    const gate = await fail(() => new CommandError(EXIT.NEEDS_HUMAN, "gate refused"));
+    expect(gate.code).toBe(EXIT.NEEDS_HUMAN);
+    expect(gate.out).toBe("");
+
+    // Optional telemetry failing never masks the required mutation error or its eligibility.
+    const brokenJournal = {
+      call: () => {
+        throw new Error("telemetry down");
+      },
+      failure: () => {
+        throw new Error("telemetry down");
+      },
+    };
+    const masked = await fail(
+      () =>
+        new NoWriteRejection(EXIT.USAGE, "row 2 has no summary", { scope: "s", substep: "append" }),
+      brokenJournal,
+    );
+    expect(masked.code).toBe(EXIT.USAGE);
+    expect(errorOf(masked.out)).toMatchObject({ effects: "none", correctable: true });
+    expect(masked.err).toContain("row 2 has no summary");
+  });
+});
+
+describe("tests-lock status file", () => {
+  const holder =
+    "bkit tests run bkit:gate:static-unit — /tmp/holder (pid 123, since 12:00:00), last run took 1m2s";
+  const write = (file: string, body: string) => {
+    fs.writeFileSync(file, body);
+    return file;
+  };
+
+  it("a lock wait is read from the status file and a reworded script sentence changes nothing", () => {
+    const file = lockStatusFile();
+    expect(path.dirname(file)).toBe(os.tmpdir());
+    expect(fs.existsSync(file)).toBe(false);
+    expect(lockStatusFile()).not.toBe(file);
+    write(file, `lock=tests\noutcome=gave-up\nholder=${holder}\n`);
+    const status = readLockStatus(file);
+    expect(status).toEqual({ lock: "tests", outcome: "gave-up", holder });
+    expect(fs.existsSync(file)).toBe(false);
+    expect(classifyLockOutcome(75, status)).toBe("lock-wait");
+    expect(classifyLockOutcome(null, status)).toBe("lock-wait");
+    expect(classifyLockOutcome(1, status)).toBe("gate");
+    const refused = readLockStatus(write(file, "lock=tests\noutcome=refused\nholder=\n"));
+    expect(refused).toEqual({ lock: "tests", outcome: "refused", holder: "" });
+    expect(classifyLockOutcome(73, refused)).toBe("could-not-run");
+    expect(classifyLockOutcome(null, refused)).toBe("could-not-run");
+    expect(classifyLockOutcome(75, refused)).toBe("gate");
+  });
+
+  it("a run stopped at the hold limit reads as could-not-run, never as a gate failure", () => {
+    const file = lockStatusFile();
+    const held = readLockStatus(
+      write(file, `lock=tests\noutcome=held-too-long\nholder=${holder}\n`),
+    );
+    expect(held).toEqual({ lock: "tests", outcome: "held-too-long", holder });
+    expect(classifyLockOutcome(124, held)).toBe("could-not-run");
+    expect(classifyLockOutcome(null, held)).toBe("could-not-run");
+    expect(classifyLockOutcome(1, held)).toBe("gate");
+  });
+
+  it("a status file for another lock or an empty one reads as a gate result", () => {
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-lock-status-")));
+    try {
+      const other = readLockStatus(
+        write(path.join(dir, "other"), `lock=database\noutcome=gave-up\nholder=${holder}\n`),
+      );
+      expect(other).toMatchObject({ lock: "database", outcome: "gave-up" });
+      expect(classifyLockOutcome(75, other)).toBe("gate");
+      const otherRefused = readLockStatus(
+        write(path.join(dir, "other-refused"), "lock=database\noutcome=refused\nholder=\n"),
+      );
+      expect(classifyLockOutcome(73, otherRefused)).toBe("gate");
+      expect(readLockStatus(write(path.join(dir, "empty"), ""))).toBeNull();
+      expect(readLockStatus(path.join(dir, "absent"))).toBeNull();
+      fs.mkdirSync(path.join(dir, "folder"));
+      expect(readLockStatus(path.join(dir, "folder"))).toBeNull();
+      for (const code of [75, 73, 1, 0]) expect(classifyLockOutcome(code, null)).toBe("gate");
+      expect(classifyLockOutcome(null, null)).toBe("gate");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

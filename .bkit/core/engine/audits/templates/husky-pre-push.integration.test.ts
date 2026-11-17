@@ -5,6 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 // Gate-order fixtures stand in for package execution; the min-push suite runs the real CLI.
 const UNWRAP_PUSH_GATE =
@@ -1216,6 +1217,35 @@ describe(".husky/pre-push min push", () => {
       expect(r.calls).toContain("bkit:gate:min");
     });
 
+    it(`${hook}: audit report to dev under a [skip ci] head → allowed, light gate`, () => {
+      const head = commitFiles(
+        { "docs/audits/202611/security.md": "# Report\n" },
+        "docs(1): audit report bkit [skip ci]",
+      );
+      const r = push(hook, head, "refs/heads/dev");
+      expect(r.status).toBe(0);
+      expect(r.stderr).not.toContain("CI-suppressing token");
+      expect(r.calls).toContain("bkit:gate:min");
+      expect(r.calls).not.toContain("bkit:gate:static-unit");
+    });
+
+    it(`${hook}: audit-template project section to dev under a [skip ci] head → allowed, light gate`, () => {
+      const template = (project: string) =>
+        `<!-- bkit:start -->\n<!-- managed-version: 1 -->\nblock\n<!-- bkit:end -->\n\n## Project Instructions\n${project}\n`;
+      const file = "docs/templates/bkit-audit-x.md";
+      const remote = commitFiles({ [file]: template("old") }, "docs(1): add template");
+      gitIn("update-ref", "refs/remotes/origin/dev", remote);
+      const head = commitFiles(
+        { [file]: template("new project text") },
+        "docs(1): audit project section bkit [skip ci]",
+      );
+      const r = push(hook, head, "refs/heads/dev", remote);
+      expect(r.status).toBe(0);
+      expect(r.stderr).not.toContain("CI-suppressing token");
+      expect(r.calls).toContain("bkit:gate:min");
+      expect(r.calls).not.toContain("bkit:gate:static-unit");
+    });
+
     it(`${hook}: code to dev with a clean head → not blocked, full gate`, () => {
       const r = push(hook, commitFiles({ "src/a.ts": "b\n" }, "feat(1): a"), "refs/heads/dev");
       expect(r.status).toBe(0);
@@ -1233,5 +1263,851 @@ describe(".husky/pre-push min push", () => {
     const r = push(".husky/pre-push", commitFiles({ "src/a.ts": "b\n" }, "feat(1): a"));
     expect(r.calls).toContain("bkit:check:dist");
     expect(r.calls).toContain("bkit:lint:workflows");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// .husky/pre-push direnv — the logged inner run goes through `direnv exec .` when the repo
+// has an `.envrc`, `direnv` is on PATH and CI is unset; an untrusted `.envrc` blocks first.
+// Stub `direnv` records its argv, fails every call when `untrusted` exists (the blocked
+// message) or `broken` exists (a load error of a trusted file), and otherwise runs the command
+// after `exec .` with GATE_VAR set; stub `pnpm` records the GATE_VAR it sees.
+// ---------------------------------------------------------------------------
+
+describe(".husky/pre-push direnv", () => {
+  const ZERO = "0".repeat(40);
+  const SHA = "d".repeat(40);
+  const REPO = process.cwd();
+  const HOOKS = [".bkit/templates/.husky/pre-push", ".husky/pre-push"];
+  const UPDATE = `refs/heads/dev ${SHA} refs/heads/dev ${ZERO}\n`;
+  const DELETE = `(delete) ${ZERO} refs/heads/a ${SHA}\n`;
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-prepush-direnv-")));
+    fs.mkdirSync(path.join(tmp, "bin"));
+    fs.writeFileSync(
+      path.join(tmp, "bin", "pnpm"),
+      `#!/bin/sh\ncase "$*" in *skip-token*|*"ci min-push"*) exit 1 ;; esac\necho "pnpm: $* GATE_VAR=\${GATE_VAR:-unset}" >> "${tmp}/calls.log"\nexit 0\n`,
+      { mode: 0o755 },
+    );
+    fs.writeFileSync(
+      path.join(tmp, "bin", "direnv"),
+      `#!/bin/sh\necho "$*" >> "${tmp}/direnv.log"\nif [ -e "${tmp}/untrusted" ]; then echo "direnv: error ${tmp}/.envrc is blocked. Run \\\`direnv allow\\\` to approve its content" >&2; exit 1; fi\nif [ -e "${tmp}/broken" ]; then echo "direnv: error ${tmp}/.envrc:1: ENVRC-LOAD-FAILURE" >&2; exit 1; fi\nshift 2\nGATE_VAR=from-envrc exec "$@"\n`,
+      { mode: 0o755 },
+    );
+  });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  const lines = (file: string): string[] => {
+    const p = path.join(tmp, file);
+    return fs.existsSync(p) ? fs.readFileSync(p, "utf-8").trim().split("\n") : [];
+  };
+
+  /** A bin dir holding every tool on PATH except `direnv`, so the hook finds none. */
+  const pathWithoutDirenv = (): string => {
+    const dir = path.join(tmp, "nodirenv");
+    fs.mkdirSync(dir);
+    const linked = new Set<string>();
+    for (const d of (process.env.PATH ?? "").split(path.delimiter)) {
+      if (!d || !fs.existsSync(d)) continue;
+      for (const name of fs.readdirSync(d)) {
+        if (name === "direnv" || linked.has(name)) continue;
+        linked.add(name);
+        fs.symlinkSync(path.join(d, name), path.join(dir, name));
+      }
+    }
+    return `${path.join(tmp, "bin-pnpm")}:${dir}`;
+  };
+
+  const runHook = (
+    hook: string,
+    stdin: string,
+    opts: {
+      envrc?: boolean;
+      untrusted?: boolean;
+      broken?: boolean;
+      ci?: boolean;
+      noDirenv?: boolean;
+      extraEnv?: Record<string, string>;
+    } = {},
+  ) => {
+    const {
+      envrc = true,
+      untrusted = false,
+      broken = false,
+      ci = false,
+      noDirenv = false,
+      extraEnv = {},
+    } = opts;
+    if (envrc) fs.writeFileSync(path.join(tmp, ".envrc"), "export GATE_VAR=from-envrc\n");
+    if (untrusted) fs.writeFileSync(path.join(tmp, "untrusted"), "");
+    if (broken) fs.writeFileSync(path.join(tmp, "broken"), "");
+    const env = { ...process.env };
+    delete env.BKIT_PRE_PUSH_LOGGED;
+    delete env.CI;
+    delete env.GATE_VAR;
+    if (ci) env.CI = "1";
+    let pathVar = `${path.join(tmp, "bin")}:${process.env.PATH}`;
+    if (noDirenv) {
+      fs.mkdirSync(path.join(tmp, "bin-pnpm"));
+      fs.copyFileSync(path.join(tmp, "bin", "pnpm"), path.join(tmp, "bin-pnpm", "pnpm"));
+      fs.chmodSync(path.join(tmp, "bin-pnpm", "pnpm"), 0o755);
+      pathVar = pathWithoutDirenv();
+    }
+    const result = spawnSync("sh", [path.join(REPO, hook)], {
+      cwd: tmp,
+      input: stdin,
+      encoding: "utf-8",
+      timeout: 20_000,
+      env: { ...env, ...extraEnv, PATH: pathVar },
+    });
+    return {
+      status: result.status,
+      stderr: result.stderr,
+      calls: lines("calls.log"),
+      direnv: lines("direnv.log"),
+    };
+  };
+
+  it("trusted .envrc → the gate sees its variables", () => {
+    for (const hook of HOOKS) {
+      fs.rmSync(path.join(tmp, "calls.log"), { force: true });
+      fs.rmSync(path.join(tmp, "direnv.log"), { force: true });
+      const r = runHook(hook, UPDATE);
+      expect(r.status, hook).toBe(0);
+      expect(
+        r.direnv.some((c) => c.startsWith("exec . sh ")),
+        hook,
+      ).toBe(true);
+      const gate = r.calls.filter((c) => c.includes("push-gate"));
+      expect(gate.length, hook).toBeGreaterThan(0);
+      for (const g of gate) expect(g, hook).toContain("GATE_VAR=from-envrc");
+    }
+  });
+
+  it("untrusted .envrc → blocked before bkit check, names direnv allow", () => {
+    for (const hook of HOOKS) {
+      fs.rmSync(path.join(tmp, "calls.log"), { force: true });
+      const r = runHook(hook, UPDATE, { untrusted: true });
+      expect(r.status, hook).toBe(1);
+      expect(r.stderr, hook).toContain("direnv allow .");
+      expect(
+        r.calls.some((c) => c.includes("bkit check")),
+        hook,
+      ).toBe(false);
+      expect(
+        r.calls.some((c) => c.includes("push-gate")),
+        hook,
+      ).toBe(false);
+    }
+  });
+
+  it('trusted .envrc that fails to load prints the cause, not "not trusted"', () => {
+    for (const hook of HOOKS) {
+      fs.rmSync(path.join(tmp, "calls.log"), { force: true });
+      const r = runHook(hook, UPDATE, { broken: true });
+      expect(r.status, hook).toBe(1);
+      expect(r.stderr, hook).toContain("ENVRC-LOAD-FAILURE");
+      expect(r.stderr, hook).toMatch(/\.envrc failed to load/);
+      expect(r.stderr, hook).not.toContain("not trusted");
+      expect(r.stderr, hook).not.toContain("direnv allow .");
+      expect(
+        r.calls.some((c) => c.includes("bkit check")),
+        hook,
+      ).toBe(false);
+    }
+  });
+
+  it("untrusted .envrc still prints the direnv allow line", () => {
+    for (const hook of HOOKS) {
+      const r = runHook(hook, UPDATE, { untrusted: true });
+      expect(r.status, hook).toBe(1);
+      expect(r.stderr, hook).toContain(".envrc is not trusted");
+      expect(r.stderr, hook).toContain("direnv allow .");
+      expect(r.stderr, hook).toContain("is blocked");
+    }
+  });
+
+  it("no .envrc → no direnv call", () => {
+    for (const hook of HOOKS) {
+      fs.rmSync(path.join(tmp, "calls.log"), { force: true });
+      fs.rmSync(path.join(tmp, "direnv.log"), { force: true });
+      const r = runHook(hook, UPDATE, { envrc: false });
+      expect(r.status, hook).toBe(0);
+      expect(r.direnv, hook).toEqual([]);
+      expect(
+        r.calls.some((c) => c.includes("push-gate")),
+        hook,
+      ).toBe(true);
+    }
+  });
+
+  it("direnv not on PATH → gates run, no warning", () => {
+    for (const hook of HOOKS) {
+      fs.rmSync(path.join(tmp, "calls.log"), { force: true });
+      fs.rmSync(path.join(tmp, "nodirenv"), { recursive: true, force: true });
+      fs.rmSync(path.join(tmp, "bin-pnpm"), { recursive: true, force: true });
+      const r = runHook(hook, UPDATE, { noDirenv: true });
+      expect(r.status, hook).toBe(0);
+      expect(r.direnv, hook).toEqual([]);
+      expect(
+        r.calls.some((c) => c.includes("push-gate")),
+        hook,
+      ).toBe(true);
+      expect(r.stderr.toLowerCase(), hook).not.toContain("direnv");
+      expect(r.stderr, hook).not.toContain("WARN");
+    }
+  });
+
+  it("CI set → no direnv call", () => {
+    for (const hook of HOOKS) {
+      fs.rmSync(path.join(tmp, "calls.log"), { force: true });
+      fs.rmSync(path.join(tmp, "direnv.log"), { force: true });
+      const r = runHook(hook, UPDATE, { ci: true });
+      expect(r.status, hook).toBe(0);
+      expect(r.direnv, hook).toEqual([]);
+      expect(
+        r.calls.some((c) => c.includes("push-gate")),
+        hook,
+      ).toBe(true);
+    }
+  });
+
+  it("delete-only push through direnv exec → exit 0, no gate", () => {
+    for (const hook of HOOKS) {
+      fs.rmSync(path.join(tmp, "calls.log"), { force: true });
+      fs.rmSync(path.join(tmp, "direnv.log"), { force: true });
+      const r = runHook(hook, DELETE);
+      expect(r.status, hook).toBe(0);
+      expect(
+        r.direnv.some((c) => c.startsWith("exec . sh ")),
+        hook,
+      ).toBe(true);
+      expect(r.calls, hook).toEqual([]);
+      expect(r.stderr, hook).toContain("delete-only push");
+    }
+  });
+
+  it("trusted .envrc → .bkit/.env tooling keys do not reach the gate", () => {
+    for (const hook of HOOKS) {
+      fs.rmSync(path.join(tmp, "calls.log"), { force: true });
+      fs.rmSync(path.join(tmp, "direnv.log"), { force: true });
+      fs.mkdirSync(path.join(tmp, ".bkit"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, ".bkit", ".env"),
+        "BKIT_GH_TOKEN=dummy-write-pat\nBKIT_OTHER_KEY=dummy-other\n",
+      );
+      // direnv stub: like `dotenv_if_exists .bkit/.env` in the .envrc, export the file's keys
+      // and the .envrc's own variable, then run the command after `exec .`.
+      fs.writeFileSync(
+        path.join(tmp, "bin", "direnv"),
+        `#!/bin/sh\necho "$*" >> "${tmp}/direnv.log"\nshift 2\nset -a\n. ./.bkit/.env\nGATE_VAR=from-envrc\nset +a\nexec "$@"\n`,
+        { mode: 0o755 },
+      );
+      fs.writeFileSync(
+        path.join(tmp, "bin", "pnpm"),
+        `#!/bin/sh\ncase "$*" in *skip-token*|*"ci min-push"*) exit 1 ;; esac\necho "pnpm: $* GATE_VAR=\${GATE_VAR:-unset} BKIT_GH_TOKEN=\${BKIT_GH_TOKEN:-unset} BKIT_OTHER_KEY=\${BKIT_OTHER_KEY:-unset}" >> "${tmp}/calls.log"\nexit 0\n`,
+        { mode: 0o755 },
+      );
+      const r = runHook(hook, UPDATE);
+      expect(r.status, hook).toBe(0);
+      const gate = r.calls.filter((c) => c.includes("push-gate"));
+      expect(gate.length, hook).toBeGreaterThan(0);
+      for (const g of gate) {
+        expect(g, hook).toContain("GATE_VAR=from-envrc");
+        expect(g, hook).toContain("BKIT_GH_TOKEN=unset");
+        expect(g, hook).toContain("BKIT_OTHER_KEY=unset");
+      }
+      expect(r.stderr, hook).not.toContain("dummy-write-pat");
+    }
+  });
+
+  it("trusted .envrc → spaced and colon .bkit/.env keys do not reach the gate", () => {
+    for (const hook of HOOKS) {
+      fs.rmSync(path.join(tmp, "calls.log"), { force: true });
+      fs.mkdirSync(path.join(tmp, ".bkit"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, ".bkit", ".env"),
+        "BKIT_GH_TOKEN = dummy-write-pat\nBKIT_OTHER_KEY: dummy-other\nexport BKIT_THIRD_KEY=dummy-third\n",
+      );
+      // direnv's dotenv grammar exports spaced, colon and `export` lines; the stub does the same.
+      fs.writeFileSync(
+        path.join(tmp, "bin", "direnv"),
+        `#!/bin/sh\necho "$*" >> "${tmp}/direnv.log"\nshift 2\nBKIT_GH_TOKEN=dummy-write-pat BKIT_OTHER_KEY=dummy-other BKIT_THIRD_KEY=dummy-third GATE_VAR=from-envrc exec "$@"\n`,
+        { mode: 0o755 },
+      );
+      fs.writeFileSync(
+        path.join(tmp, "bin", "pnpm"),
+        `#!/bin/sh\ncase "$*" in *skip-token*|*"ci min-push"*) exit 1 ;; esac\necho "pnpm: $* GATE_VAR=\${GATE_VAR:-unset} BKIT_GH_TOKEN=\${BKIT_GH_TOKEN:-unset} BKIT_OTHER_KEY=\${BKIT_OTHER_KEY:-unset} BKIT_THIRD_KEY=\${BKIT_THIRD_KEY:-unset}" >> "${tmp}/calls.log"\nexit 0\n`,
+        { mode: 0o755 },
+      );
+      const r = runHook(hook, UPDATE);
+      expect(r.status, hook).toBe(0);
+      const gate = r.calls.filter((c) => c.includes("push-gate"));
+      expect(gate.length, hook).toBeGreaterThan(0);
+      for (const g of gate) {
+        expect(g, hook).toContain("GATE_VAR=from-envrc");
+        expect(g, hook).toContain("BKIT_GH_TOKEN=unset");
+        expect(g, hook).toContain("BKIT_OTHER_KEY=unset");
+        expect(g, hook).toContain("BKIT_THIRD_KEY=unset");
+      }
+      expect(r.stderr, hook).not.toContain("dummy-write-pat");
+    }
+  });
+
+  it("no .bkit/.env, BKIT_GH_TOKEN exported by the pushing shell → the gate does not see it", () => {
+    for (const hook of HOOKS) {
+      fs.rmSync(path.join(tmp, "calls.log"), { force: true });
+      fs.rmSync(path.join(tmp, "bin-pnpm"), { recursive: true, force: true });
+      fs.rmSync(path.join(tmp, "nodirenv"), { recursive: true, force: true });
+      fs.writeFileSync(
+        path.join(tmp, "bin", "pnpm"),
+        `#!/bin/sh\ncase "$*" in *skip-token*|*"ci min-push"*) exit 1 ;; esac\necho "pnpm: $* BKIT_GH_TOKEN=\${BKIT_GH_TOKEN:-unset}" >> "${tmp}/calls.log"\nexit 0\n`,
+        { mode: 0o755 },
+      );
+      const r = runHook(hook, UPDATE, {
+        envrc: false,
+        noDirenv: true,
+        extraEnv: { BKIT_GH_TOKEN: "dummy-write-pat" },
+      });
+      expect(r.status, hook).toBe(0);
+      expect(fs.existsSync(path.join(tmp, ".bkit", ".env")), hook).toBe(false);
+      const gate = r.calls.filter((c) => c.includes("push-gate"));
+      expect(gate.length, hook).toBeGreaterThan(0);
+      for (const g of gate) expect(g, hook).toContain("BKIT_GH_TOKEN=unset");
+      expect(r.stderr, hook).not.toContain("dummy-write-pat");
+    }
+  });
+});
+
+describe("the gate's vitest run", () => {
+  it(
+    "the gate's vitest run does not inherit BKIT_PRE_PUSH_LOGGED",
+    () => {
+      const env: NodeJS.ProcessEnv = { ...process.env, BKIT_PRE_PUSH_LOGGED: "1" };
+      delete env.CI;
+      delete env.GITHUB_ACTIONS;
+      const result = spawnSync(
+        "pnpm",
+        [
+          "exec",
+          "vitest",
+          "run",
+          "-c",
+          "vitest.unit.config.ts",
+          ".bkit/core/engine/checks/tips/catalogue.test.ts",
+          "-t",
+          "inside the pre-push hook",
+        ],
+        { cwd: process.cwd(), encoding: "utf-8", timeout: 120_000, env },
+      );
+      expect(`${result.stdout}\n${result.stderr}`, "vitest output").toContain("1 passed");
+      expect(result.status).toBe(0);
+    },
+    localLimit(150_000),
+  );
+});
+
+// ---------------------------------------------------------------------------
+// .husky/pre-push PR conflict — a feature-branch push whose open PR no longer merges into its
+// base stops before `bkit check` and the gate. A real repo and bare origin carry the base and
+// the branch; stub `gh` answers "<number> <base>", stub `pnpm` records every call, and a `git`
+// wrapper records each call before running the real git.
+// ---------------------------------------------------------------------------
+
+describe(".husky/pre-push PR conflict", () => {
+  const REPO = process.cwd();
+  const ZERO = "0".repeat(40);
+  const HOOKS = [".bkit/templates/.husky/pre-push", ".husky/pre-push"];
+  let tmp: string;
+  let work: string;
+  let realGit: string;
+
+  const gitIn = (...args: string[]) => {
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    for (const key of Object.keys(env)) if (key.startsWith("GIT_")) delete env[key];
+    return spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], {
+      cwd: work,
+      encoding: "utf-8",
+      env,
+    }).stdout.trim();
+  };
+  const commitFile = (rel: string, body: string, message: string) => {
+    fs.writeFileSync(path.join(work, rel), body);
+    gitIn("add", "-A");
+    gitIn("commit", "-q", "-m", message);
+    return gitIn("rev-parse", "HEAD");
+  };
+  const readLog = (name: string) => {
+    const log = path.join(tmp, name);
+    return fs.existsSync(log)
+      ? fs.readFileSync(log, "utf-8").trim().split("\n").filter(Boolean)
+      : [];
+  };
+
+  /** Build origin + work repo. `conflict` = the base edits the line the branch edits. Leaves the
+   * checkout on `startBranch`. */
+  const setup = (conflict: boolean, startBranch = "feat/1-x") => {
+    fs.mkdirSync(path.join(tmp, "bin"));
+    fs.mkdirSync(work);
+    fs.mkdirSync(path.join(tmp, "origin.git"));
+    gitIn("init", "-q", "--bare", "-b", "dev", path.join(tmp, "origin.git"));
+    gitIn("init", "-q", "-b", "dev");
+    fs.writeFileSync(path.join(work, ".gitignore"), "tmp/\n");
+    commitFile("f.txt", "one\ntwo\nthree\n", "base");
+    gitIn("remote", "add", "origin", path.join(tmp, "origin.git"));
+    gitIn("push", "-q", "origin", "dev");
+    gitIn("checkout", "-q", "-b", "feat/1-x");
+    commitFile("f.txt", "one\nbranch\nthree\n", "feat: branch edit");
+    gitIn("checkout", "-q", "dev");
+    if (conflict) commitFile("f.txt", "one\nbase\nthree\n", "base edit");
+    else commitFile("g.txt", "other\n", "base adds a file");
+    gitIn("push", "-q", "origin", "dev");
+    // The local tracking ref is stale on purpose: the hook must fetch the base itself.
+    gitIn("update-ref", "refs/remotes/origin/dev", gitIn("rev-parse", "HEAD~1"));
+    gitIn("checkout", "-q", startBranch);
+    realGit = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf-8" }).stdout.trim();
+    fs.writeFileSync(
+      path.join(tmp, "bin", "git"),
+      `#!/bin/sh\necho "$*" >> "${tmp}/git.log"\nexec ${realGit} "$@"\n`,
+      { mode: 0o755 },
+    );
+  };
+
+  const installPnpm = (minPush: boolean) =>
+    fs.writeFileSync(
+      path.join(tmp, "bin", "pnpm"),
+      [
+        "#!/bin/sh",
+        `echo "$*" >> "${tmp}/pnpm.log"`,
+        'case "$*" in *skip-token*) exit 1 ;; esac',
+        `case "$*" in *"ci min-push"*) exit ${minPush ? 0 : 1} ;; esac`,
+        "exit 0",
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+  const installGh = (reply: string) =>
+    fs.writeFileSync(
+      path.join(tmp, "bin", "gh"),
+      `#!/bin/sh\necho "$*" >> "${tmp}/gh.log"\necho "${reply}"\n`,
+      { mode: 0o755 },
+    );
+  /** A PATH with the stubs and only the system tools the hook calls — no gh. */
+  const pathWithoutGh = () => {
+    const dir = path.join(tmp, "sysbin");
+    fs.mkdirSync(dir, { recursive: true });
+    for (const tool of [
+      "sh",
+      "bash",
+      "env",
+      "sed",
+      "head",
+      "tr",
+      "wc",
+      "cat",
+      "grep",
+      "rm",
+      "mkdir",
+      "tee",
+      "mktemp",
+      "dirname",
+      "basename",
+    ]) {
+      const found = ["/usr/bin", "/bin"]
+        .map((d) => path.join(d, tool))
+        .find((p) => fs.existsSync(p));
+      if (found !== undefined && !fs.existsSync(path.join(dir, tool))) {
+        fs.symlinkSync(found, path.join(dir, tool));
+      }
+    }
+    return `${path.join(tmp, "bin")}:${dir}`;
+  };
+
+  const push = (
+    hook: string,
+    opts: {
+      branch?: string;
+      pathEnv?: string;
+      env?: Record<string, string>;
+      args?: string[];
+    } = {},
+  ) => {
+    const branch = opts.branch ?? "feat/1-x";
+    fs.rmSync(path.join(tmp, "pnpm.log"), { force: true });
+    fs.rmSync(path.join(tmp, "git.log"), { force: true });
+    fs.rmSync(path.join(tmp, "gh.log"), { force: true });
+    const sha = gitIn("rev-parse", "HEAD");
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      BKIT_PRE_PUSH_LOGGED: "1",
+      PATH: opts.pathEnv ?? `${path.join(tmp, "bin")}:${process.env.PATH}`,
+      ...opts.env,
+    };
+    for (const key of Object.keys(env)) if (key.startsWith("GIT_")) delete env[key];
+    const r = spawnSync("sh", [path.join(REPO, hook), ...(opts.args ?? [])], {
+      cwd: work,
+      input: `refs/heads/${branch} ${sha} refs/heads/${branch} ${ZERO}\n`,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env,
+    });
+    const pnpm = readLog("pnpm.log");
+    return {
+      status: r.status,
+      stderr: r.stderr,
+      pnpm,
+      git: readLog("git.log"),
+      gh: readLog("gh.log"),
+      gated: pnpm.some((c) => c.includes("push-gate")),
+      checked: pnpm.some((c) => c === "bkit check" || c.endsWith(" bkit check")),
+    };
+  };
+
+  beforeEach(() => {
+    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-prepush-conflict-")));
+    work = path.join(tmp, "work");
+  });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  it("open PR whose base conflicts → blocked before bkit check, names the file", () => {
+    setup(true);
+    installPnpm(false);
+    installGh("7 dev");
+    for (const hook of HOOKS) {
+      const r = push(hook);
+      expect(r.status, hook).toBe(1);
+      expect(r.stderr, hook).toContain("BLOCKED");
+      expect(r.stderr, hook).toContain("f.txt");
+      expect(r.checked, hook).toBe(false);
+      expect(r.gated, hook).toBe(false);
+    }
+  });
+
+  it("open PR that merges cleanly → gates run, no message", () => {
+    setup(false);
+    installPnpm(false);
+    installGh("7 dev");
+    for (const hook of HOOKS) {
+      const r = push(hook);
+      expect(r.status, hook).toBe(0);
+      expect(r.checked, hook).toBe(true);
+      expect(r.gated, hook).toBe(true);
+      expect(r.stderr, hook).not.toContain("BLOCKED");
+      expect(r.stderr, hook).not.toContain("WARN");
+    }
+  });
+
+  it("no open PR → no fetch, gates run", () => {
+    setup(true);
+    installPnpm(false);
+    installGh("");
+    for (const hook of HOOKS) {
+      const r = push(hook);
+      expect(r.status, hook).toBe(0);
+      expect(
+        r.git.filter((c) => c.startsWith("fetch")),
+        hook,
+      ).toEqual([]);
+      expect(r.gated, hook).toBe(true);
+      expect(r.stderr, hook).not.toContain("WARN");
+      expect(r.stderr, hook).not.toContain("BLOCKED");
+    }
+  });
+
+  it("gh not on PATH → warns, gates run", () => {
+    setup(true);
+    installPnpm(false);
+    for (const hook of HOOKS) {
+      const r = push(hook, { pathEnv: pathWithoutGh() });
+      expect(r.status, hook).toBe(0);
+      expect(r.stderr, hook).toMatch(/WARN[^\n]*conflict/i);
+      expect(r.stderr, hook).not.toContain("BLOCKED");
+      expect(r.gated, hook).toBe(true);
+    }
+  });
+
+  it("gh not on PATH → warns, gates run for both hook copies", () => {
+    setup(true);
+    installPnpm(false);
+    const seen: string[] = [];
+    for (const hook of HOOKS) {
+      // A fresh PATH helper call per hook copy: the helper must be safe to call repeatedly.
+      const r = push(hook, { pathEnv: pathWithoutGh() });
+      seen.push(hook);
+      expect(r.status, hook).toBe(0);
+      expect(r.stderr, hook).toMatch(/WARN[^\n]*conflict/i);
+      expect(r.stderr, hook).not.toContain("BLOCKED");
+      expect(r.gated, hook).toBe(true);
+    }
+    expect(seen).toEqual(HOOKS);
+  });
+
+  it("base fetch fails → warns, gates run", () => {
+    setup(true);
+    installPnpm(false);
+    installGh("7 dev");
+    gitIn("remote", "set-url", "origin", path.join(tmp, "missing.git"));
+    for (const hook of HOOKS) {
+      const r = push(hook);
+      expect(r.status, hook).toBe(0);
+      expect(r.stderr, hook).toMatch(/WARN[^\n]*conflict/i);
+      expect(r.stderr, hook).not.toContain("BLOCKED");
+      expect(r.gated, hook).toBe(true);
+    }
+  });
+
+  it("dev push → no PR lookup", () => {
+    setup(false, "dev");
+    installPnpm(false);
+    installGh("7 dev");
+    for (const hook of HOOKS) {
+      const r = push(hook, { branch: "dev" });
+      expect(r.status, hook).toBe(0);
+      expect(r.gh, hook).toEqual([]);
+      expect(r.gated, hook).toBe(true);
+    }
+  });
+
+  it("min push of a conflicting PR → blocked", () => {
+    setup(true);
+    installPnpm(true);
+    installGh("7 dev");
+    for (const hook of HOOKS) {
+      const r = push(hook);
+      expect(r.status, hook).toBe(1);
+      expect(r.stderr, hook).toContain("f.txt");
+      expect(r.pnpm.join("\n"), hook).not.toContain("bkit:gate:min");
+      expect(r.gated, hook).toBe(false);
+    }
+  });
+
+  it("BKIT_PR_CONFLICT_CHECK=false on a conflicting PR → no fetch, off line, gates run", () => {
+    setup(true);
+    installPnpm(false);
+    installGh("7 dev");
+    for (const hook of HOOKS) {
+      const r = push(hook, { env: { BKIT_PR_CONFLICT_CHECK: "false" } });
+      expect(r.status, hook).toBe(0);
+      expect(r.stderr, hook).toContain(
+        "[pre-push] PR conflict check off (BKIT_PR_CONFLICT_CHECK=false).",
+      );
+      expect(r.stderr, hook).not.toContain("BLOCKED");
+      expect(
+        r.git.filter((c) => /^(fetch|merge-tree)/.test(c)),
+        hook,
+      ).toEqual([]);
+      expect(r.gated, hook).toBe(true);
+    }
+  });
+
+  it("open PR whose only conflict is a merge=union ledger → blocked", () => {
+    setup(false);
+    installPnpm(false);
+    installGh("7 dev");
+    // Base and branch both append to a.jsonl; `*.jsonl merge=union` hides that from merge-tree
+    // unless the hook ignores the work tree's attributes, as GitHub does.
+    gitIn("checkout", "-q", "dev");
+    fs.writeFileSync(path.join(work, ".gitattributes"), "*.jsonl merge=union\n");
+    commitFile("a.jsonl", "start\n", "ledger");
+    gitIn("push", "-q", "origin", "dev");
+    gitIn("checkout", "-q", "feat/1-x");
+    gitIn("merge", "-q", "--no-edit", "dev");
+    commitFile("a.jsonl", "start\nbranch\n", "branch appends");
+    gitIn("checkout", "-q", "dev");
+    commitFile("a.jsonl", "start\nbase\n", "base appends");
+    gitIn("push", "-q", "origin", "dev");
+    gitIn("update-ref", "refs/remotes/origin/dev", gitIn("rev-parse", "HEAD~1"));
+    gitIn("checkout", "-q", "feat/1-x");
+    for (const hook of HOOKS) {
+      const r = push(hook);
+      expect(r.status, hook).toBe(1);
+      expect(r.stderr, hook).toContain("BLOCKED");
+      expect(r.stderr, hook).toContain("a.jsonl");
+      expect(r.gated, hook).toBe(false);
+    }
+  });
+
+  it("single-branch fetch refspec → checks the fetched base, no false block", () => {
+    setup(false);
+    installPnpm(false);
+    installGh("7 dev");
+    gitIn("config", "remote.origin.fetch", "+refs/heads/feat/1-x:refs/remotes/origin/feat/1-x");
+    gitIn("update-ref", "-d", "refs/remotes/origin/dev");
+    for (const hook of HOOKS) {
+      gitIn("update-ref", "-d", "refs/remotes/origin/dev");
+      const r = push(hook);
+      expect(r.status, hook).toBe(0);
+      expect(r.stderr, hook).not.toContain("BLOCKED");
+      expect(r.gated, hook).toBe(true);
+    }
+  });
+
+  it("fork PR with the same head branch name → ignored, gates run", () => {
+    setup(true);
+    installPnpm(false);
+    // Stub gh applies the hook's own --jq filter with real jq to a fork PR.
+    fs.writeFileSync(
+      path.join(tmp, "bin", "gh"),
+      [
+        "#!/bin/sh",
+        `echo "$*" >> "${tmp}/gh.log"`,
+        'while [ $# -gt 0 ]; do case "$1" in --jq) shift; F="$1" ;; esac; shift; done',
+        `echo '[{"number":8,"baseRefName":"dev","isCrossRepository":true}]' | jq -r "$F"`,
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    for (const hook of HOOKS) {
+      const r = push(hook);
+      expect(r.status, hook).toBe(0);
+      expect(r.stderr, hook).not.toContain("BLOCKED");
+      expect(r.gated, hook).toBe(true);
+    }
+  });
+
+  it("shallow clone → no base fetch, warns, gates run", () => {
+    setup(true);
+    installPnpm(false);
+    installGh("7 dev");
+    gitIn("push", "-q", "origin", "feat/1-x");
+    const origin = path.join(tmp, "origin.git");
+    const full = path.join(tmp, "work-full");
+    fs.renameSync(work, full);
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")),
+    );
+    const cloned = spawnSync(
+      "git",
+      [
+        "clone",
+        "-q",
+        "--depth=1",
+        "--single-branch",
+        "--branch",
+        "feat/1-x",
+        `file://${origin}`,
+        work,
+      ],
+      { encoding: "utf-8", env },
+    );
+    expect(cloned.status, cloned.stderr).toBe(0);
+    expect(gitIn("rev-parse", "--is-shallow-repository")).toBe("true");
+    for (const hook of HOOKS) {
+      const r = push(hook);
+      expect(r.status, hook).toBe(0);
+      expect(
+        r.git.filter((l) => l.startsWith("fetch")),
+        hook,
+      ).toEqual([]);
+      expect(r.stderr, hook).toMatch(/shallow/i);
+      expect(r.stderr, hook).toContain("git fetch --unshallow");
+      expect(r.stderr, hook).not.toContain("git merge-tree failed");
+      expect(r.stderr, hook).not.toContain("BLOCKED");
+      expect(r.gated, hook).toBe(true);
+    }
+  });
+
+  it("fork contributor's own PR with a skip-ci head → blocked by the CI-suppressor guard", () => {
+    setup(false);
+    fs.writeFileSync(
+      path.join(tmp, "bin", "pnpm"),
+      [
+        "#!/bin/sh",
+        `echo "$*" >> "${tmp}/pnpm.log"`,
+        'case "$*" in *skip-token*) exit 0 ;; esac',
+        'case "$*" in *bookkeeping-push*) exit 1 ;; esac',
+        "exit 0",
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    fs.writeFileSync(
+      path.join(tmp, "bin", "gh"),
+      [
+        "#!/bin/sh",
+        `echo "$*" >> "${tmp}/gh.log"`,
+        'while [ $# -gt 0 ]; do case "$1" in --jq) shift; F="$1" ;; esac; shift; done',
+        `echo '[{"number":7,"baseRefName":"dev","isCrossRepository":true,"headRepositoryOwner":{"login":"contrib"},"headRepository":{"name":"repo"}}]' | jq -r "$F"`,
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    for (const hook of HOOKS) {
+      const r = push(hook, { args: ["origin", "https://github.com/contrib/repo.git"] });
+      expect(r.status, hook).toBe(1);
+      expect(r.stderr, hook).toContain("BLOCKED");
+      expect(r.stderr, hook).toContain("PR #7 is open");
+      expect(r.gated, hook).toBe(false);
+    }
+  });
+
+  it("full page of fork PRs with a skip-ci head → CI-suppressor guard does not read it as no open PR", () => {
+    setup(false);
+    fs.writeFileSync(
+      path.join(tmp, "bin", "pnpm"),
+      [
+        "#!/bin/sh",
+        `echo "$*" >> "${tmp}/pnpm.log"`,
+        'case "$*" in *skip-token*) exit 0 ;; esac',
+        'case "$*" in *bookkeeping-push*) exit 1 ;; esac',
+        "exit 0",
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    fs.writeFileSync(
+      path.join(tmp, "bin", "gh"),
+      [
+        "#!/bin/sh",
+        `echo "$*" >> "${tmp}/gh.log"`,
+        'while [ $# -gt 0 ]; do case "$1" in --jq) shift; F="$1" ;; esac; shift; done',
+        `jq -n '[range(1000)|{number:(100+.),baseRefName:"other",isCrossRepository:true,headRepositoryOwner:{login:"evil"},headRepository:{name:"repo"}}]' | jq -r "$F"`,
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    for (const hook of HOOKS) {
+      const r = push(hook, { args: ["origin", "https://github.com/owner/repo.git"] });
+      expect(r.status, hook).toBe(1);
+      expect(r.stderr, hook).toContain("BLOCKED");
+      expect(r.stderr, hook).toContain("1000 open PRs");
+      expect(r.gated, hook).toBe(false);
+    }
+  });
+
+  it("fork PRs past gh's page limit → same-repo PR still found, conflict blocked", () => {
+    setup(true);
+    installPnpm(false);
+    // Stub gh emulates GitHub: 30 newer fork PRs plus the same-repo PR 7. `pr list` applies the
+    // hook's --jq to the first --limit entries only; `api` with head=<owner>: returns the same-repo PR.
+    fs.writeFileSync(
+      path.join(tmp, "bin", "gh"),
+      [
+        "#!/bin/sh",
+        `echo "$*" >> "${tmp}/gh.log"`,
+        'MODE="$1"; L=30; F=""; HEADQ=""',
+        'for a in "$@"; do case "$a" in *head=*:*) HEADQ=1 ;; esac; done',
+        'while [ $# -gt 0 ]; do case "$1" in --jq) shift; F="$1" ;; --limit|-L) shift; L="$1" ;; esac; shift; done',
+        `SAME='{"number":7,"baseRefName":"dev","isCrossRepository":false,"headRepositoryOwner":{"login":"owner"},"headRepository":{"name":"repo"},"base":{"ref":"dev"},"head":{"repo":{"full_name":"owner/repo","name":"repo","owner":{"login":"owner"}}}}'`,
+        'if [ "$MODE" = "api" ]; then',
+        '  if [ -n "$HEADQ" ]; then echo "[$SAME]" | jq -r "${F:-.}"; else echo "[]" | jq -r "${F:-.}"; fi',
+        "  exit 0",
+        "fi",
+        `FORK='{"baseRefName":"other","isCrossRepository":true,"headRepositoryOwner":{"login":"evil"},"headRepository":{"name":"repo"},"base":{"ref":"other"},"head":{"repo":{"full_name":"evil/repo","name":"repo","owner":{"login":"evil"}}}}'`,
+        `jq -n --argjson fork "$FORK" --argjson same "$SAME" --argjson l "$L" '([range(30)|$fork + {number:(100+.)}] + [$same])[0:$l]' | jq -r "$F"`,
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    for (const hook of HOOKS) {
+      const r = push(hook, { args: ["origin", "https://github.com/owner/repo.git"] });
+      expect(r.status, hook).toBe(1);
+      expect(r.stderr, hook).toContain("BLOCKED");
+      expect(r.stderr, hook).toContain("f.txt");
+      expect(r.gated, hook).toBe(false);
+      expect(r.checked, hook).toBe(false);
+    }
   });
 });

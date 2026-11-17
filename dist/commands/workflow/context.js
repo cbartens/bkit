@@ -35,12 +35,15 @@ import { CommandError, EXIT, git, outboxRel, outboxRoot, } from "../lib.js";
 import { gitEnv, resolveRepoSlug } from "../../ledgers/telemetry.js";
 import { parseJson } from "../../shared/json.js";
 import { checkedTable } from "../../shared/text.js";
+import { defaultRange } from "./feature-base.js";
+export { defaultRange, featureBase } from "./feature-base.js";
 import { buildComment } from "./issues.js";
 import { derivedTestMatrix, parsePlanBlocks, reuseInventory, } from "./plan-blocks.js";
 import { COMMENT_FILE_OUTPUT, commentFileOf } from "./tracker.js";
 import { EXIT_NO_STATUS, FILE_FLAG, positiveInt, readRuns, str } from "./status.js";
 import { EXIT_COMMIT, writeStepRow } from "./steps.js";
-import { RED_PROVEN, doneTasks, redEntries, redKey, testSpan } from "./tests.js";
+import { activeRunStart } from "./counters.js";
+import { RED_PROVEN, doneTasks, planTakeovers, redEntries, redKey, testBlock, testSpan, } from "./tests.js";
 /** Exit code: the artifact to clamp is missing, unreadable, or could not be replaced. */
 export const EXIT_ARTIFACT = 4;
 // ---------------------------------------------------------------------------
@@ -683,7 +686,6 @@ function asCaptured(out) {
 // ---------------------------------------------------------------------------
 /** Exit code: --base does not name a commit. */
 export const EXIT_BASE = 5;
-export const DIFF_BASE = "origin/dev";
 export const DIFF_EXCLUDES = ["docs/plans/**"];
 export const PARTIAL_MARK = "partial diff coverage";
 export const DIFF_GUARD = {
@@ -939,6 +941,25 @@ export function existingPlannedTests(top, open) {
     }
     return out;
 }
+/**
+ * The group's takeovers split by the run start: a taken-over test whose block the run-start
+ * commit `runStart` already held stays in `existing` (add-only); every other one leaves
+ * `existing` and is `takenOver`, which the tests step may rewrite. With no run start, no
+ * takeover counts as pre-run.
+ */
+export function splitTakeovers(top, existing, takeovers, runStart) {
+    const atStart = (k) => {
+        if (runStart === undefined)
+            return false;
+        return testBlock(git(top, ["show", `${runStart}:${k.test}`]), k.name) !== null;
+    };
+    const takenOver = takeovers.filter((k) => !atStart(k));
+    const moved = new Set(takenOver.map((k) => redKey(k.task, k.test, k.name)));
+    return {
+        existing: existing.filter((e) => !moved.has(redKey(e.task, e.test, e.name))),
+        takenOver,
+    };
+}
 /** The brief's text and its work section's size in bytes. */
 export function briefText(o) {
     const lines = o.plan.split("\n");
@@ -997,6 +1018,13 @@ export function briefText(o) {
             work.push("### Planned tests that already exist", "");
             for (const e of existing)
                 work.push(`- TASK ${e.task} \`${e.test}\` \`${e.name}\` — exists at \`${e.test}:${e.line}\`; update that test in place: add expectations, never remove or loosen one`);
+            work.push("");
+        }
+        const takenOver = (o.takenOver ?? []).filter((k) => open.some((t) => t.task === k.task));
+        if (takenOver.length > 0) {
+            work.push("### Planned tests taken over from earlier tasks", "");
+            for (const k of takenOver)
+                work.push(`- TASK ${k.task} \`${k.test}\` \`${k.name}\` — taken over from TASK ${k.from}; rewrite that test case so it fails until this task's code exists`);
             work.push("");
         }
     }
@@ -1214,7 +1242,7 @@ export const contextCommand = {
                 {
                     name: "base",
                     type: "string",
-                    help: `merge base or a group's start commit (default ${DIFF_BASE})`,
+                    help: "merge base or a group's start commit (default: the feature base, where the branch's own work starts)",
                 },
                 ...LOG_FLAGS,
                 {
@@ -1242,7 +1270,9 @@ export const contextCommand = {
                 [EXIT_ARTIFACT]: "the artifact could not be written",
             },
             run: (ctx) => {
-                const base = str(ctx.flags.base) ?? DIFF_BASE;
+                const explicitBase = str(ctx.flags.base);
+                const fallback = explicitBase === undefined ? defaultRange(ctx.cwd, ctx.log) : null;
+                const base = explicitBase ?? fallback.base;
                 if (git(ctx.cwd, ["rev-parse", "-q", "--verify", `${base}^{commit}`]) === null) {
                     throw new CommandError(EXIT_BASE, `--base ${base} does not name a commit (fetch origin, or pass the group's start sha)`);
                 }
@@ -1254,7 +1284,7 @@ export const contextCommand = {
                     fs.mkdirSync(path.dirname(log), { recursive: true });
                     fs.writeFileSync(log, "");
                 }
-                const written = tryWriteDiffArtifact(ctx.cwd, path.resolve(ctx.cwd, artifact), artifact, `${base}...HEAD`, DIFF_GUARD, { rawDir: rawDirFor(ctx.cwd, str(ctx.flags.fid)) });
+                const written = tryWriteDiffArtifact(ctx.cwd, path.resolve(ctx.cwd, artifact), artifact, fallback?.range ?? `${base}...HEAD`, DIFF_GUARD, { rawDir: rawDirFor(ctx.cwd, str(ctx.flags.fid)) });
                 if (!written.ok)
                     throw new CommandError(EXIT_ARTIFACT, `${artifact}: ${written.error}`);
                 const result = written.result;
@@ -1277,7 +1307,7 @@ export const contextCommand = {
             },
         },
         brief: {
-            summary: "Write one group's brief (why and what, where it fits, its open task blocks, the earlier tasks they depend on, the Reuse Inventory rows and Architecture entries for their files, deviations) as build-brief-{group}-{n}.md, and print only its path and sizes; --tests-only writes the tests step's brief as build-brief-tests-{group}-{n}.md, with the Derived Test Matrix rows for the group's tests in place of the inventory and architecture entries.",
+            summary: "Write one group's brief (why and what, where it fits, its open task blocks, the earlier tasks they depend on, the Reuse Inventory rows and Architecture entries for their files, deviations) as build-brief-{group}-{n}.md, and print only its path and sizes; --tests-only writes the tests step's brief as build-brief-tests-{group}-{n}.md, with the Derived Test Matrix rows for the group's tests in place of the inventory and architecture entries, and the tests the group takes over from earlier tasks under their own section.",
             use: "workflow",
             flags: [
                 { name: "plan", type: "string", required: true, help: "the plan file" },
@@ -1381,6 +1411,13 @@ export const contextCommand = {
                 const noteFile = noteFlag === undefined ? undefined : path.resolve(ctx.cwd, noteFlag);
                 if (noteFile !== undefined && !fs.existsSync(noteFile))
                     throw new CommandError(EXIT_ARTIFACT, `${noteFlag} does not exist`);
+                const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
+                const runStart = statusArg === undefined
+                    ? undefined
+                    : activeRunStart(path.resolve(ctx.cwd, statusArg), "build")?.parentSha;
+                const split = testsOnly
+                    ? splitTakeovers(top, existingPlannedTests(top, open), planTakeovers(plan).filter((k) => open.some((t) => t.task === k.task)), typeof runStart === "string" ? runStart : undefined)
+                    : undefined;
                 const { text, workBytes } = briefText({
                     plan,
                     planFile: String(ctx.flags.plan),
@@ -1388,9 +1425,8 @@ export const contextCommand = {
                     groups: blocks.groups,
                     isDone: (t) => isDone(t) || (group.tasks.includes(t) && !open.includes(t)),
                     testsOnly,
-                    existing: testsOnly
-                        ? existingPlannedTests(git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd, open)
-                        : undefined,
+                    existing: split?.existing,
+                    takenOver: split?.takenOver,
                     note: noteFile === undefined ? undefined : fs.readFileSync(noteFile, "utf-8"),
                 });
                 const out = nextBriefPath(dir, group.group, testsOnly ? "build-brief-tests" : undefined);
@@ -1613,7 +1649,7 @@ export const contextCommand = {
                     commit: written.commit,
                     ...(written.progressLine === undefined ? {} : { progressLine: written.progressLine }),
                     comment,
-                    commentFile: commentFileOf(ctx.cwd, comment),
+                    commentFile: commentFileOf(ctx.cwd, comment, ctx),
                 });
                 return written.code;
             },

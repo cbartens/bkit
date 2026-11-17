@@ -1,0 +1,43 @@
+target=6f7a7952d1a7e09ade24a87f546a4eaa1aa47f9b old-dev=2db629f678605d442d89efc223369562ce70e9f2
+== A: dev checked out in a linked worktree, main checkout on feat ==
+$ git fetch -q . 6f7a7952d1a7e09ade24a87f546a4eaa1aa47f9b:refs/heads/dev
+fatal: refusing to fetch into branch 'refs/heads/dev' checked out at '/Users/christian/Documents/GitHub/bkit/.worktrees/849-keep-local-dev/docs/plans/202611/logs/849-keep-local-dev/spike/_work/c1/wt'
+[exit 128]
+dev after: 2db629f678605d442d89efc223369562ce70e9f2 (unchanged: yes)
+== B: dev diverged (local commit), not checked out ==
+$ git fetch -q . 6f7a7952d1a7e09ade24a87f546a4eaa1aa47f9b:refs/heads/dev
+[exit 1]
+dev after: 055bf287d2563339bbce4a8169629f5f12710d9b (unchanged: yes)
+== B1: same as B without -q ==
+$ git fetch . 6f7a7952d1a7e09ade24a87f546a4eaa1aa47f9b:refs/heads/dev
+From .
+ ! [rejected] 6f7a7952d1a7e09ade24a87f546a4eaa1aa47f9b -> dev  (non-fast-forward)
+[exit 1]
+== B2: target is an ancestor of dev (move would go backwards) ==
+$ git fetch -q . 2db629f678605d442d89efc223369562ce70e9f2:refs/heads/dev
+[exit 1]
+dev after: 055bf287d2563339bbce4a8169629f5f12710d9b (unchanged: yes)
+== C: dev behind only, not checked out ==
+$ git fetch -q . 6f7a7952d1a7e09ade24a87f546a4eaa1aa47f9b:refs/heads/dev
+[exit 0]
+dev after: 6f7a7952d1a7e09ade24a87f546a4eaa1aa47f9b (equals target: yes)
+== D: main checkout on dev, uncommitted edit to a.txt (a path the update changes) ==
+$ git merge --ff-only -q 6f7a7952d1a7e09ade24a87f546a4eaa1aa47f9b
+error: Your local changes to the following files would be overwritten by merge:
+	a.txt
+Please commit your changes or stash them before you merge.
+Aborting
+[exit 1]
+dev after: 2db629f678605d442d89efc223369562ce70e9f2 (unchanged: yes); a.txt now: my edit
+== E: main checkout on dev, uncommitted edit to b.txt + staged new s.txt (paths the update does not change) ==
+$ git merge --ff-only -q 6f7a7952d1a7e09ade24a87f546a4eaa1aa47f9b
+[exit 0]
+dev after: 6f7a7952d1a7e09ade24a87f546a4eaa1aa47f9b (equals target: yes); b.txt now: my b edit; staged: s.txt 
+== F: main checkout on dev, untracked n.txt where the update adds n.txt ==
+$ git merge --ff-only -q 471e5816786cc70934c59ef71eb6a483685b40f9
+error: The following untracked working tree files would be overwritten by merge:
+	n.txt
+Please move or remove them before you merge.
+Aborting
+[exit 1]
+dev after: 2db629f678605d442d89efc223369562ce70e9f2 (unchanged: yes); n.txt now: mine

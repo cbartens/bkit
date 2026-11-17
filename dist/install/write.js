@@ -136,6 +136,99 @@ export function deepMergeJson(base, override) {
     return result;
 }
 // ---------------------------------------------------------------------------
+// mergeManagedJson — list-aware merge for managed Tier-2 JSON files
+//
+//   - Objects: merge like deepMergeJson (template keys first, consumer-only keys appended)
+//   - Lists of plain values: template entries in template order, then consumer-only entries
+//   - Lists of objects (hook groups): a consumer group sharing a hook `command`, or the same
+//     bkit hook file (`bkit-*.cjs`), with a template group is replaced by it; other consumer groups follow the template's groups
+//   - Anything else: the template wins
+// ---------------------------------------------------------------------------
+function isPlainObject(v) {
+    return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+function groupCommands(group) {
+    const out = [];
+    if (typeof group.command === "string")
+        out.push(group.command);
+    const hooks = group.hooks;
+    if (!Array.isArray(hooks))
+        return out;
+    for (const h of hooks) {
+        if (isPlainObject(h) && typeof h.command === "string")
+            out.push(h.command);
+    }
+    return out;
+}
+// The bkit hook file a command runs (`bkit-gateguard.cjs`, `bkit-preflight.sh`, ...), so an
+// older spelling of the same bkit hook is still recognised as bkit's own.
+function bkitHookFile(command) {
+    return /\bbkit-[a-z0-9-]+\.(?:cjs|js|sh)\b/.exec(command)?.[0];
+}
+function mergeManagedList(base, override) {
+    const objectLists = [...base, ...override].every((e) => isPlainObject(e));
+    if (objectLists) {
+        const templateCommands = new Set();
+        for (const g of override) {
+            for (const c of groupCommands(g)) {
+                templateCommands.add(c);
+                const file = bkitHookFile(c);
+                if (file)
+                    templateCommands.add(`bkit-file:${file}`);
+            }
+        }
+        const isTemplateCommand = (c) => {
+            const file = bkitHookFile(c);
+            return (templateCommands.has(c) || (file !== undefined && templateCommands.has(`bkit-file:${file}`)));
+        };
+        const templateKeys = new Set(override.map((g) => JSON.stringify(g)));
+        const merged = override.map((g) => ({ ...g }));
+        const kept = [];
+        for (const g of base) {
+            if (templateKeys.has(JSON.stringify(g)))
+                continue;
+            const group = g;
+            const cmds = groupCommands(group);
+            if (!cmds.some(isTemplateCommand)) {
+                kept.push(g);
+                continue;
+            }
+            // A replaced bkit group: its consumer-added hooks move into the matching template group.
+            if (!Array.isArray(group.hooks))
+                continue;
+            const extras = group.hooks.filter((h) => isPlainObject(h) && typeof h.command === "string" && !isTemplateCommand(h.command));
+            if (extras.length === 0)
+                continue;
+            const target = merged.find((t) => groupCommands(t).some((c) => cmds.some((bc) => bc === c || (bkitHookFile(c) !== undefined && bkitHookFile(c) === bkitHookFile(bc)))));
+            if (!target || !Array.isArray(target.hooks))
+                continue;
+            const have = new Set(target.hooks.map((h) => JSON.stringify(h)));
+            const add = extras.filter((h) => !have.has(JSON.stringify(h)));
+            target.hooks = [...target.hooks, ...add];
+        }
+        return [...merged, ...kept];
+    }
+    const seen = new Set(override.map((e) => JSON.stringify(e)));
+    const extras = base.filter((e) => !seen.has(JSON.stringify(e)));
+    return [...override, ...extras];
+}
+export function mergeManagedJson(base, override) {
+    if (Array.isArray(override)) {
+        return Array.isArray(base) ? mergeManagedList(base, override) : override;
+    }
+    if (!isPlainObject(override) || !isPlainObject(base))
+        return override;
+    const result = {};
+    for (const [key, val] of Object.entries(override)) {
+        result[key] = key in base ? mergeManagedJson(base[key], val) : val;
+    }
+    for (const [key, val] of Object.entries(base)) {
+        if (!(key in result))
+            result[key] = val;
+    }
+    return result;
+}
+// ---------------------------------------------------------------------------
 // MCP tracker entry — bkit owns the template's parts of the entry, not the whole entry (#613)
 //
 //   - every key the template sets is reset to the template's value
@@ -223,7 +316,7 @@ export function writeTier2JsonContained(srcPath, dstPath, dryRun, ws) {
         return; // idempotent — no change needed
     }
     // Deep-merge: existing base, template override (template wins on conflicts)
-    const merged = deepMergeJson(existing, template);
+    const merged = mergeManagedJson(existing, template);
     const mergedStr = JSON.stringify(merged, null, 2) + "\n";
     if (mergedStr === dstRaw)
         return; // idempotent guard
@@ -296,8 +389,8 @@ export function writeTier1(srcPath, dstPath, tokens, dryRun, ws) {
 // ---------------------------------------------------------------------------
 /**
  * sha256 of the driver (everything outside the managed block) of hook files a bkit
- * release shipped with a host contract the host does not accept, keyed by consumer path.
- * Register: docs/migrations.md.
+ * release shipped with an output the current managed block cannot work through, keyed by
+ * consumer path. Register: docs/migrations.md.
  */
 export const RETIRED_DRIVER_HASHES = {
     // 5.1.0: Claude-shaped `hookSpecificOutput`; Antigravity reads `{ decision, reason }`.
@@ -307,6 +400,24 @@ export const RETIRED_DRIVER_HASHES = {
     ".agents/plugins/bkit/hooks/bkit-guardrails.cjs": [
         "8e5d75f7e1a4527889dafa6a250ae370e2acf1b5fc7d58929dfc759489746e14",
     ],
+    // 5.0.0-6.1.1: emits `additionalContext` only, so the block's `{ verdict: "deny" }` is dropped.
+    ".claude/hooks/bkit-guardrails.cjs": [
+        "dae41b58e61b055c816ef50f35a763949ec99d1c532dccab980c88d21f4c84f3",
+    ],
+};
+const ANTIGRAVITY_DRIVER_FIX = {
+    isStale: (driver) => driver.includes("hookSpecificOutput"),
+    fix: 'writes Claude-shaped `hookSpecificOutput`, which Antigravity ignores — the hook never takes effect. Emit the managed block\'s result as Antigravity\'s `{ "decision": "allow" | "deny" | "ask", "reason": "…" }` (only a deny\'s reason reaches the model), or delete the file and re-run `bkit install --antigravity` to get bkit\'s driver.',
+};
+/** Per retired-driver path: what marks an edited driver as stale, and the printed fix. */
+const EDITED_DRIVER_FIXES = {
+    ".agents/plugins/bkit/hooks/bkit-gateguard.cjs": ANTIGRAVITY_DRIVER_FIX,
+    ".agents/plugins/bkit/hooks/bkit-guardrails.cjs": ANTIGRAVITY_DRIVER_FIX,
+    ".claude/hooks/bkit-guardrails.cjs": {
+        // An object key, not the 5.0.0-6.1.1 header's "no `permissionDecision` is ever emitted".
+        isStale: (driver) => !/permissionDecision["']?\s*:/.test(driver),
+        fix: 'never emits a `permissionDecision`, so Claude Code runs every command the managed block refuses. When `bkitGuardrails()` returns `{ verdict: "deny", reason }`, emit `{ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: result.reason } }`, or delete the file and re-run `bkit install` to get bkit\'s driver.',
+    },
 };
 /** The text outside a file's single managed block, or null without exactly one block. */
 export function driverText(content, markerStyle) {
@@ -331,8 +442,9 @@ function hasRetiredDriver(dstPath, content, markerStyle) {
         return false;
     if (RETIRED_DRIVER_HASHES[key].includes(sha256(driver)))
         return true;
-    if (driver.includes("hookSpecificOutput")) {
-        console.warn(`[bkit] ${dstPath}: your driver below \`// bkit:end\` writes Claude-shaped \`hookSpecificOutput\`, which Antigravity ignores — the hook never takes effect. Emit the managed block's result as Antigravity's \`{ "decision": "allow" | "deny" | "ask", "reason": "…" }\` (only a deny's reason reaches the model), or delete the file and re-run \`bkit install --antigravity\` to get bkit's driver.`);
+    const edited = EDITED_DRIVER_FIXES[key];
+    if (edited?.isStale(driver)) {
+        console.warn(`[bkit] ${dstPath}: your driver below \`// bkit:end\` ${edited.fix}`);
     }
     return false;
 }

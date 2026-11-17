@@ -1,0 +1,26 @@
+{
+  "tasks": [
+    {
+      "title": "Large-file advisory review",
+      "request": "Mark the false positives as Not a problem with the review reasons, and leave real concerns open.",
+      "summary": "Added Not a problem notes to three file cards whose responsibilities justify keeping them together. The grouped advisory stays open because Floorplan cannot dismiss individual files within it; the 13 recommended splits and four conditional improvements remain open.",
+      "items": [
+        {
+          "ref": ".bkit/core/engine/commands/workflow/worktrees.ts",
+          "change": "changed",
+          "note": "Review note only: the checkout lifecycle is coherent, so file size alone does not justify splitting it. Source behavior is unchanged."
+        },
+        {
+          "ref": ".bkit/core/engine/commands/workflow/prs.ts",
+          "change": "changed",
+          "note": "Review note only: pull-request operations form one coherent interface. Source behavior is unchanged."
+        },
+        {
+          "ref": ".bkit/core/engine/commands/workflow/fids.ts",
+          "change": "changed",
+          "note": "Review note only: feature identity parsing and recovery belong together. Source behavior is unchanged."
+        }
+      ]
+    }
+  ]
+}

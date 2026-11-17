@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { type ChildProcess, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -7,6 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { useGateRunner } from "../../../../../vitest.gate-fixture";
+import { spawnGroup, stopGroup } from "../../../../../vitest.process-group";
 import { tierTimeouts } from "../../../../../vitest.timeout-budget";
 import { requireTsx } from "../../../../../vitest.tsx-bin";
 
@@ -78,6 +79,7 @@ beforeEach(() => {
     )
       delete env[key];
   }
+  env.BKIT_TEST_SLOTS = "1";
   fs.mkdirSync(path.join(cwd, "scripts", "ci"), { recursive: true });
   fs.mkdirSync(path.join(cwd, "src"));
   fs.copyFileSync(TEMPLATE, path.join(cwd, "scripts", "ci", "bkit-machine-lock.sh"));
@@ -150,8 +152,8 @@ beforeEach(() => {
   git("commit", "-q", "-m", "fixture");
 });
 
-afterEach(() => {
-  for (const child of children) child.kill("SIGKILL");
+afterEach(async () => {
+  await Promise.all(children.map(stopGroup));
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -173,7 +175,7 @@ function execute(args: string[], extra: Record<string, string> = {}): Result {
 
 function start(args: string[], extra: Record<string, string> = {}) {
   const started = Date.now();
-  const child = spawn(requireTsx(), [CLI, "tests", ...args, "--json"], {
+  const child = spawnGroup(requireTsx(), [CLI, "tests", ...args, "--json"], {
     cwd,
     env: { ...env, ...extra },
     stdio: ["ignore", "pipe", "pipe"],
@@ -201,7 +203,7 @@ async function waitForFile(file: string, text: string, child: ChildProcess): Pro
 }
 
 async function hold() {
-  const child = spawn(
+  const child = spawnGroup(
     "bash",
     [
       "-c",
@@ -230,11 +232,9 @@ const events = (): GateEvent[] =>
         .map((line) => JSON.parse(line) as GateEvent)
     : [];
 
-/** Replace the gate's work while retaining its sleep-prevention and lock wrappers. */
+/** Replace the gate's work while retaining its lock wrapper. */
 function gatePrefix(value: string): string {
-  const prefix = value.match(
-    /^node scripts\/ci\/bkit-test-awake\.mjs bash scripts\/ci\/bkit-machine-lock\.sh run --lock tests -- /,
-  )?.[0];
+  const prefix = value.match(/^bash scripts\/ci\/bkit-machine-lock\.sh run --lock tests -- /)?.[0];
   if (!prefix) throw new Error(`Gate wrappers missing: ${value}`);
   return prefix;
 }
@@ -344,8 +344,15 @@ describe("tests lock through a consumer's wrapped gate", () => {
     expect(events()[0]!.at).toBeGreaterThanOrEqual(releasedAt);
   });
 
-  it("tests run exits 81 naming the holder when the lock stays held past --lock-wait-s", async () => {
+  it("a real lock wait through bkit tests run exits 81 and names the holder", async () => {
     await hold();
+    // The wrapper's printed lines go nowhere: only the status file can name the holder.
+    const pkgFile = path.join(cwd, "package.json");
+    const pkg = JSON.parse(fs.readFileSync(pkgFile, "utf-8")) as {
+      scripts: Record<string, string>;
+    };
+    pkg.scripts[GATE] = `${pkg.scripts[GATE]} 2>/dev/null`;
+    fs.writeFileSync(pkgFile, JSON.stringify(pkg));
     const result = execute([
       ...runArgs(),
       "--lock-wait-s=1",
@@ -354,11 +361,13 @@ describe("tests lock through a consumer's wrapped gate", () => {
       "--step=gate",
     ]);
     expect(result.status, result.stderr).toBe(81);
+    expect(result.stderr).not.toContain("gave up after");
     expect(output(result)).toMatchObject({
-      lockHolder: expect.stringContaining("external holder"),
+      lockHolder: expect.stringMatching(
+        /^external holder — .+ \(pid [1-9][0-9]*, since [0-9]{2}:[0-9]{2}:[0-9]{2}\)/,
+      ),
       artifact: null,
     });
-    expect(result.stderr).toContain("external holder");
     expect(fs.existsSync(path.join(cwd, "logs/artifact.md"))).toBe(false);
     expect(events()).toEqual([]);
   });
@@ -431,6 +440,18 @@ describe("tests lock through a consumer's wrapped gate", () => {
     expect(events()).toEqual([]);
   });
 
+  it("tests run exits 4 naming the queue folder when a regular file blocks it", () => {
+    const lockDir = path.join(cache, "bkit", "machine-lock");
+    fs.mkdirSync(lockDir, { recursive: true });
+    const queue = path.join(lockDir, "tests.queue");
+    fs.writeFileSync(queue, "a file cannot hold a queue folder");
+    const result = execute(runArgs());
+    expect(result.status, result.stderr).toBe(4);
+    expect(result.stderr).toContain(queue);
+    expect(output(result)).toMatchObject({ verdict: null });
+    expect(events()).toEqual([]);
+  });
+
   it("tests run with --lock-wait-s=0 exits 81 at once against a held lock", async () => {
     const holder = await hold();
     const result = execute([...runArgs(), "--lock-wait-s=0"]);
@@ -466,5 +487,91 @@ describe("tests lock through a consumer's wrapped gate", () => {
     expect(fs.readFileSync(path.join(cwd, "logs/run.md"), "utf-8")).not.toContain(
       "waiting for tests",
     );
+  });
+});
+
+const queueDir = () => path.join(cache, "bkit", "machine-lock", "tests.queue");
+const jumpMarkers = () =>
+  fs.existsSync(queueDir()) ? fs.readdirSync(queueDir()).filter((n) => n.endsWith(".jump")) : [];
+
+/** Waits until a ticket in the tests queue contains `text`. */
+async function waitForQueued(text: string): Promise<void> {
+  const queued = () =>
+    fs.existsSync(queueDir()) &&
+    fs.readdirSync(queueDir()).some((name) => {
+      const file = path.join(queueDir(), name);
+      return fs.existsSync(file) && fs.readFileSync(file, "utf-8").includes(text);
+    });
+  const until = Date.now() + BUDGET.hookTimeout;
+  while (!queued() && Date.now() < until) await delay(20);
+  expect(queued()).toBe(true);
+}
+
+describe("bkit tests jump", () => {
+  const whoOf = (fid: string) => `bkit tests run ${GATE} ${fid} gate`;
+  const waiterArgs = (fid: string) => [
+    ...runArgs(`logs/${fid}.md`),
+    "--lock-wait-s=30",
+    `--fid=${fid}`,
+    "--step=gate",
+  ];
+
+  it("tests jump moves a waiting run to the front of the tests line", async () => {
+    const holder = await hold();
+    const runs = [];
+    for (const fid of ["a", "b", "c"]) {
+      runs.push(start(waiterArgs(fid), { GATE_ID: fid }));
+      await waitForFile(path.join(cwd, `logs/${fid}.md`), "waiting for tests", runs.at(-1)!.child);
+      await waitForQueued(` ${fid} gate`);
+    }
+    const jump = execute(["jump", whoOf("c")]);
+    expect(jump.status, jump.stderr).toBe(0);
+    expect(jumpMarkers()).toHaveLength(1);
+    expect(events()).toEqual([]);
+    const releasedAt = Date.now();
+    holder.child.kill("SIGTERM");
+    await holder.done;
+    const results = await Promise.all(runs.map((run) => run.done));
+    expect(results.map((result) => result.status)).toEqual([0, 0, 0]);
+    const starts = events().filter((event) => event.event === "start");
+    expect(starts.map((event) => event.id)).toEqual(["c", "a", "b"]);
+    expect(starts[0]!.at).toBeGreaterThanOrEqual(releasedAt);
+  });
+
+  it("tests jump refuses a run name no waiting run carries", async () => {
+    const holder = await hold();
+    const run = start(waiterArgs("a"), { GATE_ID: "a" });
+    await waitForFile(path.join(cwd, "logs/a.md"), "waiting for tests", run.child);
+    const jump = execute(["jump", "nobody-by-that-name"]);
+    expect(jump.status, jump.stderr).toBe(1);
+    expect(jump.stdout + jump.stderr).toContain("no run named nobody-by-that-name waits for tests");
+    expect(jumpMarkers()).toEqual([]);
+    holder.child.kill("SIGTERM");
+    await holder.done;
+    expect((await run.done).status).toBe(0);
+  });
+
+  it("tests jump refuses a run name two waiting runs share", async () => {
+    const holder = await hold();
+    fs.mkdirSync(queueDir(), { recursive: true });
+    const shared = "shared gate run";
+    // Held places: the lock script drops a ticket file no live waiter locks.
+    fs.writeFileSync(
+      path.join(queueDir(), `${Date.now()}.000001-${process.pid}.held`),
+      `${shared} — /checkouts/one\n`,
+    );
+    fs.writeFileSync(
+      path.join(queueDir(), `${Date.now()}.000002-${holder.child.pid}.held`),
+      `${shared} — /checkouts/two\n`,
+    );
+    const jump = execute(["jump", shared]);
+    expect(jump.status, jump.stderr).toBe(1);
+    const text = jump.stdout + jump.stderr;
+    expect(text).toContain("/checkouts/one");
+    expect(text).toContain("/checkouts/two");
+    expect(text).toContain("pass --checkout");
+    expect(jumpMarkers()).toEqual([]);
+    holder.child.kill("SIGTERM");
+    await holder.done;
   });
 });

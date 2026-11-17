@@ -19,9 +19,13 @@ export const PACKAGE_RUNNER = "pnpm";
 /** argv for running one `package.json` script, e.g. `bkit:gate:static-unit`. */
 export const scriptCommand = (script: string): string[] => [PACKAGE_RUNNER, script];
 
-/** argv for installing dependencies; `frozen` refuses to change the lockfile. */
-export const installCommand = (opts: { frozen: boolean }): string[] =>
-  opts.frozen ? [PACKAGE_RUNNER, "install", "--frozen-lockfile"] : [PACKAGE_RUNNER, "install"];
+/** argv for installing dependencies; `frozen` refuses to change the lockfile, `preferOffline` reads the local store first. */
+export const installCommand = (opts: { frozen: boolean; preferOffline?: boolean }): string[] => [
+  PACKAGE_RUNNER,
+  "install",
+  ...(opts.frozen ? ["--frozen-lockfile"] : []),
+  ...(opts.preferOffline ? ["--prefer-offline"] : []),
+];
 
 /**
  * argv that regenerates a lockfile from its manifest, keyed by lockfile name.

@@ -38,6 +38,11 @@ export const SESSION_HIJACK_KEYS = [
   "ANTHROPIC_AUTH_TOKEN",
 ] as const;
 
+// Router-only keys: used by a router job as a repo Actions secret, never by a cloud agent
+// session. Pasting them would hand a paid key to every session that reads untrusted issue /
+// PR text. Always dropped from the paste block.
+export const ROUTER_ONLY_KEYS = ["BKIT_OPENAI_API_KEY"] as const;
+
 // bkit baseline env-var NAMES every cloud environment needs, whatever the tracker:
 // `gh` and the GitHub MCP server read BKIT_GH_TOKEN on every host. Emitted as a
 // placeholder ONLY when absent from the resolved `.envrc` set — a present value keeps
@@ -59,6 +64,8 @@ export interface CloudEnvResolution {
   unset: string[];
   /** Session-hijack keys that were present and were dropped. */
   hijackDropped: string[];
+  /** Router-only keys that were present and were dropped. */
+  routerOnlyDropped: string[];
   /** Keys whose resolved value was empty (skipped from the paste block). */
   emptySkipped: string[];
   /** Baseline token names absent from sources — emitted as placeholders. */
@@ -135,6 +142,7 @@ export function resolveCloudEnvVars(cwd: string): CloudEnvResolution {
     included: [],
     unset: [],
     hijackDropped: [],
+    routerOnlyDropped: [],
     emptySkipped: [],
     placeholders: [],
     sources: [],
@@ -173,6 +181,14 @@ export function resolveCloudEnvVars(cwd: string): CloudEnvResolution {
   for (const k of SESSION_HIJACK_KEYS) {
     if (map.has(k)) {
       res.hijackDropped.push(k);
+      map.delete(k);
+    }
+  }
+
+  // Drop router-only keys.
+  for (const k of ROUTER_ONLY_KEYS) {
+    if (map.has(k)) {
+      res.routerOnlyDropped.push(k);
       map.delete(k);
     }
   }
@@ -232,6 +248,11 @@ export function renderCloudEnvNotes(res: CloudEnvResolution): string {
   if (res.hijackDropped.length) {
     bullets.push(
       `- **Dropped — session-billing hijack:** ${fmtList(res.hijackDropped)} — would redirect the agent's own model calls onto API-key billing instead of your subscription.`,
+    );
+  }
+  if (res.routerOnlyDropped.length) {
+    bullets.push(
+      `- **Dropped — router-only secret:** ${fmtList(res.routerOnlyDropped)} — set it as a repo Actions secret; no cloud agent session needs it.`,
     );
   }
   if (res.emptySkipped.length) {
@@ -627,15 +648,15 @@ function writeGeneratedJson(cwd: string, rel: string, doc: unknown, dryRun: bool
 }
 
 /**
- * 8-hex fingerprint of the DERIVED egress set only — bases and hosts, sorted, never
- * the consumer union. Hosts are included (the Cursor paste is hosts-only). Editing
- * `allowed-domains` never moves it; editing a registry row does.
+ * 8-hex fingerprint of an entry list, sorted and de-duplicated. With no argument it
+ * covers the DERIVED egress set only — bases and hosts, never the consumer union (the
+ * Cursor and Codex paste notes use that); editing `allowed-domains` never moves it,
+ * editing a registry row does. Pass the resolved allowlist to cover consumer
+ * `allowed-domains` too (the Claude paste list and `.bkit/allowlist.json`).
  */
-export function egressFingerprint(): string {
-  const derived = [
-    ...new Set([...BKIT_SHIPPED_NETWORK_DOMAINS, ...BKIT_SHIPPED_NETWORK_HOSTS]),
-  ].sort();
-  return sha256(derived.join("\n")).slice(0, 8);
+export function egressFingerprint(entries?: readonly string[]): string {
+  const set = entries ?? [...BKIT_SHIPPED_NETWORK_DOMAINS, ...BKIT_SHIPPED_NETWORK_HOSTS];
+  return sha256([...new Set(set)].sort().join("\n")).slice(0, 8);
 }
 
 /**
@@ -682,10 +703,17 @@ export function renderCloudNetworkAllowlist(cwd: string): string {
     "\n```\n\n" +
     `_${domains.length} entries (${domains.length / 2} domains, each as apex + \`*.\` wildcard): ` +
     networkSourceCounts(networkAllowlistBases(declared), BKIT_SHIPPED_NETWORK_DOMAINS) +
-    ". Derived set fingerprint `" +
-    egressFingerprint() +
+    ". Allowlist fingerprint `" +
+    egressFingerprint(domains) +
     "`._" +
     declaredNote +
+    "\n\nThe fingerprint is also recorded in `.bkit/allowlist.json`. After you paste the list, " +
+    "set `BKIT_CLOUD_ALLOWLIST_FINGERPRINT` to it in the cloud environment's variables (or " +
+    "the setup script); the SessionStart bootstrap compares it with the repo's current " +
+    "fingerprint and warns on a mismatch, then continues. The stamp is an operator " +
+    "assertion that you pasted this list: the deployed dashboard allowlist stays " +
+    "unverified. After any `allowed-domains` change, run `bkit upgrade`, re-paste the list " +
+    "and update the variable." +
     "\n\nUnder **Trusted**, your app domains and most observability / API hosts are\n" +
     "unreachable, so cloud `/bkit-debug` gets no runtime logs and e2e can't hit your\n" +
     "deployment. **Full** works too but opens all egress."

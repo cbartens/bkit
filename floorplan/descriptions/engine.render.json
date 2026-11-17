@@ -1,0 +1,20 @@
+{
+  "files": {
+    ".bkit/core/engine/render/hosts.ts": {
+      "name": "Assistant instruction adapters",
+      "description": "Converts shared prompts, commands and tool names into each coding assistant's format."
+    },
+    ".bkit/core/engine/render/models.ts": {
+      "name": "Model and effort choices",
+      "description": "Resolves assistant models, project overrides and supported reasoning settings."
+    },
+    ".bkit/core/engine/render/parts.ts": {
+      "name": "Shared hook assembly",
+      "description": "Inserts common safety-check code into each assistant's hook templates."
+    },
+    ".bkit/core/engine/render/trackers.ts": {
+      "name": "Tracker instruction selection",
+      "description": "Selects instruction blocks for the project's chosen issue tracker."
+    }
+  }
+}

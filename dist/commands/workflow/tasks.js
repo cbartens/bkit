@@ -16,10 +16,12 @@ import * as path from "node:path";
 import { parseJson } from "../../shared/json.js";
 import { CommandError, EXIT, git, runGit } from "../lib.js";
 import { EXIT_DIFF_FAILED, fetchRemoteRef } from "./branches.js";
-import { DIFF_BASE } from "./context.js";
-import { NO_MARKERS_REASON, parsePlanBlocks, } from "./plan-blocks.js";
-import { positiveInt, str } from "./status.js";
-import { doneTasks } from "./tests.js";
+import { decisionHeader, parseDecisionItems } from "./open-decision.js";
+const DIFF_BASE = "origin/dev";
+import { derivedTestMatrix, NO_MARKERS_REASON, parsePlanBlocks, testTier, } from "./plan-blocks.js";
+import { positiveInt, readStatusRows, str } from "./status.js";
+import { writeStepRow } from "./steps.js";
+import { doneTasks, readTestFirst, redEntries, redKey, sameTestName, TAKEOVER_STEP, } from "./tests.js";
 /** A task's heading line: the box and the number the tick addresses. */
 const TASK_BOX = /^(\s*)- \[([ xX])\] \*\*TASK (\d+):\*\*/;
 /** A `tests green` report's gap line: `- Task {N} \`{kind}\` — …`. */
@@ -70,18 +72,77 @@ function taskNumbers(values, flag) {
 }
 /**
  * The task numbers a `bkit tests green` report gaps: the `- Task {N} \`{kind}\`` lines of
- * its `## Gaps` section, or the `gaps` array of its `--json` payload.
+ * its `## Gaps` section, or the `gaps` array of its `--json` payload. Null when the report
+ * holds neither: a report with no Gaps section says nothing about which tasks are green.
  */
 export function gappedTasks(text) {
+    const json = jsonGaps(text);
+    if (json !== null)
+        return json
+            .map((g) => (typeof g === "object" && g !== null ? g.task : null))
+            .filter((t) => typeof t === "number");
+    const section = gapsSection(text);
+    return section === null ? null : [...section.matchAll(REPORT_GAP)].map((m) => Number(m[1]));
+}
+/** The `gaps` array of a `--json` report, else null. */
+function jsonGaps(text) {
     const json = parseJson(text);
-    if (json.ok && typeof json.value === "object" && json.value !== null) {
-        const gaps = json.value.gaps;
-        if (Array.isArray(gaps))
-            return gaps
-                .map((g) => (typeof g === "object" && g !== null ? g.task : null))
-                .filter((t) => typeof t === "number");
-    }
-    return [...text.matchAll(REPORT_GAP)].map((m) => Number(m[1]));
+    if (!json.ok || typeof json.value !== "object" || json.value === null)
+        return null;
+    const gaps = json.value.gaps;
+    return Array.isArray(gaps) ? gaps : null;
+}
+/** A text report's `## Gaps` section, up to the next `## ` heading; null when it has none. */
+function gapsSection(text) {
+    const start = text.search(/^## Gaps\b/m);
+    if (start < 0)
+        return null;
+    const rest = text.slice(start).replace(/^## Gaps[^\n]*\n?/, "");
+    const end = rest.search(/^## /m);
+    return end < 0 ? rest : rest.slice(0, end);
+}
+/**
+ * Why a text report's Gaps section cannot be trusted: its header's `Gaps: N` counts more gap
+ * lines (`- Task {N}` or `- Plan`) than the section holds, so a line inside a gap's detail
+ * cut the section short. Null when the counts agree, or for a JSON report or one with no
+ * `Gaps:` header.
+ */
+export function gapsShortfall(text) {
+    if (jsonGaps(text) !== null)
+        return null;
+    const header = text.split(/\r?\n[ \t]*\r?\n/, 1)[0] ?? "";
+    const want = /^Gaps:[ \t]*([0-9]+)[ \t]*$/m.exec(header)?.[1];
+    const section = gapsSection(text);
+    if (want === undefined || section === null)
+        return null;
+    const read = [...section.matchAll(/^-\s+(?:Task\s+\d+|Plan)\s+`/gm)].length;
+    return read < Number(want)
+        ? `the header says Gaps: ${want} but the Gaps section holds ${read} gap line${read === 1 ? "" : "s"}`
+        : null;
+}
+/**
+ * The first header fact that stops `--decision` from ticking, or null: `From` is `verify` or
+ * `holistic`, no `Gate: FAIL` header, and a verify file's `Group` is `group`. Headers count
+ * only in the header block (`decisionHeader`).
+ */
+function decisionProblem(text, group) {
+    const header = decisionHeader(text);
+    const from = header.From;
+    if (from === undefined)
+        return "no From header";
+    if (from !== "verify" && from !== "holistic")
+        return `From is "${from}", not verify or holistic`;
+    if (/^FAIL\b/.test(header.Gate ?? ""))
+        return "Gate: FAIL header: the gate is red";
+    if (from === "holistic")
+        return null;
+    if (header.Group === undefined)
+        return "no Group header";
+    if (group === undefined)
+        return "missing required flag --group for a From: verify file";
+    if (header.Group !== String(group))
+        return `Group is "${header.Group}", not group ${group}`;
+    return null;
 }
 /** `task`'s heading line inside its block: its box and number, or null when the block holds none. */
 function headBox(lines, task) {
@@ -119,12 +180,136 @@ export function needleOf(symbol) {
 const splitPaths = (stdout) => stdout.split("\0").filter(Boolean);
 /** A workflow run log: another feature's record, never code a plan task reads or changes. */
 const RUN_LOG = /^docs\/plans\/[^/]+\/logs\//;
+/** The status file's `build-takeover` rows, in file order; none when the file does not exist. */
+function takeoverRows(statusPath) {
+    if (!fs.existsSync(statusPath))
+        return [];
+    return readStatusRows(statusPath)
+        .filter((r) => r.type === "step-done" &&
+        r.workflow === "build" &&
+        r.step === TAKEOVER_STEP &&
+        typeof r.task === "number" &&
+        typeof r.test === "string" &&
+        typeof r.name === "string")
+        .map((r) => ({
+        task: r.task,
+        from: typeof r.from === "number" ? r.from : 0,
+        test: r.test,
+        name: r.name,
+    }));
+}
+/**
+ * The group of takeover tasks whose tests half has not run: the plan's tasks a
+ * `build-takeover` row names, grouped, the latest group holding a planned test with no
+ * `tests red` entry. Null when every takeover group's tests are recorded.
+ */
+function pendingTakeovers(text, statusPath) {
+    const named = new Set(takeoverRows(statusPath).map((r) => r.task));
+    const tasks = parsePlanBlocks(text).tasks.filter((t) => named.has(t.task));
+    const groups = [...new Set(tasks.map((t) => t.group))].sort((a, b) => b - a);
+    for (const group of groups) {
+        const reds = redEntries(statusPath, "build", group);
+        const open = readTestFirst(text, group).some((s) => named.has(s.task) &&
+            s.kind === "test" &&
+            s.tests.some((t) => !reds.has(redKey(s.task, t.test, t.name))));
+        if (open)
+            return { group, tasks: tasks.filter((t) => t.group === group).map((t) => t.task) };
+    }
+    return null;
+}
+/** A plan line's text: one line, no backticks or pipes, so it never breaks a field or a table cell. */
+const planWords = (s) => s.replace(/\s+/g, " ").replace(/[`|]/g, "'").trim();
+/** The lines of one pure takeover task block. */
+function takeoverTask(n, t, dependsOn) {
+    const until = dependsOn === undefined
+        ? "the change that contradicts it exists"
+        : `TASK ${dependsOn}'s code exists`;
+    return [
+        `<!-- bkit:task ${n} start -->`,
+        "",
+        `- [ ] **TASK ${n}:** Take over \`${t.name}\` from TASK ${t.from}`,
+        ...(dependsOn === undefined ? [] : [`  - **DEPENDS ON:** ${dependsOn}`]),
+        `  - **DONE WHEN:** \`${t.test}\` \`${t.name}\` passes`,
+        "  - **TEST FIRST:**",
+        `    - \`${t.test}\` \`${t.name}\` fails until ${until}: ${planWords(t.reason)}`,
+        "",
+        `<!-- bkit:task ${n} end -->`,
+    ];
+}
+/**
+ * The plan with takeover task `n` added: into the last group when it is a takeover group
+ * whose tests half has not run (`into`), else as a new last group after the last group's
+ * end marker; plus a Derived Test Matrix row when the plan has a matrix.
+ */
+function withTakeoverTask(text, task, n, group, into, row) {
+    const eol = text.includes("\r\n") ? "\r\n" : "\n";
+    const lines = text.split(/\r?\n/);
+    const matrix = derivedTestMatrix(text);
+    if (matrix !== null) {
+        const at = matrix.rows.at(-1)?.number ?? matrix.line + 1;
+        lines.splice(at, 0, `| Take over ${planWords(row.name)} from TASK ${row.from} | ${testTier(row.test)} | \`${row.test}\` | ${n} |`);
+    }
+    const endMarker = (g) => lines.findIndex((l) => l.trim() === `<!-- bkit:group ${g} end -->`);
+    if (into) {
+        lines.splice(endMarker(group), 0, ...task, "");
+        return lines.join(eol);
+    }
+    const last = Math.max(...parsePlanBlocks(text).groups.map((g) => g.group));
+    lines.splice(endMarker(last) + 1, 0, "", `<!-- bkit:group ${group} start -->`, "", `### TASK GROUP ${group}: Planned tests the build took over`, "", ...task, "", `<!-- bkit:group ${group} end -->`);
+    return lines.join(eol);
+}
+/**
+ * Adds one pure takeover task per entry to the plan at `planFile`, plus its Derived Test
+ * Matrix row and its `build-takeover` row in `statusPath`. Safe to repeat: an open takeover
+ * task whose `TEST FIRST` already names the entry's file and name is reused, and only a
+ * missing row is written, so a second run or a run stopped between the two writes leaves one
+ * task and one row. The task goes into the plan's last group while that group is a takeover
+ * group whose tests half has not run, else into a new last group. Returns the takeover task
+ * number per entry, in entry order.
+ */
+export function addTakeoverTasks(cwd, planFile, statusPath, entries, log) {
+    const out = [];
+    for (const e of entries) {
+        const test = path.posix.normalize(e.test);
+        const text = fs.readFileSync(planFile, "utf-8");
+        const plan = parsePlanBlocks(text);
+        const open = plan.tasks.find((t) => !t.done &&
+            t.title.startsWith("Take over ") &&
+            (t.testFirst?.tests ?? []).some((x) => path.posix.normalize(x.test) === test && sameTestName(x.name, e.name)));
+        let n;
+        if (open !== undefined) {
+            n = open.task;
+            log(`TASK ${n} already takes over "${e.name}" in ${test}`);
+        }
+        else {
+            n = Math.max(...plan.tasks.map((t) => t.task)) + 1;
+            const lastGroup = Math.max(...plan.groups.map((g) => g.group));
+            const pending = pendingTakeovers(text, statusPath);
+            const into = pending !== null && pending.group === lastGroup;
+            const group = into ? lastGroup : lastGroup + 1;
+            const dependsOn = e.task !== null && plan.tasks.some((t) => t.task === e.task) ? e.task : undefined;
+            fs.writeFileSync(planFile, withTakeoverTask(text, takeoverTask(n, { test, name: e.name, from: e.from, reason: e.reason }, dependsOn), n, group, into, { name: e.name, test, from: e.from }));
+            log(`added TASK ${n} in group ${group}: takes over "${e.name}" in ${test} from TASK ${e.from}`);
+        }
+        if (!takeoverRows(statusPath).some((r) => r.task === n))
+            writeStepRow(cwd, {
+                file: statusPath,
+                workflow: "build",
+                step: TAKEOVER_STEP,
+                artifacts: [path.relative(cwd, planFile)],
+                extras: { task: n, from: e.from, test, name: e.name, reason: e.reason },
+                commit: "none",
+            }, log);
+        out.push(n);
+    }
+    return out;
+}
 export const tasksCommand = {
     noun: "tasks",
     summary: "Tick a plan's task boxes, from the tasks a verify judged satisfied.",
     verbs: {
         tick: {
-            summary: "Tick the named tasks of one task group, less those a `tests green` report gaps; exit 0 ticked (including none), 1 a plan with no task blocks, 2 a bad flag value or plan.",
+            summary: "Tick the named tasks of one task group, less those a `tests green` report gaps; exit 0 ticked (including none), 1 a plan with no task blocks, 2 a bad flag value or plan, a `--green` report with no Gaps section or fewer gap lines than its `Gaps:` header, or a `--decision` file that is not a verify or holistic pause of this group with a green gate.",
             use: "workflow",
             flags: [
                 {
@@ -136,40 +321,59 @@ export const tasksCommand = {
                 {
                     name: "group",
                     type: "string",
-                    required: true,
-                    help: "the task group whose tasks are candidates (positive integer)",
+                    help: "the task group whose tasks are candidates (positive integer); required, except with a `From: holistic` --decision alone, whose accepted tasks are ticked in their own groups",
                 },
                 {
                     name: "tasks",
                     type: "string",
                     repeatable: true,
-                    help: "the task numbers to tick, comma-separated or once per number; `none` ticks nothing (one of --tasks / --green)",
+                    help: "the task numbers to tick, comma-separated or once per number; `none` ticks nothing (one of --tasks / --green / --decision)",
+                },
+                {
+                    name: "decision",
+                    type: "string",
+                    help: "a decision file with a `From: verify` (whose `Group` is --group) or `From: holistic` header and no `Gate: FAIL` header: the task each item answered `Accept` or `Accept (assumed)` names at the start of its title (`Task {N}`) is ticked; `Fix now` and undecided items tick nothing (one of --tasks / --green / --decision)",
                 },
                 {
                     name: "green",
                     type: "string",
-                    help: "a `bkit tests green` report: every task it gaps stays unticked (one of --tasks / --green)",
+                    help: "a `bkit tests green` report: every task it gaps stays unticked (one of --tasks / --green / --decision)",
                 },
             ],
             output: {
                 plan: "the plan file ticked, as given",
-                group: "the group whose tasks were candidates",
+                group: "the group whose tasks were candidates; null for a holistic --decision without --group",
                 ticked: "[task numbers] ticked by this call; a task already ticked is not repeated",
             },
             run: (ctx) => {
                 const planArg = String(ctx.flags.plan);
                 const group = positiveInt(ctx.flags.group, "group");
-                if (group === undefined)
-                    throw new CommandError(EXIT.USAGE, "missing required flag --group");
                 const tasksFlag = ctx.flags.tasks;
                 const greenArg = str(ctx.flags.green);
                 if (greenArg === "")
                     throw new CommandError(EXIT.USAGE, "--green must be non-empty");
-                if (tasksFlag === undefined && greenArg === undefined)
-                    throw new CommandError(EXIT.USAGE, "give one of --tasks and --green");
+                const decisionArg = str(ctx.flags.decision);
+                if (decisionArg === "")
+                    throw new CommandError(EXIT.USAGE, "--decision must be non-empty");
+                if (tasksFlag === undefined && greenArg === undefined && decisionArg === undefined)
+                    throw new CommandError(EXIT.USAGE, "give one of --tasks, --green and --decision");
+                let decisionText;
+                if (decisionArg !== undefined) {
+                    const decisionFile = path.resolve(ctx.cwd, decisionArg);
+                    if (fs.statSync(decisionFile, { throwIfNoEntry: false })?.isFile() !== true)
+                        throw new CommandError(EXIT.USAGE, `--decision ${decisionArg} does not exist`);
+                    decisionText = fs.readFileSync(decisionFile, "utf-8");
+                }
+                // Only a holistic decision alone may leave out --group: its accepted tasks span groups.
+                const holisticOnly = decisionText !== undefined &&
+                    decisionHeader(decisionText).From === "holistic" &&
+                    tasksFlag === undefined &&
+                    greenArg === undefined;
+                if (group === undefined && !holisticOnly)
+                    throw new CommandError(EXIT.USAGE, "missing required flag --group");
                 const plan = readPlan(ctx.cwd, planArg);
-                const candidates = groupTasks(plan, planArg, group);
-                const named = tasksFlag === undefined ? undefined : taskNumbers(tasksFlag, "tasks");
+                const candidates = group === undefined ? plan.tasks : groupTasks(plan, planArg, group);
+                let named = tasksFlag === undefined ? undefined : taskNumbers(tasksFlag, "tasks");
                 for (const n of named ?? []) {
                     const task = plan.tasks.find((t) => t.task === n);
                     if (task === undefined)
@@ -177,12 +381,34 @@ export const tasksCommand = {
                     if (task.group !== group)
                         throw new CommandError(EXIT.USAGE, `TASK ${n} is in group ${task.group}, not group ${group}`);
                 }
+                if (decisionText !== undefined) {
+                    const problem = decisionProblem(decisionText, group);
+                    if (problem !== null)
+                        throw new CommandError(EXIT.USAGE, `--decision ${decisionArg}: ${problem}, so nothing is ticked`);
+                    // A title names its task only at its start (`Task {N}`): a gap that mentions a task elsewhere ticks nothing.
+                    const accepted = parseDecisionItems(decisionText)
+                        .filter((it) => it.decision !== null && /^Accept\b/.test(it.decision))
+                        .map((it) => /^task\s+(\d+)\b/i.exec(it.title.trim()))
+                        .filter((m) => m !== null)
+                        .map((m) => Number(m[1]));
+                    named = [
+                        ...(named ?? []),
+                        ...accepted.filter((n) => candidates.some((t) => t.task === n)),
+                    ];
+                }
                 const gapped = new Set();
                 if (greenArg !== undefined) {
                     const greenFile = path.resolve(ctx.cwd, greenArg);
                     if (fs.statSync(greenFile, { throwIfNoEntry: false })?.isFile() !== true)
                         throw new CommandError(EXIT.USAGE, `--green ${greenArg} does not exist`);
-                    for (const n of gappedTasks(fs.readFileSync(greenFile, "utf-8")))
+                    const greenText = fs.readFileSync(greenFile, "utf-8");
+                    const gaps = gappedTasks(greenText);
+                    if (gaps === null)
+                        throw new CommandError(EXIT.USAGE, `--green ${greenArg}: report has no Gaps section, so nothing is ticked`);
+                    const shortfall = gapsShortfall(greenText);
+                    if (shortfall !== null)
+                        throw new CommandError(EXIT.USAGE, `--green ${greenArg}: ${shortfall}, so nothing is ticked`);
+                    for (const n of gaps)
                         gapped.add(n);
                 }
                 const wanted = named ?? candidates.map((t) => t.task);
@@ -207,7 +433,7 @@ export const tasksCommand = {
                     ctx.log(`ticked TASK ${n}`);
                 ctx.emit({
                     plan: planArg,
-                    group,
+                    group: group ?? null,
                     ticked,
                 });
                 return EXIT.OK;
@@ -259,6 +485,47 @@ export const tasksCommand = {
                 for (const n of open)
                     ctx.log(`TASK ${n} is open`);
                 ctx.emit({ plan: planArg, group, tasks: open, handover: open.length > 0 });
+                return EXIT.OK;
+            },
+        },
+        takeover: {
+            summary: "Print the takeover group whose tests half has not run: the plan's takeover tasks (added by `steps finish` on a code step that contradicts a ticked task's planned test, each named by a build-takeover row) in the latest group holding a planned test with no `tests red` entry yet, or null. Writes nothing. Exit 0 (including nothing pending), 1 a plan with no task blocks, 2 a bad flag value or plan.",
+            use: "workflow",
+            flags: [
+                {
+                    name: "plan",
+                    type: "string",
+                    required: true,
+                    help: "plan file holding the task blocks",
+                },
+                {
+                    name: "file",
+                    type: "string",
+                    required: true,
+                    help: "the run's status.jsonl: its build-takeover and tests red rows are read",
+                },
+                {
+                    name: "pending",
+                    type: "boolean",
+                    help: "print the takeover group whose tests half has not run, or null; required, since the verb only reads",
+                },
+            ],
+            output: {
+                plan: "the plan file, as given",
+                pending: "{group, tasks} the takeover group whose tests have no tests red entry yet, else null",
+            },
+            run: (ctx) => {
+                const planArg = String(ctx.flags.plan);
+                const statusArg = String(ctx.flags.file);
+                if (statusArg === "")
+                    throw new CommandError(EXIT.USAGE, "--file must be non-empty");
+                if (ctx.flags.pending !== true)
+                    throw new CommandError(EXIT.USAGE, "tasks takeover only reads, with --pending: steps finish adds the takeover tasks");
+                const plan = readPlan(ctx.cwd, planArg);
+                const pending = pendingTakeovers(plan.text, path.resolve(ctx.cwd, statusArg));
+                if (pending !== null)
+                    ctx.log(`takeover group ${pending.group} has tests to record: TASK ${pending.tasks.join(", ")}`);
+                ctx.emit({ plan: planArg, pending });
                 return EXIT.OK;
             },
         },

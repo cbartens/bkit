@@ -106,6 +106,10 @@ describe("parseCloudAgents — value space and back-compat", () => {
     expect(parseCloudAgents("opencode")).toBe("opencode");
   });
 
+  it("parseCloudAgents accepts codex", () => {
+    expect(parseCloudAgents("codex")).toBe("codex");
+  });
+
   it("parses 'none' → 'none'", () => {
     expect(parseCloudAgents("none")).toBe("none");
   });

@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
 import type { Step } from "../../ledgers/status";
-import { loopTrend } from "./counters";
+import { loopProgress, loopTrend } from "./counters";
 import { ASK_POINTS } from "../../shared/settings";
 
 const dirs: string[] = [];
@@ -453,6 +453,7 @@ describe("bkit counters route --point", () => {
   const DEFAULT_MAX: Record<string, number> = {
     "design.grill": 6,
     "build.verify": 2,
+    "build.holistic": 2,
     "build.challenge": 2,
     "build.tests": 2,
     "debug.fix": 2,
@@ -534,6 +535,77 @@ describe("bkit counters route --point", () => {
         max: 5,
         limitsFrom: "package.json",
       });
+  });
+
+  const holisticRoute = (file: string, cwd: string) =>
+    run(
+      [
+        "counters",
+        "route",
+        "--name=HOLISTIC_ATTEMPT",
+        "--of=build-plan-gaps-remediate-holistic:next",
+        `--file=${file}`,
+        "--workflow=build",
+        "--point=build.holistic",
+        "--continue=step-10",
+        "--exceeded=failure-path",
+      ],
+      cwd,
+    );
+
+  it("holistic fix rounds count within the run without a reset", async () => {
+    const cwd = pkgDir({});
+    const check = (at: string, verdict: string, failures: number) =>
+      done("build", "build-plan-verify-holistic", at, { verdict, failures });
+    const fix = (at: string) => done("build", "build-plan-gaps-remediate-holistic", at);
+    const first = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      check("2026-10-01T00:01:00Z", "FAIL", 2),
+      fix("2026-10-01T00:02:00Z"),
+    ]);
+    expect((await holisticRoute(first, cwd)).json).toMatchObject({ value: 2, max: 2 });
+    expect((await holisticRoute(first, cwd)).code).toBe(0);
+    const clean = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      check("2026-10-01T00:01:00Z", "FAIL", 2),
+      fix("2026-10-01T00:02:00Z"),
+      check("2026-10-01T00:03:00Z", "PASS", 0),
+      check("2026-10-01T00:04:00Z", "FAIL", 1),
+      fix("2026-10-01T00:05:00Z"),
+    ]);
+    const third = await holisticRoute(clean, cwd);
+    expect(third.code).toBe(1);
+    expect(third.json).toMatchObject({ value: 3, max: 2, exceeded: true });
+    const nextRun = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      fix("2026-10-01T00:02:00Z"),
+      fix("2026-10-01T00:05:00Z"),
+      finished("build", "2026-10-01T01:00:00Z"),
+      started("build", "2026-10-02T00:00:00Z"),
+    ]);
+    const fresh = await holisticRoute(nextRun, cwd);
+    expect(fresh.code).toBe(0);
+    expect(fresh.json).toMatchObject({ value: 1, exceeded: false });
+  });
+
+  it("build.holistic falls back to the package.json setting when the run's frozen limits lack it", async () => {
+    const cwd = pkgDir({ workflows: { build: { holistic: { ask: true, maxAttempts: 4 } } } });
+    const file = log([
+      {
+        ...started("build", "2026-10-01T00:00:00Z"),
+        limits: { "build.verify": { ask: true, max: 2 } },
+      },
+      done("build", "build-plan-gaps-remediate-holistic", "2026-10-01T00:02:00Z"),
+      done("build", "build-plan-gaps-remediate-holistic", "2026-10-01T00:05:00Z"),
+    ]);
+    const r = await holisticRoute(file, cwd);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      value: 3,
+      max: 4,
+      exceeded: false,
+      limitsFrom: "package.json",
+    });
   });
 
   it("max --point takes the run's frozen limit with --file and --workflow, else package.json", async () => {
@@ -743,13 +815,46 @@ describe("bkit counters progress", () => {
     expect(r.json).toMatchObject({
       counts: "5 → 2",
       lastStrategy: "STANDARD",
-      nextStrategy: "PIVOT",
+      nextStrategy: "STANDARD",
       finalSpent: false,
       minutesPerRound: 20,
       trend: "closing",
       recommend: "try-again",
     });
     expect(r.json.rounds).toHaveLength(2);
+  });
+
+  it("loop progress prints the same nextStrategy as status route", async () => {
+    const gate = (at: string, attempt: number, failedTests: string[]) => ({
+      type: "test-run",
+      workflow: "build",
+      step: "build-group-gate-1",
+      at,
+      attempt,
+      verdict: "FAIL",
+      failures: failedTests.length,
+      failedTests,
+    });
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 5, "a", { attempt: 1 }),
+      gate("2026-10-01T00:11:00Z", 1, ["t1"]),
+      fix("2026-10-01T00:20:00Z", "STANDARD"),
+      verify("2026-10-01T00:30:00Z", 2, "b", { attempt: 2 }),
+      gate("2026-10-01T00:31:00Z", 2, ["t2"]),
+    ]);
+    const route = await run([
+      "status",
+      "route",
+      `--file=${file}`,
+      "--workflow=build",
+      "--step=build-plan-gaps-remediate",
+      "--group=1",
+    ]);
+    const r = await progress(file);
+    expect(r.code).toBe(0);
+    expect(route.json.nextStrategy).toBe("STANDARD");
+    expect(r.json.nextStrategy).toBe(route.json.nextStrategy);
   });
 
   it("reports the same count as stuck and a rising count as worse", async () => {
@@ -769,7 +874,7 @@ describe("bkit counters progress", () => {
     expect((await progress(rose)).json).toMatchObject({
       trend: "worse",
       recommend: "stop",
-      nextStrategy: "FINAL",
+      nextStrategy: "STANDARD",
       finalSpent: true,
     });
   });
@@ -822,8 +927,378 @@ describe("bkit counters progress", () => {
     expect((await progress(file)).json).toMatchObject({ codeChanged: true, trend: "closing" });
   });
 
+  it("a round with no count reports unknown and no recommendation", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 5, "a"),
+      fix("2026-10-01T00:20:00Z", "STANDARD"),
+      done("build", "build-plan-verify", "2026-10-01T00:30:00Z", { parentSha: "b", group: 1 }),
+    ]);
+    const r = await progress(file);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ counts: "5 → ?", trend: "unknown", recommend: null });
+  });
+
+  const scoped = (at: string, scope: string, failures: number | null, sha: string) =>
+    done("build", "build-plan-verify", at, {
+      scope,
+      parentSha: sha,
+      group: 1,
+      ...(failures === null ? {} : { failures }),
+    });
+  const GATE = "pnpm bkit:gate:static-unit";
+
+  it("does not compare a CI round with a local gate round", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      scoped("2026-10-01T00:10:00Z", "ci:123", 3, "a"),
+      scoped("2026-10-01T00:30:00Z", GATE, 3, "b"),
+    ]);
+    const r = await progress(file);
+    expect(r.json).toMatchObject({ trend: "unknown", recommend: null });
+  });
+
+  it("compares the last round with the earliest round of the same scope", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      scoped("2026-10-01T00:10:00Z", "ci:123", 2, "a"),
+      scoped("2026-10-01T00:20:00Z", GATE, 5, "b"),
+      scoped("2026-10-01T00:30:00Z", GATE, 2, "c"),
+    ]);
+    const r = await progress(file);
+    expect(r.json).toMatchObject({ trend: "closing", recommend: "try-again" });
+  });
+
+  it("measures minutesPerRound over all rounds, not only the compared same-scope ones", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      scoped("2026-10-01T00:10:00Z", "ci:123", 2, "a"),
+      scoped("2026-10-01T00:20:00Z", GATE, 5, "b"),
+      scoped("2026-10-01T00:50:00Z", GATE, 2, "c"),
+    ]);
+    const r = await progress(file);
+    expect(r.json.minutesPerRound).toBe(20);
+  });
+
+  it("reports each round's scope", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      scoped("2026-10-01T00:10:00Z", "ci:123", 2, "a"),
+      verify("2026-10-01T00:30:00Z", 2, "b"),
+    ]);
+    const r = await progress(file);
+    expect(r.json.rounds.map((x: { scope: string | null }) => x.scope)).toEqual(["ci:123", null]);
+  });
+
+  it("judges codeChanged between the compared same-scope rounds", async () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-counters-git-"));
+    dirs.push(repo);
+    const sh = (...a: string[]) =>
+      spawnSync("git", a, { cwd: repo, encoding: "utf-8" }).stdout.trim();
+    const commit = (m: string) =>
+      sh("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", m);
+    sh("init", "-q");
+    commit("a");
+    const a = sh("rev-parse", "HEAD");
+    fs.writeFileSync(path.join(repo, "src.ts"), "x\n");
+    sh("add", "-A");
+    commit("src");
+    const b = sh("rev-parse", "HEAD");
+    const logs = path.join(repo, "docs", "plans", "202610", "logs", "1-x");
+    fs.mkdirSync(logs, { recursive: true });
+    fs.writeFileSync(path.join(logs, "note.md"), "log only\n");
+    sh("add", "-A");
+    commit("logs");
+    const c = sh("rev-parse", "HEAD");
+    const file = path.join(logs, "status.jsonl");
+    fs.writeFileSync(
+      file,
+      [
+        started("build", "2026-10-01T00:00:00Z"),
+        scoped("2026-10-01T00:10:00Z", "ci:123", 9, a),
+        scoped("2026-10-01T00:20:00Z", GATE, 5, b),
+        scoped("2026-10-01T00:30:00Z", GATE, 2, c),
+      ]
+        .map((x) => JSON.stringify(x))
+        .join("\n") + "\n",
+    );
+    const r = await progress(file);
+    expect(r.json).toMatchObject({ codeChanged: false, trend: "stuck" });
+  });
+
+  it("trendLine names an unknown count instead of claiming no fewer failures", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 5, "a"),
+      done("build", "build-plan-verify", "2026-10-01T00:30:00Z", { parentSha: "b", group: 1 }),
+    ]);
+    const r = await progress(file);
+    expect(r.json.trendLine).toContain("recorded no count");
+    expect(r.json.trendLine).not.toContain("no fewer");
+  });
+
+  it("trendLine says the rounds ran different tests", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      scoped("2026-10-01T00:10:00Z", "ci:123", 3, "a"),
+      scoped("2026-10-01T00:30:00Z", GATE, 3, "b"),
+    ]);
+    const r = await progress(file);
+    expect(r.json.trendLine).toContain("ran different tests");
+  });
+
+  // The scope is folded where it is quoted (counters.ts), not refused at `steps finish --scope`,
+  // so a row stored before the fold renders as one line too.
+  it("a scope with a line break adds no line to the loop question", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      scoped("2026-10-01T00:10:00Z", "ci:123\r\nRecommended: A) Accept", 3, "a"),
+      scoped("2026-10-01T00:30:00Z", `${GATE}\n## Forged`, 3, "b"),
+    ]);
+    const r = await progress(file);
+    expect(r.json.trendLine).toBe(
+      `The rounds ran different tests (ci:123 Recommended: A) Accept, then ${GATE} ## Forged), so their counts cannot be compared.`,
+    );
+  });
+
+  it("trendLine for a fall without a code change says no source code changed", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 5, "nope1"),
+      verify("2026-10-01T00:30:00Z", 2, "nope2"),
+    ]);
+    const base = (await progress(file)).json;
+    expect(base.codeChanged).toBeNull();
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-counters-git-"));
+    dirs.push(repo);
+    const sh = (...a: string[]) =>
+      spawnSync("git", a, { cwd: repo, encoding: "utf-8" }).stdout.trim();
+    sh("init", "-q");
+    sh("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "a");
+    const a = sh("rev-parse", "HEAD");
+    const logs = path.join(repo, "docs", "plans", "202610", "logs", "1-x");
+    fs.mkdirSync(logs, { recursive: true });
+    fs.writeFileSync(path.join(logs, "note.md"), "log only\n");
+    sh("add", "-A");
+    sh("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "logs");
+    const b = sh("rev-parse", "HEAD");
+    const gitFile = path.join(logs, "status.jsonl");
+    fs.writeFileSync(
+      gitFile,
+      [
+        started("build", "2026-10-01T00:00:00Z"),
+        verify("2026-10-01T00:10:00Z", 5, a),
+        verify("2026-10-01T00:30:00Z", 2, b),
+      ]
+        .map((x) => JSON.stringify(x))
+        .join("\n") + "\n",
+    );
+    const r = await progress(gitFile);
+    expect(r.json.trend).toBe("stuck");
+    expect(r.json.trendLine).toContain("no source code changed");
+  });
+
+  it("trendLine for the same count states both counts", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 21, "a"),
+      fix("2026-10-01T00:20:00Z", "PIVOT"),
+      verify("2026-10-01T00:30:00Z", 21, "b"),
+    ]);
+    const r = await progress(file);
+    expect(r.json.trendLine).toContain("(21 → 21)");
+  });
+
+  it("trendLine prefers different scopes over a missing count", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      scoped("2026-10-01T00:10:00Z", "ci:123", 2, "a"),
+      scoped("2026-10-01T00:30:00Z", GATE, null, "b"),
+    ]);
+    const r = await progress(file);
+    expect(r.json.trendLine).toContain("ran different tests");
+    expect(r.json.trendLine).not.toContain("recorded no count");
+  });
+
+  it("--since-clean over unscoped holistic rounds still compares them", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      done("build", "build-holistic-check", "2026-10-01T00:05:00Z", {
+        failures: 0,
+        parentSha: "z",
+      }),
+      verify("2026-10-01T00:10:00Z", 5, "a"),
+      verify("2026-10-01T00:30:00Z", 2, "b"),
+    ]);
+    const r = await progress(file, "--since-clean");
+    expect(r.code).toBe(0);
+    expect(r.json.counts).toBe("5 → 2");
+    expect(r.json.trend).not.toBe("unknown");
+  });
+
   it("exits 3 on a missing file", async () => {
     expect((await progress("/nonexistent/status.jsonl")).code).toBe(3);
+  });
+});
+
+describe("loopProgress with a gate", () => {
+  const verify = (at: string, attempt: number, failures: number) =>
+    done("build", "build-plan-verify", at, {
+      failures,
+      attempt,
+      group: 1,
+      parentSha: `sha${attempt}`,
+    });
+  const gate = (
+    at: string,
+    attempt: number,
+    verdict: string,
+    failures: number | null,
+    step = "build-group-gate-1",
+  ) => ({
+    type: "test-run",
+    workflow: "build",
+    at,
+    step,
+    attempt,
+    run: 1,
+    verdict,
+    exitCode: verdict === "FAIL" ? 1 : 0,
+    failures,
+    scope: "gate",
+    log: "x.log",
+  });
+  const progress = (file: string) => ({
+    code: 0,
+    json: loopProgress(
+      file,
+      path.dirname(file),
+      "build",
+      "build-plan-verify",
+      "build-plan-gaps-remediate",
+      1,
+      false,
+      "build-group-gate",
+    ),
+  });
+
+  it("adds the group gate's failing tests to each verify round", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      gate("2026-10-01T00:09:00Z", 1, "FAIL", 3),
+      verify("2026-10-01T00:10:00Z", 1, 0),
+      gate("2026-10-01T00:29:00Z", 2, "FAIL", 3),
+      verify("2026-10-01T00:30:00Z", 2, 0),
+    ]);
+    const r = progress(file);
+    expect(r.code).toBe(0);
+    expect(r.json.counts).toBe("3 → 3");
+    expect(r.json.gateCounts).toBe("3 → 3");
+    expect(r.json.rounds.map((x: { gateFailures?: number | null }) => x.gateFailures)).toEqual([
+      3, 3,
+    ]);
+  });
+
+  it("a red gate row with no failure count makes the round unknown", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 1, 2),
+      gate("2026-10-01T00:29:00Z", 2, "FAIL", null),
+      verify("2026-10-01T00:30:00Z", 2, 0),
+    ]);
+    const r = progress(file);
+    expect(r.json.counts).toBe("2 → ?");
+    expect(r.json.rounds[1].failures).toBeNull();
+    expect(r.json.trend).toBe("unknown");
+    expect(r.json.recommend).toBeNull();
+  });
+
+  it("a red gate row with 0 counted failures makes the round unknown", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 1, 2),
+      gate("2026-10-01T00:29:00Z", 2, "FAIL", 0),
+      verify("2026-10-01T00:30:00Z", 2, 0),
+    ]);
+    const r = progress(file);
+    expect(r.json.counts).toBe("2 → ?");
+    expect(r.json.trend).toBe("unknown");
+    expect(r.json.recommend).toBeNull();
+  });
+
+  it("a verify round whose gate did not run adds no gate failures", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 1, 0),
+      gate("2026-10-01T00:29:00Z", 2, "FAIL", 3),
+      verify("2026-10-01T00:30:00Z", 2, 0),
+    ]);
+    const r = progress(file);
+    expect(r.json.gateCounts).toBe("0 → 3");
+    expect(r.json.counts).toBe("0 → 3");
+  });
+});
+
+describe("loopProgress with the holistic gate", () => {
+  const holistic = (at: string, attempt: number, verdict: string, failures: number) =>
+    done("build", "build-plan-verify-holistic", at, {
+      verdict,
+      failures,
+      attempt,
+      parentSha: `sha${attempt}`,
+    });
+  const gate = (at: string, attempt: number, verdict: string, failures: number) => ({
+    type: "test-run",
+    workflow: "build",
+    at,
+    step: "build-holistic-gate",
+    attempt,
+    run: 1,
+    verdict,
+    exitCode: verdict === "FAIL" ? 1 : 0,
+    failures,
+    scope: "gate",
+    log: "x.log",
+  });
+  const progress = (file: string) =>
+    loopProgress(
+      file,
+      path.dirname(file),
+      "build",
+      "build-plan-verify-holistic",
+      "build-plan-gaps-remediate-holistic",
+      undefined,
+      true,
+      "build-holistic-gate",
+    );
+
+  it("holistic loop progress adds the holistic gate's failing tests to each round", () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      holistic("2026-10-01T00:10:00Z", 1, "FAIL", 2),
+      gate("2026-10-01T00:11:00Z", 1, "FAIL", 3),
+      holistic("2026-10-01T00:30:00Z", 2, "FAIL", 1),
+      gate("2026-10-01T00:31:00Z", 2, "FAIL", 3),
+    ]);
+    const p = progress(file);
+    expect(p.counts).toBe("5 → 4");
+    expect(p.gateCounts).toBe("3 → 3");
+    expect(p.rounds.map((r) => r.gateFailures)).toEqual([3, 3]);
+  });
+
+  it("a clean holistic verify whose gate is red stays a round of the open loop", () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      holistic("2026-10-01T00:05:00Z", 1, "PASS", 0),
+      gate("2026-10-01T00:06:00Z", 1, "PASS", 0),
+      holistic("2026-10-01T00:10:00Z", 2, "PASS", 0),
+      gate("2026-10-01T00:11:00Z", 2, "FAIL", 3),
+      holistic("2026-10-01T00:30:00Z", 3, "PASS", 0),
+      gate("2026-10-01T00:31:00Z", 3, "FAIL", 2),
+    ]);
+    const p = progress(file);
+    expect(p.rounds.map((r) => r.attempt)).toEqual([2, 3]);
+    expect(p.counts).toBe("3 → 2");
   });
 });
 
@@ -832,8 +1307,13 @@ describe("loopTrend", () => {
   it("a fall without a code change is stuck, not closing", () => {
     expect(loopTrend([r(5), r(2)], false)).toBe("stuck");
     expect(loopTrend([r(5), r(2)], true)).toBe("closing");
-    expect(loopTrend([r(5), r()], true)).toBe("stuck");
     expect(loopTrend([r(5)], true)).toBe("first-round");
+  });
+
+  it("a missing count is unknown, not stuck", () => {
+    expect(loopTrend([r(5), r()], true)).toBe("unknown");
+    expect(loopTrend([r(), r(5)], true)).toBe("unknown");
+    expect(loopTrend([r(), r()], false)).toBe("unknown");
   });
 });
 
@@ -984,5 +1464,155 @@ describe("bkit counters rows", () => {
       "--position=count",
     ];
     expect((await run(missing)).code).toBe(3);
+  });
+});
+
+describe("bkit counters correction", () => {
+  const correct = (file: string, scope: string, operation: string, ...extra: string[]) =>
+    run([
+      "counters",
+      "correction",
+      `--file=${file}`,
+      "--workflow=plan",
+      `--scope=${scope}`,
+      `--operation=${operation}`,
+      ...extra,
+    ]);
+  const candidates = (file: string) =>
+    fs
+      .readFileSync(file, "utf-8")
+      .split("\n")
+      .filter((l) => l !== "")
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .filter((r) => r["type"] === "correction-candidate");
+
+  it("shares correction budget across candidate operations and honors specific limits", async () => {
+    const file = log([started("plan", "2026-11-01T00:00:00Z")]);
+    const scope = "ledgers-append:failures:append";
+
+    // Two corrected retries by default, each candidate under a fresh operation id.
+    const first = await correct(file, scope, "op-1");
+    expect(first.code).toBe(0);
+    expect(first.json).toMatchObject({ allowed: true, used: 1, limit: 2, remaining: 1 });
+    const second = await correct(file, scope, "op-2");
+    expect(second.json).toMatchObject({ allowed: true, used: 2, limit: 2, remaining: 0 });
+
+    // A third fresh operation, as a helper or a new tool call would mint, gains nothing.
+    const third = await correct(file, scope, "op-3");
+    expect(third.code).toBe(1);
+    expect(third.json).toMatchObject({ allowed: false, used: 2, limit: 2, remaining: 0 });
+    expect(candidates(file).map((r) => r["operation"])).toEqual(["op-1", "op-2"]);
+
+    // Asking again for an operation already counted is a replay: it spends nothing.
+    const replay = await correct(file, scope, "op-2");
+    expect(replay.code).toBe(0);
+    expect(replay.json).toMatchObject({ allowed: true, used: 2, replayed: true });
+
+    // A resume and other counter calls in between reset nothing.
+    fs.appendFileSync(
+      file,
+      `${JSON.stringify({ type: "workflow-meta", workflow: "plan", at: "2026-11-01T00:05:00Z", resumed: true })}\n${JSON.stringify(done("plan", "plan-review", "2026-11-01T00:06:00Z"))}\n`,
+    );
+    expect((await derive(file, "plan-review", "next")).code).toBe(0);
+    const afterResume = await correct(file, scope, "op-4");
+    expect(afterResume.code).toBe(1);
+    expect(afterResume.json).toMatchObject({ allowed: false, used: 2 });
+
+    // Another scope has its own budget.
+    const other = await correct(file, "ledgers-append:knowledge:append", "op-5");
+    expect(other.json).toMatchObject({ allowed: true, used: 1, limit: 2 });
+
+    // A route with a stricter limit of one never gains a second correction.
+    const strict = "ledgers-append:decisions:append";
+    expect((await correct(file, strict, "op-a", "--limit=1")).json).toMatchObject({
+      allowed: true,
+      used: 1,
+      limit: 1,
+      remaining: 0,
+    });
+    const denied = await correct(file, strict, "op-b", "--limit=1");
+    expect(denied.code).toBe(1);
+    expect(denied.json).toMatchObject({ allowed: false, used: 1, limit: 1 });
+    // Asking again under yet another operation id still gains nothing.
+    expect((await correct(file, strict, "op-c", "--limit=1")).code).toBe(1);
+
+    // A limit of zero permits no correction at all.
+    const none = await correct(file, "ledgers-append:roadmap:append", "op-z", "--limit=0");
+    expect(none.code).toBe(1);
+    expect(none.json).toMatchObject({ allowed: false, used: 0, limit: 0 });
+  });
+
+  it("refuses a reused correction candidate id with different rows", async () => {
+    const file = log([started("plan", "2026-11-01T00:00:00Z")]);
+    const scope = "ledgers-append:failures:append";
+    const withRows = (operation: string, hash: string) =>
+      correct(file, scope, operation, `--request-hash=${hash}`);
+
+    // The first candidate under op-b is spent once.
+    const first = await withRows("op-b", "hash-1");
+    expect(first.code).toBe(0);
+    expect(first.json).toMatchObject({ allowed: true, used: 1, limit: 2, remaining: 1 });
+
+    // The same id with the same request is a free replay.
+    const replay = await withRows("op-b", "hash-1");
+    expect(replay.code).toBe(0);
+    expect(replay.json).toMatchObject({ allowed: true, used: 1, replayed: true });
+
+    // The same id carrying other rows is refused and writes nothing: it is no replay and no new spend.
+    const changed = await withRows("op-b", "hash-2");
+    expect(changed.code).toBe(1);
+    expect(changed.json).toMatchObject({ allowed: false });
+    expect(changed.json).not.toMatchObject({ replayed: true });
+    expect(candidates(file)).toHaveLength(1);
+
+    // Distinct requests under their own ids spend the budget, and the limit then holds.
+    const second = await withRows("op-c", "hash-3");
+    expect(second.json).toMatchObject({ allowed: true, used: 2, remaining: 0 });
+    const final = await withRows("op-d", "hash-4");
+    expect(final.code).toBe(1);
+    expect(final.json).toMatchObject({ allowed: false, used: 2, limit: 2, remaining: 0 });
+    expect(candidates(file)).toHaveLength(2);
+  });
+});
+
+describe("bkit counters --since-clean retired from route and grant", () => {
+  const file = () => log([started("build", "2026-10-01T00:00:00Z")]);
+
+  it("route refuses --since-clean as an unknown flag", async () => {
+    const r = await run(
+      [
+        "counters",
+        "route",
+        "--name=X",
+        "--of=build-plan-verify-holistic:current",
+        `--file=${file()}`,
+        "--workflow=build",
+        "--point=build.verify",
+        "--since-clean",
+      ],
+      pkgDir({}),
+    );
+    expect(r.code).toBe(2);
+    expect(r.out).toBe("");
+    expect(r.err).toContain("unknown flag --since-clean");
+  });
+
+  it("grant refuses --since-clean as an unknown flag", async () => {
+    const r = await run(
+      [
+        "counters",
+        "grant",
+        "--name=X",
+        "--of=build-plan-verify-holistic:current",
+        `--file=${file()}`,
+        "--workflow=build",
+        "--point=build.verify",
+        "--since-clean",
+      ],
+      pkgDir({}),
+    );
+    expect(r.code).toBe(2);
+    expect(r.out).toBe("");
+    expect(r.err).toContain("unknown flag --since-clean");
   });
 });

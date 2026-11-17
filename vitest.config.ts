@@ -2,13 +2,8 @@ import * as path from "node:path";
 
 import { defineConfig } from "vitest/config";
 
-import { planUnitLoad, unitTimeouts } from "./vitest.timeout-budget.ts";
+import { unitTimeouts } from "./vitest.timeout-budget.ts";
 import { testWorkers } from "./vitest.test-lock.ts";
-
-// The 1-minute load average lags the load this run's workers are about to make, so the first
-// test files would get a budget for a quiet machine. Declare that load before any worker
-// starts; every budget read below and in vitest.setup.ts takes it as a floor.
-planUnitLoad();
 
 // `bkit tests run` hands every gate a folder in BKIT_TEST_REPORT_DIR and counts the
 // failing test cases in the JUnit files written there. One file per vitest process,
@@ -34,9 +29,8 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     globalSetup: ["./vitest.test-lock.ts"],
     ...testWorkers(),
-    // Unit-tier limits scaled to the machine's load when the config loads. This spread is
-    // sampled ONCE; vitest.setup.ts re-reads the same budget as each test FILE starts, so a
-    // load ramp mid-run cannot starve late files past a stale limit.
+    // Unit-tier limits: strict under CI, a fixed multiple elsewhere (vitest.timeout-budget.ts).
+    // vitest.setup.ts re-applies the tier per test file.
     ...unitTimeouts(),
     ...junit,
     // Report-only coverage — dogfoods the bkit-stub:coverage scaffold shipped to

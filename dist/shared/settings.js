@@ -18,6 +18,7 @@ export function parseGithubBoardUrl(url) {
 export const ASK_POINTS = [
     "design.grill",
     "build.verify",
+    "build.holistic",
     "build.challenge",
     "build.tests",
     "debug.fix",
@@ -64,6 +65,7 @@ export const CONFIG_DEFAULTS = {
     asks: {
         "design.grill": { ask: true, max: 6 },
         "build.verify": { ask: true, max: 2 },
+        "build.holistic": { ask: true, max: 2 },
         "build.challenge": { ask: true, max: 2 },
         "build.tests": { ask: true, max: 2 },
         "debug.fix": { ask: true, max: 2 },
@@ -75,6 +77,7 @@ export const CONFIG_DEFAULTS = {
     buildPublish: { remote: true, local: true },
     depUpdater: null,
     issueTrackerExplicit: false,
+    issueTrackerUnknown: null,
     cloudAgentsExplicit: false,
 };
 const nonEmptyString = (v) => typeof v === "string" && v.trim() !== "";
@@ -256,6 +259,11 @@ export function readBkitConfig(root) {
         buildPublish: buildPublish(record(workflows.build).publish),
         depUpdater: parseDepUpdater(record(bkit.dependencies).updater),
         issueTrackerExplicit: tracker.default !== undefined && tracker.default !== "",
+        issueTrackerUnknown: tracker.default !== undefined &&
+            tracker.default !== "" &&
+            parseIssueTracker(tracker.default) === null
+            ? String(tracker.default)
+            : null,
         cloudAgentsExplicit: cloud.agent !== undefined && cloud.agent !== "",
     };
 }

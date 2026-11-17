@@ -31,6 +31,8 @@ import {
   MARKERED_TEXT_DRIFT_PATHS,
   detectGitignoreBlockDuplicates,
   detectPlaywrightReporterHostile,
+  detectOpencodeSubstringFetchGrants,
+  detectCloudBootstrapFingerprintMissing,
   detectTier2JsonDrift,
   detectTier2TextDrift,
 } from "./files.js";
@@ -153,6 +155,12 @@ export function runPreflight(
 
   const playwrightReporterHostile = detectPlaywrightReporterHostile(cwd);
   if (playwrightReporterHostile) advisories.push(playwrightReporterHostile);
+
+  const opencodeSubstringGrants = detectOpencodeSubstringFetchGrants(cwd);
+  if (opencodeSubstringGrants) advisories.push(opencodeSubstringGrants);
+
+  const cloudBootstrapFingerprint = detectCloudBootstrapFingerprintMissing(cwd);
+  if (cloudBootstrapFingerprint) advisories.push(cloudBootstrapFingerprint);
 
   const contextFetch = detectContextFetchMissing(cwd);
   if (contextFetch) advisories.push(contextFetch);

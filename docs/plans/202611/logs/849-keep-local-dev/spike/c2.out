@@ -1,0 +1,26 @@
+c1=b8e37b792d0e7d52f9501934b7980f3ce1aee7dd c2=a501290288aa8aadfe3344f3592c072865e1c847 c3=49db5f388be783b0fcd2da9c0c8f366e0aeb6889; dev=a501290288aa8aadfe3344f3592c072865e1c847, checked out nowhere
+== A: CAS with correct old value, dev checked out nowhere ==
+$ git update-ref refs/heads/dev 49db5f388be783b0fcd2da9c0c8f366e0aeb6889 a501290288aa8aadfe3344f3592c072865e1c847
+[exit 0]
+dev=49db5f388be783b0fcd2da9c0c8f366e0aeb6889
+== B: CAS with stale old value ==
+$ git update-ref refs/heads/dev b8e37b792d0e7d52f9501934b7980f3ce1aee7dd a501290288aa8aadfe3344f3592c072865e1c847
+fatal: update_ref failed for ref 'refs/heads/dev': cannot lock ref 'refs/heads/dev': is at 49db5f388be783b0fcd2da9c0c8f366e0aeb6889 but expected a501290288aa8aadfe3344f3592c072865e1c847
+[exit 128]
+dev=49db5f388be783b0fcd2da9c0c8f366e0aeb6889
+== C: create-only (empty old) on a new name, then the same name again ==
+$ git update-ref refs/heads/dev-backup/20261109-120000 a501290288aa8aadfe3344f3592c072865e1c847 
+[exit 0]
+$ git update-ref refs/heads/dev-backup/20261109-120000 49db5f388be783b0fcd2da9c0c8f366e0aeb6889 
+fatal: update_ref failed for ref 'refs/heads/dev-backup/20261109-120000': cannot lock ref 'refs/heads/dev-backup/20261109-120000': reference already exists
+[exit 128]
+backup=a501290288aa8aadfe3344f3592c072865e1c847
+== D: CAS while dev is checked out in a linked worktree ==
+$ git update-ref refs/heads/dev b8e37b792d0e7d52f9501934b7980f3ce1aee7dd 49db5f388be783b0fcd2da9c0c8f366e0aeb6889
+[exit 0]
+dev=b8e37b792d0e7d52f9501934b7980f3ce1aee7dd; linked worktree HEAD=b8e37b792d0e7d52f9501934b7980f3ce1aee7dd; a.txt in worktree=a3
+linked worktree status:
+M  a.txt
+== E: occupancy as git state ==
+branch refs/heads/main-co
+branch refs/heads/dev

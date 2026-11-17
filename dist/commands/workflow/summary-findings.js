@@ -1,5 +1,5 @@
 import { parseFindings, mergeFindings, normalizeLocation, lowDeferralKey, } from "./challenge.js";
-import { parseDecisionItems } from "./decisions.js";
+import { parseDecisionItems } from "./open-decision.js";
 const artifacts = (row) => Array.isArray(row.artifacts)
     ? row.artifacts.filter((p) => typeof p === "string")
     : [];

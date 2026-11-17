@@ -54,3 +54,31 @@ describe("workflows never write telemetry rows themselves", () => {
     });
   }
 });
+
+/**
+ * An invocation id handed to a subagent names that subagent: `status invocation
+ * --agent=<name>` stamps `by.subagent` on the rows written with it, so the
+ * ledger writer check reads them as the subagent's, not the orchestrator's.
+ */
+describe("an invocation id handed to a subagent names that subagent", () => {
+  const handed: { name: string; line: string; agent: string }[] = [];
+  for (const name of WORKFLOW_FILES) {
+    const lines = fs.readFileSync(path.join(WORKFLOWS_DIR, name), "utf-8").split("\n");
+    lines.forEach((line, i) => {
+      if (!line.includes('"{BKIT}" status invocation')) return;
+      const after = lines.slice(i + 1, i + 12);
+      const invoke = after.findIndex((l) => /\*\*Subagent:\*\* Invoke `@[\w-]+`/.test(l));
+      if (invoke === -1 || !(after[invoke + 1] ?? "").includes("{INVOCATION}")) return;
+      const agent = /`@([\w-]+)`/.exec(after[invoke]!)![1]!;
+      handed.push({ name, line, agent });
+    });
+  }
+
+  it("finds the handed invocations (not vacuous)", () => {
+    expect(handed.map((h) => h.agent)).toContain("bkit-plan-generate");
+  });
+
+  it.each(handed)("$name: the invocation for @$agent carries --agent=$agent", ({ line, agent }) => {
+    expect(line).toContain(`--agent=${agent}`);
+  });
+});

@@ -2,7 +2,7 @@
 
 {{BKIT_MANAGED_MARKER}}
 
-<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. -->
+<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. When you edit this template, follow `.bkit/authoring.md` § Doc Templates. -->
 
 # Reliability Audit
 
@@ -31,7 +31,8 @@ Failure paths are the least tested. The happy path is tested, while a vendor out
 - Google SRE Book (online edition): Postmortem Culture.
 - AWS Well-Architected Framework, Reliability Pillar: REL05 BP01-BP07 (graceful degradation, throttling, retries, fail fast, client timeouts, stateless, emergency levers), REL11 (static stability), REL13 (disaster recovery). Record the publication date read.
 - Background-job flow-control docs (e.g., Inngest concurrency and `createFunction`, Temporal task queues).
-- bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Production rollback runbook; § Dev rollback runbook; § Consumer rollback path; § Smoke trigger plumbing; § Applying migrations at deploy time; § Build-vs-migration race; § Promote before the lanes (`bkit-tests-deploy`)
+- bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Production rollback runbook; § Dev rollback runbook; § Smoke trigger plumbing; § Applying migrations at deploy time; § Build-vs-migration race; § Promote before the lanes (`bkit-tests-deploy`)
+- `.bkit/workflows.md` § Test and release mechanics (Consumer rollback path)
 
 ### Scope
 

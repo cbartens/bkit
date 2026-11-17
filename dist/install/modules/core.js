@@ -6,13 +6,14 @@ import * as path from "node:path";
 import { writeTier1, writeTier2, ensurePackageJsonScripts } from "../write.js";
 import { readBkitVersion, writeBkitVersion, hashFile, mergeCanonicalHashes, sha256, } from "../version-file.js";
 import { extractManagedBlock, findLineAnchoredMarkers, selectMarkers, stripManagedBlock, } from "../managed-block.js";
-import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
+import { listFilesRecursive, warnMissingLintStagedConfig, syncTemplateCopies, } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
 import { writeNetworkAllowlist } from "../network-allowlist.js";
 import { migrateContextCiWorkflow } from "../context-ci-workflow.js";
 import { migrateTemplateNotes } from "../template-notes.js";
 import { isAdvisorySuppressed } from "../../checks/after/suppression.js";
 import { parseJson, readJsonFile } from "../../shared/json.js";
+import { compareSemver } from "../../shared/bkit-latest.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { detectDepUpdater } from "../../shared/dep-updater.js";
 import { ASK_POINTS, CONFIG_DEFAULTS, ciWorkflowPath, limitKey } from "../../shared/settings.js";
@@ -145,8 +146,8 @@ export function listCoreTemplateFiles(root = getCoreRoot()) {
 }
 /**
  * The shared payload files core writes, sourced from `root` (defaults to the
- * resolved shared root): the `docs/*.md` managed blocks and the two shared-root
- * files the core manifest owns.
+ * resolved shared root): the two shared-root files the core manifest owns. The ten project
+ * documents are copy-and-own starters under `templates/docs/`, never written here.
  */
 export function listSharedTemplateFiles(root = getSharedRoot()) {
     const out = [];
@@ -154,14 +155,6 @@ export function listSharedTemplateFiles(root = getSharedRoot()) {
         const src = path.join(root, rel);
         if (fs.existsSync(src))
             out.push({ src, dst, scope: "block", marker: "html-comment" });
-    }
-    for (const name of listMdFiles(path.join(root, "docs"))) {
-        out.push({
-            src: path.join(root, "docs", name),
-            dst: path.join("docs", name),
-            scope: "block",
-            marker: "html-comment",
-        });
     }
     return out;
 }
@@ -259,6 +252,7 @@ export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
     migrateTemplateNotes(dryRun, ws, logPrefix);
     migrateContextCiWorkflow(dryRun, ws, logPrefix);
     migrateSlopTypeSuppression(dryRun, ws, logPrefix);
+    migrateMachineLockCopy(dryRun, ws, logPrefix);
     const renames = migrateBrandedTemplateFiles(dryRun, ws, logPrefix);
     migrateBrandedFileTokens(dryRun, ws, logPrefix, renames);
     migrateBrandedCheckNames(dryRun, ws, logPrefix, tokens.DEFAULT_BRANCH);
@@ -477,6 +471,9 @@ export function seedCorePackageJsonScripts(ctx) {
     if (pruneMinPushPaths(dryRun, ws, logPrefix) && !written.includes("package.json")) {
         written.push("package.json");
     }
+    if (lowerVerifyMaxAttempts(dryRun, ws, logPrefix) && !written.includes("package.json")) {
+        written.push("package.json");
+    }
     if (seedBkitDefaults(dryRun, ws, logPrefix) && !written.includes("package.json")) {
         written.push("package.json");
     }
@@ -512,7 +509,7 @@ export const SEEDED_BKIT_DEFAULTS = {
     cloud: { agent: "" },
     providers: { opencode: { default: "", installed: [] } },
     testing: {
-        // What bkit writes (ship's bookkeeping allow-list, the plans tree) is always a min push;
+        // What bkit writes (ship's bookkeeping allow-list, the plans tree, docs/audits/**) is always a min push;
         // the seed adds nothing, because a project doc can be a test's input.
         minPushPaths: [...CONFIG_DEFAULTS.minPushPaths],
         ciWorkflow: CONFIG_DEFAULTS.ciWorkflow,
@@ -691,6 +688,89 @@ function migrateSlopTypeSuppression(dryRun, ws, logPrefix) {
         fs.writeFileSync(file, template);
     ws.writes.push({ path: file, action: "update", unhashed: true });
     console.log(`${logPrefix} ${tag}core: ${file} — slop plugin updated`);
+}
+// sha256 of every released scripts/ci/bkit-machine-lock.sh text older than the current template (6.1.0, 6.1.1).
+const SHIPPED_MACHINE_LOCK_HASHES = [
+    "63ee5873795fd06b60e1f13c238c9e3c44d9f6dc76a50fe271793de6ad284e87",
+];
+// Migration (6.1.0-6.2.x installs, docs/migrations.md): replace an unedited adopted machine-lock
+// copy with the current template; warn about an edited copy that lacks the queue, never writes
+// the status file or has no hold limit. A copy that starts bkit-test-awake.mjs gets that file
+// beside it (see `migrateHoldSupervisor`).
+function migrateMachineLockCopy(dryRun, ws, logPrefix) {
+    const file = path.join("scripts", "ci", "bkit-machine-lock.sh");
+    const stat = fs.lstatSync(file, { throwIfNoEntry: false });
+    if (!stat)
+        return;
+    const tag = dryRun ? "[dry-run] " : "";
+    const templatePath = ".bkit/templates/scripts/ci/bkit-machine-lock.sh";
+    const outOfOrder = "waiting runs take the lock out of arrival order";
+    const manual = (reason, until = outOfOrder) => {
+        console.warn(`${logPrefix} ${tag}core: ${file} left unchanged (${reason}); merge ${templatePath} by hand, until then ${until}`);
+    };
+    if (linkedPath(file) || !stat.isFile()) {
+        manual("the path is not a regular file or sits under a symlink");
+        return;
+    }
+    const current = fs.readFileSync(file);
+    const template = fs.readFileSync(path.join(getTemplatesRoot(), "scripts", "ci", "bkit-machine-lock.sh"));
+    const text = current.toString("utf8");
+    if (current.equals(template)) {
+        migrateHoldSupervisor(dryRun, ws, logPrefix);
+        return;
+    }
+    if (SHIPPED_MACHINE_LOCK_HASHES.includes(sha256(current))) {
+        if (!dryRun)
+            fs.writeFileSync(file, template);
+        ws.writes.push({ path: file, action: "update", unhashed: true });
+        console.log(`${logPrefix} ${tag}core: ${file} — machine lock updated to the current template`);
+        migrateHoldSupervisor(dryRun, ws, logPrefix);
+        return;
+    }
+    if (text.includes("bkit-test-awake.mjs"))
+        migrateHoldSupervisor(dryRun, ws, logPrefix);
+    if (!text.includes(".queue"))
+        manual("the copy differs from the shipped version");
+    if (!text.includes("LOCAL_STACK_LOCK_STATUS_FILE"))
+        manual("the copy never writes LOCAL_STACK_LOCK_STATUS_FILE", "a lock wait that gives up reads as a gate failure (exit 1) instead of exit 81");
+    if (!text.includes("LOCAL_STACK_LOCK_HOLD_S"))
+        manual("the copy has no LOCAL_STACK_LOCK_HOLD_S hold limit", "a hung run holds the tests lock until someone stops it by hand");
+}
+// sha256 of every scripts/ci/bkit-test-awake.mjs template text in history older than the current one.
+const SHIPPED_AWAKE_HASHES = [
+    "d218439bd4d65b57732a96aaea7bb678f9ebf95a6247f5e6b899d6ef26a59cb5",
+    "a686bf75700f2ff54de2cedd3b7afc943774da40a68c243b9911bc435742f434",
+    "0842c2e2789a1c77935655130de5b8cf253bfe0655407834f23a6abaaf1b0bb1",
+    "0dce1b50638cd609183a871ed8d0d9e3d20c545073f0a32f18526d6f38b5b748",
+];
+// The machine-lock script runs a command holding its own tests lock under
+// scripts/ci/bkit-test-awake.mjs --hold-s: write the template there when the file is missing,
+// replace an unedited shipped copy, and warn about an edited copy without --hold-s, since the
+// lock script refuses every such run with exit 73.
+function migrateHoldSupervisor(dryRun, ws, logPrefix) {
+    const file = path.join("scripts", "ci", "bkit-test-awake.mjs");
+    const tag = dryRun ? "[dry-run] " : "";
+    const template = path.join(getTemplatesRoot(), "scripts", "ci", "bkit-test-awake.mjs");
+    if (!fs.lstatSync(file, { throwIfNoEntry: false })) {
+        if (!dryRun)
+            fs.copyFileSync(template, file);
+        ws.writes.push({ path: file, action: "write", unhashed: true });
+        console.log(`${logPrefix} ${tag}core: ${file} — added beside the machine lock, which runs its hold limit`);
+        return;
+    }
+    const stat = fs.statSync(file, { throwIfNoEntry: false });
+    if (stat?.isFile() &&
+        !linkedPath(file) &&
+        SHIPPED_AWAKE_HASHES.includes(sha256(fs.readFileSync(file)))) {
+        if (!dryRun)
+            fs.copyFileSync(template, file);
+        ws.writes.push({ path: file, action: "update", unhashed: true });
+        console.log(`${logPrefix} ${tag}core: ${file} — test sleep prevention updated to the current template`);
+        return;
+    }
+    if (stat?.isFile() && fs.readFileSync(file, "utf8").includes("--hold-s"))
+        return;
+    console.warn(`${logPrefix} ${tag}core: ${file} left unchanged (it has no --hold-s hold limit); merge .bkit/templates/scripts/ci/bkit-test-awake.mjs by hand, until then every run that holds the tests lock is refused with exit 73`);
 }
 // Every `.github/workflows/*.yml` / `*.yaml` regular file outside `skip`.
 function otherWorkflows(skip) {
@@ -1332,7 +1412,7 @@ export const BKIT_LAYOUT_MOVES = [
 ];
 // Migration (up to 6.0.x installs, `docs/migrations.md`): `bkit.testing.minPushPaths` was the
 // whole min-push list, so installs seeded and repos restated what bkit itself writes. The
-// engine now always allows that floor (ship's bookkeeping allow-list, `docs/plans/**`) and
+// engine now always allows that floor (ship's bookkeeping allow-list, `docs/plans/**`, `docs/audits/**`) and
 // `bkit.testing.ciSkipPaths`; the setting only adds. Entries the floor already covers are
 // dropped from the list. Returns true when package.json changed.
 export const MIN_PUSH_FLOOR_ENTRIES = [
@@ -1365,6 +1445,44 @@ export function pruneMinPushPaths(dryRun, ws, logPrefix) {
     if (!dryRun)
         writePackageJsonLike(raw, pkg);
     console.log(`${logPrefix} ${dryRun ? "[dry-run] " : ""}core: dropped [${dropped.join(", ")}] from bkit.testing.minPushPaths in package.json — bkit always allows what it writes, and ciSkipPaths counts`);
+    return true;
+}
+const LAST_RELEASE_WITHOUT_VERIFY_CAP = "6.1.1";
+// Migration (up to 6.1.x installs, `docs/migrations.md`): `bkit.workflows.build.verify.maxAttempts`
+// is one non-resetting allowance per run, and every build limit is 2. A value above 2 is
+// lowered to 2 once, on the upgrade from an install that predates this release (no recorded
+// version, an unreadable one, or an older one); 2 or less is left alone, and a value set after
+// that upgrade is the consumer's. Returns true when package.json changed.
+export function lowerVerifyMaxAttempts(dryRun, ws, logPrefix) {
+    const pkgPath = "package.json";
+    if (!fs.existsSync(pkgPath))
+        return false;
+    const recorded = readBkitVersion(path.join(".bkit", "version"))?.pinnedVersion ?? "";
+    // Skip a re-run of the same version, and any install recorded after the last release without
+    // this migration, so a value set after the upgrade to this release is never lowered again.
+    const order = compareSemver(recorded, readInstallingVersion());
+    if (order === 0 || order === 1)
+        return false;
+    if (compareSemver(recorded, LAST_RELEASE_WITHOUT_VERIFY_CAP) === 1)
+        return false;
+    const raw = fs.readFileSync(pkgPath, "utf-8");
+    const parsed = parseJson(raw);
+    if (!parsed.ok)
+        return false;
+    const pkg = parsed.value;
+    if (!plainObject(pkg.bkit) || !plainObject(pkg.bkit.workflows))
+        return false;
+    const build = pkg.bkit.workflows.build;
+    if (!plainObject(build) || !plainObject(build.verify))
+        return false;
+    const old = build.verify.maxAttempts;
+    if (typeof old !== "number" || old <= 2)
+        return false;
+    build.verify.maxAttempts = 2;
+    ws.writes.push({ path: pkgPath, action: "update" });
+    if (!dryRun)
+        writePackageJsonLike(raw, pkg);
+    console.log(`${logPrefix} ${dryRun ? "[dry-run] " : ""}core: lowered bkit.workflows.build.verify.maxAttempts from ${old} to 2 in package.json — the holistic allowance is one per run`);
     return true;
 }
 // Fill `into` with each `from` key it lacks, descending into blocks both sides hold.
@@ -1608,7 +1726,7 @@ export function detectGateAdvisories(cwd) {
             id: "test-file-script-missing",
             severity: "advisory",
             detect: `package.json does not declare \`${BKIT_TEST_FILE_SCRIPT}\`, so \`/bkit-build\` cannot check that each task's tests fail before its code is written.`,
-            action: `Add \`${BKIT_TEST_FILE_SCRIPT}\` to package.json: it runs the ONE test file bkit appends as its argument (repo-relative path) and writes a JUnit report to the path in \`$BKIT_TEST_REPORT\`. Vitest example:\n\n    "${BKIT_TEST_FILE_SCRIPT}": "vitest run --reporter=default --reporter=junit --outputFile.junit=\\"$BKIT_TEST_REPORT\\""\n\nCall the runner directly, not through a task runner that caches results or runs dependent packages first. A monorepo routes the path to the package and config that own it.`,
+            action: `Add \`${BKIT_TEST_FILE_SCRIPT}\` to package.json: it runs the ONE test file bkit appends as its argument (repo-relative path) and writes a JUnit report to the path in \`$BKIT_TEST_REPORT\`. Vitest example:\n\n    "${BKIT_TEST_FILE_SCRIPT}": "vitest run --reporter=default --reporter=junit --outputFile.junit=\\"$BKIT_TEST_REPORT\\""\n\njest reads a bare path as a regex, so a folder such as \`(tabs)\` matches no file: pass \`--runTestsByPath\`. Call the runner directly, not through a task runner that caches results or runs dependent packages first. A monorepo routes the path to the package and config that own it.`,
         });
     }
     // A red recorded before the linter sees the test: a lint rewrite after it reads as an
@@ -1702,6 +1820,7 @@ export function runCoreModule(ctx) {
             console.log(`${logPrefix} ${tag}template ${verb}: ${path.join(TEMPLATE_COPIES_DIR, p)}`);
         }
     }
+    warnMissingLintStagedConfig(cwd, logPrefix);
     // 3b3. Payload view links — `.bkit/core` + `.bkit/shared` symlinks into the
     // installed package (browse-only, gitignored; no-op in dogfood). A real
     // directory or file at either path is never clobbered (advisory); a platform

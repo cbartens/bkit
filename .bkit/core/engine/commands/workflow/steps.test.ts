@@ -18,9 +18,11 @@ import {
   promptHeader,
   promptVerdicts,
   readHeader,
+  renderResult,
   stepsCommand,
 } from "./steps";
-import { blockHash } from "./tests";
+import { getPromptsRoot } from "../../shared/package-roots.js";
+import { blockHash, runPlanPath } from "./tests";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 
@@ -109,7 +111,7 @@ function ciFinishFixture() {
     scope: "ci:123",
     gate: null,
     exitCode: null,
-    failures: null,
+    failures: null as number | null,
     ciRun: "123",
     ciUrl: selection.runUrl,
     runAttempt: 2,
@@ -209,6 +211,32 @@ describe("test-round completion evidence", () => {
       ),
     );
     expect((await run(forged.cwd, forged.args)).code).not.toBe(0);
+  });
+
+  it("finishes a CI round only with its own failed job count", async () => {
+    const stepDone = (f: ReturnType<typeof ciFinishFixture>) =>
+      fs
+        .readFileSync(path.join(f.cwd, "logs/status.jsonl"), "utf-8")
+        .includes('"type":"step-done"');
+    const counted = ciFinishFixture();
+    counted.row.failures = 2;
+    counted.save();
+    const finished = await run(counted.cwd, [...counted.args, "--failures=2"]);
+    expect(finished.code).toBe(0);
+    expect(finished.json.row).toMatchObject({ step: "debug-run-tests", source: "ci", failures: 2 });
+    expect(stepDone(counted)).toBe(true);
+
+    const different = ciFinishFixture();
+    different.row.failures = 2;
+    different.save();
+    const wrong = await run(different.cwd, [...different.args, "--failures=3"]);
+    expect(wrong.code).not.toBe(0);
+    expect(stepDone(different)).toBe(false);
+
+    const uncounted = ciFinishFixture();
+    const refused = await run(uncounted.cwd, [...uncounted.args, "--failures=2"]);
+    expect(refused.code).not.toBe(0);
+    expect(stepDone(uncounted)).toBe(false);
   });
 
   it("preserves local clamp enforcement when completing test rounds", async () => {
@@ -900,8 +928,35 @@ describe("bkit steps gate checks attempt / strategy / scope where the step write
     expect(ok.code).toBe(0);
   });
 
+  it("steps finish records attempt and scope on a build-holistic-gate row", async () => {
+    const cwd = repo();
+    const finish = (...extra: string[]) =>
+      run(cwd, [
+        "steps",
+        "finish",
+        "--file=logs/status.jsonl",
+        "--workflow=build",
+        "--step=build-holistic-gate",
+        "--verdict=FAIL",
+        "--attempt=2",
+        "--commit=none",
+        ...extra,
+      ]);
+    const unscoped = await finish();
+    expect(unscoped.code).not.toBe(0);
+    expect(`${unscoped.err} ${JSON.stringify(unscoped.json)}`).toContain("row would miss scope");
+    const r = await finish("--scope=pnpm bkit:gate:changed");
+    expect(r.code).toBe(0);
+    expect(r.json.row).toMatchObject({
+      step: "build-holistic-gate",
+      attempt: 2,
+      scope: "pnpm bkit:gate:changed",
+    });
+    expect(r.json.progressLine).toContain("Plan Verify Holistic");
+  });
+
   it("names every missing field at once", async () => {
-    const r = await rowThenGate("ship", "ship-failure-remediate", []);
+    const r = await rowThenGate("build", "build-failure-remediate", []);
     expect(r.err).toContain("row is missing attempt, strategy");
   });
 
@@ -985,6 +1040,43 @@ describe("bkit steps finish", () => {
     const events = fs.readFileSync(path.join(cwd, "logs/status.jsonl"), "utf-8");
     expect(events).toContain('"location":"a.ts:10"');
     expect(events).toContain('"severity":"CRITICAL"');
+  });
+
+  it("steps finish refuses route=continue that decisions skip would refuse", async () => {
+    const cwd = repo();
+    const pause = (gate: string[]) =>
+      [
+        "Status: DECIDED",
+        "From: verify",
+        "Group: 1",
+        ...gate,
+        "Source changed: false",
+        "",
+        "**Q1 — Task 3 gap:** accept it?",
+        "A) Accept — the item is recorded as accepted",
+        "B) Fix now — a fix task is added to the plan",
+        "Recommended: A) Accept — minor",
+        "Decision: Accept — minor",
+        "",
+      ].join("\n");
+    write(cwd, "logs/build-decision-1-1.md", pause(["Gate: FAIL"]));
+    write(cwd, "logs/build-decision-1-2.md", pause([]));
+    const finishDecision = (n: number) =>
+      run(cwd, [
+        ...FINISH,
+        "--step=build-decision",
+        `--attempt=${n}`,
+        `--artifact=logs/build-decision-1-${n}.md`,
+        "--field=route=continue",
+        "--commit=none",
+      ]);
+    const refused = await finishDecision(1);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("Gate: FAIL");
+    expect(fs.existsSync(path.join(cwd, "logs/status.jsonl"))).toBe(false);
+    const clean = await finishDecision(2);
+    expect(clean.code).toBe(0);
+    expect(clean.json.row).toMatchObject({ step: "build-decision", route: "continue" });
   });
 
   it("reads the agent's header, derives the attempt, writes and commits the row, prints the comment", async () => {
@@ -1884,6 +1976,51 @@ describe("bkit steps finish — the tests step touches only tests, the code step
     expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toContain(TEST.file);
   });
 
+  it("skips a red record for a test name the plan no longer holds, and still locks the planned test", async () => {
+    const cwd = planned();
+    const body = (planned: string, other: string) =>
+      [
+        "describe('mirror suite', () => {",
+        "  it('adds a row', () => {",
+        `    expect(addRow()).toBe(${planned});`,
+        "  });",
+        "  it('counts rows', () => {",
+        `    expect(count()).toBe(${other});`,
+        "  });",
+        "});",
+        "",
+      ].join("\n");
+    write(cwd, TEST.file, body("1", "0"));
+    git(cwd, "commit", "-qam", "tests");
+    const text = fs.readFileSync(path.join(cwd, TEST.file), "utf-8");
+    const entry = (testName: string, state: string) => ({
+      task: 1,
+      test: TEST.file,
+      testName,
+      state,
+      blob: blobOf(cwd, TEST.file),
+      block: blockHash(text, testName),
+    });
+    // An earlier plan named the suite; the plan now names only the test inside it.
+    redRow(cwd, { tests: [entry("mirror suite", "missing"), entry(TEST.name, "red")] });
+    write(cwd, "src/a.ts", "export const addRow = () => 1;\n");
+    write(cwd, TEST.file, body("1", "2"));
+    expect((await run(cwd, EXECUTE)).code).toBe(11);
+    const withPlan = await run(cwd, [...EXECUTE, "--plan=plan.md"]);
+    expect(withPlan.code).toBe(0);
+
+    write(cwd, TEST.file, body("2", "2"));
+    const r = await run(cwd, [...EXECUTE, "--plan=plan.md"]);
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+  });
+
+  it("finds the run's plan beside its status file", () => {
+    expect(runPlanPath("docs/plans/202611/logs/787-x/status.jsonl")).toBe(
+      path.join("docs/plans/202611", "787-x-plan.md"),
+    );
+  });
+
   it("refuses an edit to the planned test case, exit 11, naming the test, and appends an agent-rework friction row", async () => {
     const { cwd, body } = twoTests();
     write(cwd, TEST.file, body("2", "2"));
@@ -1959,6 +2096,31 @@ describe("bkit steps finish — the tests step touches only tests, the code step
     expect(r.json.touched).toEqual([TEST.file]);
   });
 
+  it("refuses the holistic gaps fix, which has no group, when it edits any group's planned test, exit 11", async () => {
+    const cwd = planned();
+    redRow(cwd);
+    const holistic = codeStep(
+      "build-plan-gaps-remediate-holistic",
+      "bkit-build-plan-gaps-remediate",
+      "logs/remediate-1-log.md",
+    ).filter((a) => a !== "--group=1");
+    write(cwd, "src/a.ts", "export const addRow = () => 1;\n");
+    expect((await run(cwd, holistic)).code).toBe(0);
+    write(cwd, TEST.file, "it('adds a row', () => expect(true).toBe(true));\n");
+    write(
+      cwd,
+      "logs/remediate-2-log.md",
+      fs.readFileSync(path.join(cwd, "logs/remediate-1-log.md"), "utf-8"),
+    );
+    const r = await run(
+      cwd,
+      holistic.map((a) => a.replace("remediate-1-log", "remediate-2-log")),
+    );
+    expect(r.code).toBe(EXIT_TESTS_TOUCHED);
+    expect(r.json.touched).toEqual([TEST.file]);
+    expect(r.json.reask).toMatchObject({ agent: "bkit-build-plan-gaps-remediate" });
+  });
+
   it("refuses a build-plan-tests step whose diff changes a file no TEST FIRST line of the group names, exit 15", async () => {
     const cwd = planned();
     write(cwd, TEST.file, "it('adds a row', () => expect(addRow()).toBe(2));\n");
@@ -1988,6 +2150,793 @@ describe("bkit steps finish — the tests step touches only tests, the code step
     const r = await run(created, TESTS);
     expect(r.code).toBe(15);
     expect(r.json.source).toEqual(["src/a.ts"]);
+  });
+
+  /** The plan with group 1's task ticked (as Step 8's `tasks tick` leaves it) and a group 2 task after it. */
+  const TWO_GROUP_PLAN = [
+    PLAN.replace("- [ ] **TASK 1:**", "- [x] **TASK 1:**").trimEnd(),
+    "<!-- bkit:group 2 start -->",
+    "### GROUP 2: Others",
+    "<!-- bkit:task 2 start -->",
+    "- [ ] **TASK 2:** Add other",
+    "  - **CREATE:** `src/c.ts`: other",
+    "  - **DONE WHEN:** passes",
+    "  - **TEST FIRST:**",
+    "    - `src/c.test.ts` `does other` fails on the stub",
+    "<!-- bkit:task 2 end -->",
+    "<!-- bkit:group 2 end -->",
+    "",
+  ].join("\n");
+  const inGroup2 = (argv: string[]) => [
+    ...argv.map((a) => (a === "--group=1" ? "--group=2" : a)),
+    "--plan=plan.md",
+  ];
+
+  /** A repo whose group 1 red row stands, whose plan ticks group 1, and whose group 1 planned test is changed. */
+  function changedInOtherGroup() {
+    const cwd = planned();
+    write(cwd, "plan.md", TWO_GROUP_PLAN);
+    git(cwd, "commit", "-qam", "plan");
+    redRow(cwd);
+    write(cwd, TEST.file, "it('adds a row', () => expect(true).toBe(true));\n");
+    write(cwd, "src/c.ts", "export const other = 1;\n");
+    return cwd;
+  }
+
+  it("refuses the execute step when it changes another group's planned test, exit 11", async () => {
+    const cwd = changedInOtherGroup();
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, inGroup2(EXECUTE));
+    expect(r.code).toBe(11);
+    expect(r.json.touched).toEqual([TEST.file]);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("refuses the gaps-remediate step when it changes another group's planned test, exit 11", async () => {
+    const cwd = changedInOtherGroup();
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, inGroup2(REMEDIATE));
+    expect(r.code).toBe(11);
+    expect(r.json.touched).toEqual([TEST.file]);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  /**
+   * Group 1 (ticked) names `adds a row`; group 2's task names `counts rows` in the same file,
+   * plus each of `extra` names. Group 1's red row stands on both tests' first lines.
+   */
+  function testsStepInGroup2(extra: string[] = []) {
+    const { cwd, body } = twoTests();
+    fs.rmSync(path.join(cwd, "src/a.ts"));
+    write(
+      cwd,
+      "plan.md",
+      TWO_GROUP_PLAN.replace(
+        "    - `src/c.test.ts` `does other` fails on the stub",
+        [`    - \`${TEST.file}\` \`counts rows\` fails on the stub`, ...extra].join("\n"),
+      ),
+    );
+    write(
+      cwd,
+      "logs/build-plan-tests-2-log.md",
+      "Verdict: PASS\n\n<!-- verdict:end -->\n\n# Tests\n\nWROTE — TASK 2: src/a.test.ts counts rows\n",
+    );
+    git(cwd, "add", "-A");
+    git(cwd, "commit", "-qm", "plan");
+    const args = [
+      ...TESTS.filter((a) => a !== "--verdict=PASS").map((a) =>
+        a === "--group=1" ? "--group=2" : a.replace("plan-tests-1-log", "plan-tests-2-log"),
+      ),
+      "--agent=bkit-build-plan-tests",
+    ];
+    return { cwd, body, args };
+  }
+
+  it("the tests step's finish refuses an earlier task's changed planned test with exit 11", async () => {
+    const { cwd, body, args } = testsStepInGroup2();
+    write(cwd, TEST.file, body("2", "1"));
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, args);
+    expect(r.code).toBe(EXIT_TESTS_TOUCHED);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(r.json.touched).toEqual([TEST.file]);
+    expect(r.json.reask).toEqual({
+      agent: "bkit-build-plan-tests",
+      artifact: "logs/build-plan-tests-2-log.md",
+    });
+    expect(r.json.problem).toContain("an earlier task's planned test");
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("the tests step's finish passes its own group's and taken-over tests", async () => {
+    const { cwd, body, args } = testsStepInGroup2([
+      `    - \`${TEST.file}\` \`${TEST.name}\` fails on the stub`,
+    ]);
+    write(cwd, TEST.file, body("2", "1"));
+    const r = await run(cwd, args);
+    expect(r.code, r.err).toBe(0);
+  });
+
+  const blockedLine = (kind: "TASK" | "Gap", n: number, name: string, reason: string) =>
+    `BLOCKED — ${kind} ${n}: test \`${TEST.file}\` \`${name}\` — ${reason}\n`;
+  const appendTo = (cwd: string, rel: string, text: string) =>
+    fs.appendFileSync(path.join(cwd, rel), text);
+  const stepRows = (cwd: string, step: string) =>
+    fs
+      .readFileSync(path.join(cwd, STATUS), "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .filter((r) => r.type === "step-done" && r.step === step);
+  /** The log of a later attempt: the first log's text, then `extra`. */
+  const copyLog = (cwd: string, from: string, to: string, extra = "") =>
+    write(cwd, to, fs.readFileSync(path.join(cwd, from), "utf-8") + extra);
+  const later = (argv: string[], from: string, to: string) => argv.map((a) => a.replace(from, to));
+  const textOfTest = (cwd: string) => fs.readFileSync(path.join(cwd, TEST.file), "utf-8");
+
+  /** The two-test file with `a` expectation lines added to the planned test and `b` to the other (changes that only add). */
+  const grown = (body: (p: string, o: string) => string, a: number, b: number) =>
+    body("1", "0")
+      .replace(
+        "    expect(addRow()).toBe(1);",
+        [
+          "    expect(addRow()).toBe(1);",
+          ...Array.from({ length: a }, (_, i) => `    expect(addRow()).toBeGreaterThan(${i});`),
+        ].join("\n"),
+      )
+      .replace(
+        "    expect(count()).toBe(0);",
+        [
+          "    expect(count()).toBe(0);",
+          ...Array.from({ length: b }, (_, i) => `    expect(count()).toBeGreaterThan(${i});`),
+        ].join("\n"),
+      );
+
+  it("lets a code step through when its log's BLOCKED line names the changed planned test, and records the change on its row", async () => {
+    const { cwd, body } = twoTests();
+    write(
+      cwd,
+      TEST.file,
+      body("1", "0").replace(
+        "  it('adds a row', () => {",
+        "  it('adds a row', () => {\n    setup();",
+      ),
+    );
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "new setup line"));
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(0);
+    const [row] = stepRows(cwd, "build-plan-tasks");
+    expect(row!.changedTests).toEqual([
+      {
+        task: 1,
+        test: TEST.file,
+        testName: TEST.name,
+        block: blockHash(textOfTest(cwd), TEST.name),
+        reason: "new setup line",
+        blob: expect.any(String),
+        after: expect.any(String),
+      },
+    ]);
+  });
+
+  it("lets a code step through when its BLOCKED line names the changed test by the last segment of its name", async () => {
+    const { cwd, body } = twoTests();
+    const status = path.join(cwd, STATUS);
+    fs.writeFileSync(
+      status,
+      fs
+        .readFileSync(status, "utf-8")
+        .replace(`"testName":"${TEST.name}"`, `"testName":"rows > ${TEST.name}"`),
+    );
+    write(cwd, TEST.file, grown(body, 1, 0));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "needs a 2"));
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(0);
+    const [row] = stepRows(cwd, "build-plan-tasks");
+    expect(row!.changedTests).toEqual([
+      expect.objectContaining({ testName: `rows > ${TEST.name}`, reason: "needs a 2" }),
+    ]);
+  });
+
+  it("lets a gaps-remediate step through when its log's Gap BLOCKED line names the changed planned test", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, grown(body, 1, 0));
+    appendTo(cwd, "logs/remediate-1-log.md", blockedLine("Gap", 1, TEST.name, "gap fix needs a 2"));
+    const r = await run(cwd, REMEDIATE);
+    expect(r.code).toBe(0);
+    const [row] = stepRows(cwd, "build-plan-gaps-remediate");
+    expect(row!.changedTests).toEqual([
+      expect.objectContaining({
+        test: TEST.file,
+        testName: TEST.name,
+        reason: "gap fix needs a 2",
+      }),
+    ]);
+  });
+
+  /** twoTests, plus a second planned test ("counts rows") recorded red at its committed lines. */
+  function withCountsRow() {
+    const fx = twoTests();
+    const text = fs.readFileSync(path.join(fx.cwd, TEST.file), "utf-8");
+    redRow(fx.cwd, {
+      attempt: 2,
+      tests: [
+        {
+          task: 2,
+          test: TEST.file,
+          testName: "counts rows",
+          state: "red",
+          blob: blobOf(fx.cwd, TEST.file),
+          block: blockHash(text, "counts rows"),
+        },
+      ],
+    });
+    return fx;
+  }
+
+  it("records only the changed test when a BLOCKED line also names an unchanged one", async () => {
+    const { cwd, body } = withCountsRow();
+    write(cwd, TEST.file, grown(body, 1, 0));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "needs a 2"));
+    appendTo(
+      cwd,
+      "logs/execute-1-log.md",
+      blockedLine("TASK", 2, "counts rows", "thought it changed"),
+    );
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(0);
+    const [row] = stepRows(cwd, "build-plan-tasks");
+    expect(row!.changedTests).toEqual([expect.objectContaining({ testName: TEST.name })]);
+  });
+
+  it("refuses only the changed planned tests no BLOCKED line of the log names", async () => {
+    const { cwd, body } = withCountsRow();
+    write(cwd, TEST.file, grown(body, 1, 1));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 2, "counts rows", "needs a 3"));
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+  });
+
+  it("the refusal names the BLOCKED line the engine reads", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, grown(body, 1, 1));
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(11);
+    expect(r.json.problem).toMatch(/BLOCKED — TASK [^:]+: test `src\/a\.test\.ts` `adds a row` — /);
+  });
+
+  it("the exit 11 help names the BLOCKED line that lets a change through", () => {
+    const codes = stepsCommand.verbs.finish!.exitCodes as Record<number, string>;
+    expect(codes[11]).toMatch(/BLOCKED — [^`]*test `/);
+  });
+
+  it("passes a later code step that leaves a BLOCKED change as it is", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, grown(body, 1, 0));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "needs a 2"));
+    expect((await run(cwd, EXECUTE)).code).toBe(0);
+    expect(stepRows(cwd, "build-plan-tasks")[0]!.changedTests).toHaveLength(1);
+    write(cwd, "src/b.ts", "export const b = 2;\n");
+    const r = await run(cwd, REMEDIATE);
+    expect(r.code).toBe(0);
+  });
+
+  it("refuses a later code step that changes a BLOCKED change again", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, grown(body, 1, 0));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "needs a 2"));
+    expect((await run(cwd, EXECUTE)).code).toBe(0);
+    expect(stepRows(cwd, "build-plan-tasks")[0]!.changedTests).toEqual([
+      expect.objectContaining({ testName: TEST.name }),
+    ]);
+    write(cwd, TEST.file, grown(body, 2, 0));
+    copyLog(cwd, "logs/execute-1-log.md", "logs/execute-2-log.md");
+    const r = await run(cwd, later(EXECUTE, "execute-1-log", "execute-2-log"));
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+  });
+
+  it("records the newer lines when a later code step re-changes a recorded test under a new BLOCKED line", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, grown(body, 1, 0));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "needs a 2"));
+    expect((await run(cwd, EXECUTE)).code).toBe(0);
+    write(cwd, TEST.file, grown(body, 2, 0));
+    copyLog(
+      cwd,
+      "logs/execute-1-log.md",
+      "logs/execute-2-log.md",
+      blockedLine("TASK", 1, TEST.name, "needs a 3 after all"),
+    );
+    const r = await run(cwd, later(EXECUTE, "execute-1-log", "execute-2-log"));
+    expect(r.code).toBe(0);
+    const rows = stepRows(cwd, "build-plan-tasks");
+    expect(rows.at(-1)!.changedTests).toEqual([
+      expect.objectContaining({
+        testName: TEST.name,
+        block: blockHash(textOfTest(cwd), TEST.name),
+        reason: "needs a 3 after all",
+      }),
+    ]);
+  });
+
+  it("uses a red the tests step recorded after a code step's change as the baseline", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, grown(body, 1, 0));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "needs a 2"));
+    expect((await run(cwd, EXECUTE)).code).toBe(0);
+    expect(stepRows(cwd, "build-plan-tasks")[0]!.changedTests).toEqual([
+      expect.objectContaining({ testName: TEST.name }),
+    ]);
+    // The tests step proves a newer red at other lines.
+    write(cwd, TEST.file, body("5", "0"));
+    redRow(cwd, {
+      attempt: 3,
+      tests: [
+        {
+          task: 1,
+          test: TEST.file,
+          testName: TEST.name,
+          state: "red",
+          blob: blobOf(cwd, TEST.file),
+          block: blockHash(textOfTest(cwd), TEST.name),
+        },
+      ],
+    });
+    copyLog(cwd, "logs/remediate-1-log.md", "logs/remediate-2-log.md");
+    write(cwd, "src/b.ts", "export const b = 3;\n");
+    const same = await run(cwd, later(REMEDIATE, "remediate-1-log", "remediate-2-log"));
+    expect(same.code).toBe(0);
+    write(cwd, TEST.file, body("6", "0"));
+    copyLog(cwd, "logs/remediate-1-log.md", "logs/remediate-3-log.md");
+    const r = await run(cwd, later(REMEDIATE, "remediate-1-log", "remediate-3-log"));
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+  });
+
+  /** The planned test's lines with `extra` expectation lines added after its first expect (a change that only adds). */
+  const addsLines = (body: string, ...extra: string[]) =>
+    body.replace(
+      "    expect(addRow()).toBe(1);",
+      ["    expect(addRow()).toBe(1);", ...extra.map((e) => `    ${e}`)].join("\n"),
+    );
+
+  it("refuses a code step that writes a planned test whose red recorded its file missing, exit 11", async () => {
+    const cwd = planned();
+    git(cwd, "rm", "-q", TEST.file);
+    git(cwd, "commit", "-qm", "the test file is not written yet");
+    redRow(cwd, {
+      tests: [{ task: 1, test: TEST.file, testName: TEST.name, state: "missing", blob: null }],
+    });
+    write(cwd, TEST.file, "it('adds a row', () => expect(true).toBe(true));\n");
+    write(cwd, "src/a.ts", "export const addRow = () => 1;\n");
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(11);
+    expect(r.json.touched).toEqual([TEST.file]);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("the refusal of a restored BLOCKED change names the recorded change as the lines to put back", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, addsLines(body("1", "0"), "expect(addRow()).toBeDefined();"));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "needs a check"));
+    expect((await run(cwd, EXECUTE)).code).toBe(0);
+    expect(stepRows(cwd, "build-plan-tasks")[0]!.changedTests).toHaveLength(1);
+    // A later remediate step puts the test back as the tests step wrote it.
+    write(cwd, TEST.file, body("1", "0"));
+    write(cwd, "src/b.ts", "export const b = 2;\n");
+    copyLog(cwd, "logs/remediate-1-log.md", "logs/remediate-2-log.md");
+    const r = await run(cwd, later(REMEDIATE, "remediate-1-log", "remediate-2-log"));
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(r.json.problem).not.toContain("as the tests step left it");
+    expect(r.json.problem).not.toContain("recorded at its red");
+    expect(r.json.problem).toMatch(/recorded change|changedTests/);
+  });
+
+  it("the refusal of a re-change says the logged reason is already recorded", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, addsLines(body("1", "0"), "expect(addRow()).toBeDefined();"));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "needs a 2"));
+    expect((await run(cwd, EXECUTE)).code).toBe(0);
+    write(
+      cwd,
+      TEST.file,
+      addsLines(
+        body("1", "0"),
+        "expect(addRow()).toBeDefined();",
+        "expect(addRow()).not.toBeNull();",
+      ),
+    );
+    copyLog(cwd, "logs/execute-1-log.md", "logs/execute-2-log.md");
+    const r = await run(cwd, later(EXECUTE, "execute-1-log", "execute-2-log"));
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(r.json.problem).toContain("needs a 2");
+    expect(r.json.problem).toMatch(/already recorded/);
+    expect(r.json.problem).toMatch(/new reason/);
+  });
+
+  it("refuses a code step whose BLOCKED-named change removes a line from a planned test, exit 11", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, body("1", "0").replace("    expect(addRow()).toBe(1);\n", ""));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "the check is wrong"));
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(r.json.problem).toMatch(/refuses a BLOCKED-named change that removes a line/);
+    expect(r.json.problem).toMatch(
+      /the engine refuses a BLOCKED-named change that removes a line of a planned test/,
+    );
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  /**
+   * twoTests under the two-group plan, TASK 1's box ticked or open, and TASK 2's BLOCKED line
+   * removing a line of TASK 1's test. Returns the repo and the finish to run.
+   */
+  function contradicting(ticked: boolean) {
+    const { cwd, body } = twoTests();
+    write(
+      cwd,
+      "plan.md",
+      ticked ? TWO_GROUP_PLAN : TWO_GROUP_PLAN.replace("- [x] **TASK 1:**", "- [ ] **TASK 1:**"),
+    );
+    git(cwd, "commit", "-qam", "plan");
+    write(cwd, TEST.file, body("1", "0").replace("    expect(addRow()).toBe(1);\n", ""));
+    appendTo(
+      cwd,
+      "logs/execute-1-log.md",
+      blockedLine("TASK", 2, TEST.name, "rows now start at 0"),
+    );
+    return { cwd, finish: () => run(cwd, [...EXECUTE, "--plan=plan.md"]) };
+  }
+  const planOf = (cwd: string) => fs.readFileSync(path.join(cwd, "plan.md"), "utf-8");
+
+  it("a code step's finish adds one takeover task and one build-takeover row for a contradicted test, exit 11", async () => {
+    const { cwd, finish } = contradicting(true);
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await finish();
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(r.json.contradicts).toEqual([
+      { test: TEST.file, name: TEST.name, from: 1, task: 2, takeover: 3 },
+    ]);
+    const plan = planOf(cwd);
+    expect(plan).toContain("<!-- bkit:group 3 start -->");
+    expect(plan).toContain("- [ ] **TASK 3:** Take over `adds a row` from TASK 1");
+    expect(plan).toContain("  - **DEPENDS ON:** 2");
+    expect(stepRows(cwd, "build-takeover")).toEqual([
+      expect.objectContaining({ task: 3, from: 1, test: TEST.file, name: TEST.name }),
+    ]);
+    expect(stepRows(cwd, "build-takeover")[0]!.reason).toBe("rows now start at 0");
+    expect(stepRows(cwd, "build-plan-tasks")).toEqual([]);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("the contradiction's problem says the takeover task rewrites the test and no BLOCKED line keeps it", async () => {
+    const r = await contradicting(true).finish();
+    expect(r.json.problem).toContain("owned by an earlier, ticked task (TASK 1)");
+    expect(r.json.problem).toContain("the build added takeover TASK 3");
+    expect(r.json.problem).toContain("put it back as the tests step left it");
+    expect(r.json.problem).toContain("a BLOCKED line does not keep it");
+    expect(r.json.problem).not.toContain("or keep the edit and log");
+  });
+
+  it("the same contradicted finish run again adds no second task or row", async () => {
+    const { cwd, finish } = contradicting(true);
+    expect((await finish()).code).toBe(11);
+    const once = planOf(cwd);
+    const again = await finish();
+    expect(again.code).toBe(11);
+    expect(again.json.contradicts).toEqual([
+      { test: TEST.file, name: TEST.name, from: 1, task: 2, takeover: 3 },
+    ]);
+    expect(planOf(cwd)).toBe(once);
+    expect(stepRows(cwd, "build-takeover")).toHaveLength(1);
+  });
+
+  it("exit 11 names no contradiction and adds no task while the owning task is open", async () => {
+    const { cwd, finish } = contradicting(false);
+    const before = planOf(cwd);
+    const r = await finish();
+    expect(r.code).toBe(11);
+    expect(r.json.contradicts).toEqual([]);
+    expect(planOf(cwd)).toBe(before);
+    expect(stepRows(cwd, "build-takeover")).toEqual([]);
+  });
+
+  it("a mixed refusal names both tests and words the problem for each kind", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, "plan.md", SHARED_FILE_PLAN);
+    git(cwd, "commit", "-qam", "plan");
+    redRow(cwd, {
+      group: 2,
+      tests: [
+        {
+          task: 2,
+          test: TEST.file,
+          testName: "counts rows",
+          state: "red",
+          blob: blobOf(cwd, TEST.file),
+          block: blockHash(textOfTest(cwd), "counts rows"),
+        },
+      ],
+    });
+    write(cwd, TEST.file, body("1", "5").replace("    expect(addRow()).toBe(1);\n", ""));
+    appendTo(
+      cwd,
+      "logs/execute-1-log.md",
+      blockedLine("TASK", 2, TEST.name, "rows now start at 0"),
+    );
+    const r = await run(cwd, [...EXECUTE, "--plan=plan.md"]);
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([
+      { test: TEST.file, name: TEST.name },
+      { test: TEST.file, name: "counts rows" },
+    ]);
+    expect(r.json.contradicts).toEqual([
+      { test: TEST.file, name: TEST.name, from: 1, task: 2, takeover: 3 },
+    ]);
+    expect(r.json.problem).toContain(
+      `\`${TEST.file}\` "${TEST.name}" is owned by an earlier, ticked task`,
+    );
+    expect(r.json.problem).toContain(
+      `\`${TEST.file}\` "counts rows" differs from what the group's tests step recorded at its red`,
+    );
+    expect(r.json.problem).toContain("or keep the edit and log one line per test");
+    expect(r.json.problem).toContain("BLOCKED — TASK {N}: test `src/a.test.ts` `counts rows`");
+    expect(r.json.problem).not.toContain("BLOCKED — TASK {N}: test `src/a.test.ts` `adds a row`");
+  });
+
+  it("a chain of takeovers gives one contradiction, from the latest owner", async () => {
+    const { cwd, body } = twoTests();
+    write(
+      cwd,
+      "plan.md",
+      TWO_GROUP_PLAN.replace("- [ ] **TASK 2:**", "- [x] **TASK 2:**").replace(
+        "`src/c.test.ts` `does other`",
+        `\`${TEST.file}\` \`${TEST.name}\``,
+      ),
+    );
+    git(cwd, "commit", "-qam", "plan");
+    redRow(cwd, {
+      group: 2,
+      tests: [
+        {
+          task: 2,
+          from: 1,
+          test: TEST.file,
+          testName: TEST.name,
+          state: "taken-over",
+          blob: blobOf(cwd, TEST.file),
+          block: blockHash(textOfTest(cwd), TEST.name),
+        },
+      ],
+    });
+    write(cwd, TEST.file, body("1", "0").replace("    expect(addRow()).toBe(1);\n", ""));
+    appendTo(cwd, "logs/remediate-1-log.md", blockedLine("Gap", 1, TEST.name, "rows start at 0"));
+    const r = await run(cwd, [...REMEDIATE, "--plan=plan.md"]);
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(r.json.contradicts).toEqual([
+      { test: TEST.file, name: TEST.name, from: 2, task: null, takeover: 3 },
+    ]);
+    expect(planOf(cwd)).toContain("- [ ] **TASK 3:** Take over `adds a row` from TASK 2");
+  });
+
+  it("refuses a code step whose BLOCKED-named change renames a planned test away, exit 11", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, body("1", "0").replace(TEST.name, "a renamed test"));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "renamed it"));
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(r.json.problem).toMatch(/refuses a BLOCKED-named change that removes a line/);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("records the baseline blob on a BLOCKED-named change that only adds lines", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, addsLines(body("1", "0"), "expect(addRow()).toBeDefined();"));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "an added check"));
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(0);
+    const [row] = stepRows(cwd, "build-plan-tasks");
+    const [record] = row!.changedTests as Array<Record<string, unknown>>;
+    expect(typeof record!.blob).toBe("string");
+    const read = spawnSync("git", ["cat-file", "-p", record!.blob as string], {
+      cwd,
+      encoding: "utf-8",
+    });
+    expect(read.status).toBe(0);
+    expect(read.stdout).toContain("expect(addRow()).toBe(1);");
+  });
+
+  /** A plan whose group 1 and group 2 tasks both name tests in `TEST.file`. */
+  const SHARED_FILE_PLAN = TWO_GROUP_PLAN.replace(
+    "`src/c.test.ts` `does other`",
+    `\`${TEST.file}\` \`counts rows\``,
+  );
+  const PARAM_V1 = "it.each([1])('row %i', (n) => {\n  expect(addRow()).toBe(n);\n});\n";
+  const PARAM_V2 = `${PARAM_V1}\nit('counts rows', () => {\n  expect(count()).toBe(0);\n});\n`;
+
+  /** Group 1's test is parameterised (its name is in no line, so no block), and group 2's red row appended a test to the file. */
+  function laterTestsStepAppended() {
+    const cwd = planned();
+    write(cwd, "plan.md", SHARED_FILE_PLAN);
+    write(cwd, TEST.file, PARAM_V1);
+    git(cwd, "add", "-A");
+    git(cwd, "commit", "-qm", "group 1 tests");
+    redRow(cwd, {
+      tests: [
+        {
+          task: 1,
+          test: TEST.file,
+          testName: TEST.name,
+          state: "red",
+          blob: blobOf(cwd, TEST.file),
+          block: null,
+        },
+      ],
+    });
+    write(cwd, TEST.file, PARAM_V2);
+    git(cwd, "commit", "-qam", "group 2 tests");
+    redRow(cwd, {
+      group: 2,
+      attempt: 1,
+      tests: [
+        {
+          task: 2,
+          test: TEST.file,
+          testName: "counts rows",
+          state: "red",
+          blob: blobOf(cwd, TEST.file),
+          block: blockHash(PARAM_V2, "counts rows"),
+        },
+      ],
+    });
+    write(cwd, "src/c.ts", "export const other = 1;\n");
+    return cwd;
+  }
+
+  it("passes a group 2 code step when a later tests step added a test to a file whose group 1 planned test has no recorded block", async () => {
+    const cwd = laterTestsStepAppended();
+    const r = await run(cwd, inGroup2(EXECUTE));
+    expect(r.code).toBe(0);
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toContain("src/c.ts");
+  });
+
+  it("still refuses a group 2 code step that changes a file whose group 1 planned test has no recorded block, exit 11", async () => {
+    const cwd = laterTestsStepAppended();
+    write(cwd, TEST.file, PARAM_V2.replace("toBe(n)", "toBeDefined()"));
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, inGroup2(EXECUTE));
+    expect(r.code).toBe(11);
+    expect(r.json.touched).toEqual([TEST.file]);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  /** A shared-file plan repo and group 2's tests-step finish, run after group 2's tests step wrote `after`. */
+  function group2TestsStep(after: string) {
+    const cwd = planned();
+    write(cwd, "plan.md", SHARED_FILE_PLAN);
+    write(
+      cwd,
+      "logs/build-plan-tests-2-log.md",
+      "Verdict: PASS\n\n<!-- verdict:end -->\n\n# Tests\n\nWROTE — TASK 2: src/a.test.ts counts rows\n",
+    );
+    const finish = () => {
+      write(cwd, TEST.file, after);
+      return run(cwd, [
+        ...TESTS.filter((a) => a !== "--verdict=PASS").map((a) =>
+          a === "--group=1" ? "--group=2" : a.replace("plan-tests-1-log", "plan-tests-2-log"),
+        ),
+        "--agent=bkit-build-plan-tests",
+      ]);
+    };
+    return { cwd, finish };
+  }
+
+  it("passes group 2's tests step that appends its test to a file whose group 1 test has no recorded block, before group 2's red", async () => {
+    const { cwd, finish } = group2TestsStep(PARAM_V2);
+    write(cwd, TEST.file, PARAM_V1);
+    git(cwd, "add", "-A");
+    git(cwd, "commit", "-qm", "group 1 tests");
+    redRow(cwd, {
+      tests: [
+        {
+          task: 1,
+          test: TEST.file,
+          testName: TEST.name,
+          state: "red",
+          blob: blobOf(cwd, TEST.file),
+          block: null,
+        },
+      ],
+    });
+    const r = await finish();
+    expect(r.code, r.err).toBe(0);
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toContain(TEST.file);
+  });
+
+  it("passes group 2's tests step that creates the file a group 1 test was recorded missing in", async () => {
+    const { cwd, finish } = group2TestsStep(
+      "it('counts rows', () => {\n  expect(count()).toBe(0);\n});\n",
+    );
+    fs.rmSync(path.join(cwd, TEST.file));
+    git(cwd, "add", "-A");
+    git(cwd, "commit", "-qm", "no tests yet");
+    redRow(cwd, {
+      tests: [
+        {
+          task: 1,
+          test: TEST.file,
+          testName: TEST.name,
+          state: "missing",
+          blob: null,
+          block: null,
+        },
+      ],
+    });
+    const r = await finish();
+    expect(r.code, r.err).toBe(0);
+  });
+
+  it("a changedTests record on a non-code-step row does not move the lock's baseline", async () => {
+    const { cwd, body } = twoTests();
+    const weakened = body("1", "0").replace("    expect(addRow()).toBe(1);\n", "");
+    fs.appendFileSync(
+      path.join(cwd, STATUS),
+      `${JSON.stringify({
+        type: "step-done",
+        workflow: "build",
+        step: "build-plan-verify",
+        status: "DONE",
+        at: "2026-11-01T06:00:00Z",
+        parentSha: git(cwd, "rev-parse", "HEAD"),
+        group: 1,
+        attempt: 1,
+        artifacts: ["logs/verify-1.md"],
+        changedTests: [
+          { task: 1, test: TEST.file, testName: TEST.name, block: blockHash(weakened, TEST.name) },
+        ],
+      })}\n`,
+    );
+    write(cwd, TEST.file, weakened);
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+  });
+
+  it("refuses a --field changedTests on a step finish", async () => {
+    const cwd = planned();
+    redRow(cwd);
+    write(cwd, "src/a.ts", "export const addRow = () => 1;\n");
+    const r = await run(cwd, [
+      ...EXECUTE,
+      `--field=changedTests=[{"task":1,"test":"${TEST.file}","testName":"${TEST.name}","reason":"x"}]`,
+    ]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("changedTests");
+    expect(stepRows(cwd, "build-plan-tasks")).toEqual([]);
+  });
+
+  it("the exit 11 refusal says verify reads a BLOCKED change's added lines", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, body("1", "0").replace("    expect(addRow()).toBe(1);\n", ""));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "the check is wrong"));
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(11);
+    expect(r.json.problem).toMatch(/verify reads[^.]*added lines?/);
+    expect(r.json.problem).not.toMatch(/cannot remove or loosen/);
   });
 
   it("exit codes list 11 as planned tests touched and 15 as source touched in the tests step", () => {
@@ -2128,5 +3077,597 @@ describe("bkit steps finish — a step commit never changes bkit.workflows", () 
     expect(
       JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8")).bkit.workflows,
     ).toMatchObject({ build: { verify: { maxAttempts: 5 } } });
+  });
+});
+
+describe("bkit steps stub --result-file", () => {
+  const finding = (n: number, o: Record<string, unknown> = {}) => ({
+    severity: "HIGH",
+    fixable: true,
+    location: `src/f${n}.ts:${n}`,
+    title: `Finding ${n}`,
+    doneWhen: `finding ${n} fixed`,
+    tests: [`\`src/f${n}.test.ts\` \`covers ${n}\` fails on finding ${n}.`],
+    ...o,
+  });
+  const resultFile = (cwd: string, rel: string, o: Record<string, unknown>) =>
+    write(
+      cwd,
+      rel,
+      JSON.stringify({
+        findings: [],
+        judgments: {},
+        evidenceComplete: true,
+        body: "# Report\n\n## Scope\n\n`Group 3`\n",
+        ...o,
+      }),
+    );
+  const stubArgs = (agent: string, result: string, to: string) => [
+    "steps",
+    "stub",
+    `--agent=${agent}`,
+    `--result-file=${result}`,
+    `--to=${to}`,
+  ];
+  const headerFields = (text: string): Record<string, string> =>
+    Object.fromEntries(
+      text
+        .split("\n")
+        .map((l) => /^([A-Z][A-Za-z ]*):\s*(.*)$/.exec(l))
+        .filter((m): m is RegExpExecArray => m !== null)
+        .map((m) => [m[1]!, m[2]!]),
+    );
+  const header = (cwd: string, rel: string) =>
+    fs.readFileSync(path.join(cwd, rel), "utf-8").split("<!-- verdict:end -->")[0]!;
+
+  it("derives supported header fields and rejects stale bodies without false PASS", async () => {
+    const cwd = repo();
+
+    // Every registered header kind: counts and booleans come from the findings, judgments pass through.
+    const kinds: Array<[string, Record<string, string>, Record<string, string>]> = [
+      ["bkit-build-challenge-1", {}, { Verdict: "FAIL", Failures: "2" }],
+      [
+        "bkit-plan-review-1",
+        { Redesign: "false" },
+        { Verdict: "FAIL", Failures: "2", Redesign: "false" },
+      ],
+      [
+        "bkit-build-plan-verify",
+        { Tasks: "1, 2", Loosened: "none" },
+        { Verdict: "FAIL", Failures: "2", Fixable: "true", Tasks: "1, 2", Loosened: "none" },
+      ],
+    ];
+    for (const [agent, judgments, expected] of kinds) {
+      resultFile(cwd, "logs/r.json", {
+        findings: [finding(1), finding(2, { fixable: false })],
+        judgments,
+      });
+      const res = await run(cwd, stubArgs(agent, "logs/r.json", `logs/${agent}.md`));
+      expect(res.code).toBe(0);
+      const fields = headerFields(header(cwd, `logs/${agent}.md`));
+      expect(fields).toMatchObject(expected);
+      expect(
+        (await run(cwd, ["steps", "verdict", `--file=logs/${agent}.md`, `--agent=${agent}`])).code,
+      ).toBe(0);
+    }
+
+    // No findings and complete evidence is a PASS with zero failures.
+    resultFile(cwd, "logs/clean.json", { judgments: { Tasks: "1", Loosened: "none" } });
+    await run(cwd, stubArgs("bkit-build-plan-verify", "logs/clean.json", "logs/clean.md"));
+    expect(header(cwd, "logs/clean.md")).toContain("Verdict: PASS");
+    expect(header(cwd, "logs/clean.md")).toContain("Failures: 0");
+    expect(header(cwd, "logs/clean.md")).toContain("Fixable: false");
+
+    // Incomplete evidence never becomes PASS.
+    resultFile(cwd, "logs/partial.json", {
+      evidenceComplete: false,
+      judgments: { Tasks: "1", Loosened: "none" },
+    });
+    await run(cwd, stubArgs("bkit-build-plan-verify", "logs/partial.json", "logs/partial.md"));
+    expect(header(cwd, "logs/partial.md")).not.toContain("Verdict: PASS");
+
+    // A body edited after generation is stale: the verdict read refuses it (EXIT_INVALID).
+    const generated = fs.readFileSync(path.join(cwd, "logs/clean.md"), "utf-8");
+    write(cwd, "logs/clean.md", `${generated}\nA late edit.\n`);
+    const stale = await run(cwd, [
+      "steps",
+      "verdict",
+      "--file=logs/clean.md",
+      "--agent=bkit-build-plan-verify",
+    ]);
+    expect(stale.code).toBe(6);
+    expect(stale.err).toMatch(/stale|fingerprint/i);
+
+    // So is a header edited to disagree with its findings, and a result changed after rendering.
+    write(cwd, "logs/clean.md", generated);
+    const verdictArgs = [
+      "steps",
+      "verdict",
+      "--file=logs/clean.md",
+      "--agent=bkit-build-plan-verify",
+    ];
+    expect((await run(cwd, verdictArgs)).code).toBe(0);
+    resultFile(cwd, "logs/clean.json", {
+      findings: [finding(9)],
+      judgments: { Tasks: "1", Loosened: "none" },
+    });
+    expect((await run(cwd, [...verdictArgs, "--result-file=logs/clean.json"])).code).toBe(6);
+    write(cwd, "logs/clean.md", generated.replace("Failures: 0", "Failures: 3"));
+    expect((await run(cwd, verdictArgs)).code).toBe(6);
+  });
+
+  const headerPromptAgents = (): string[] =>
+    fs
+      .readdirSync(getPromptsRoot())
+      .filter((n) => n.endsWith(".md"))
+      .map((n) => n.slice(0, -3))
+      .filter((agent) =>
+        fs
+          .readFileSync(path.join(getPromptsRoot(), `${agent}.md`), "utf-8")
+          .split("\n")
+          .some((l) => l.startsWith("Verdict: ")),
+      )
+      .filter(
+        (agent) => promptHeader(agent).verdicts.length > 0 && agent !== "bkit-audit-generate",
+      );
+
+  const judgmentsFor = (declared: ReturnType<typeof promptHeader>): Record<string, string> => {
+    const judgments: Record<string, string> = {};
+    for (const f of declared.fields) {
+      if (f.name === "Failures" || f.name === "Fixable") continue;
+      judgments[f.name] = f.values ? f.values[0]! : f.integer ? "1" : "none";
+    }
+    return judgments;
+  };
+
+  // Asserts the derived Failures / Fixable fields only for headers that declare them.
+  const expectDerived = (
+    declared: ReturnType<typeof promptHeader>,
+    fields: Record<string, string>,
+    agent: string,
+    failures: string,
+    fixable: string,
+  ): void => {
+    const has = (name: string) => declared.fields.some((f) => f.name === name);
+    if (has("Failures")) expect(fields["Failures"], agent).toBe(failures);
+    if (has("Fixable")) expect(fields["Fixable"], agent).toBe(fixable);
+  };
+
+  it("registers every named header kind", () => {
+    // The registered header kinds named by the review: each must be in the table.
+    const agents = headerPromptAgents();
+    for (const named of [
+      "bkit-build-challenge-2",
+      "bkit-plan-review-2",
+      "bkit-plan-scope-check",
+      "bkit-build-plan-current",
+      "bkit-build-plan-gaps-remediate",
+      "bkit-build-plan-tasks",
+      "bkit-debug-failure-diagnose",
+      "bkit-debug-failure-reproduce",
+      "bkit-debug-failure-remediate",
+      "bkit-ship-deferred-sweep",
+    ])
+      expect(agents).toContain(named);
+  });
+
+  it("renders and verifies the header of every prompt that declares one", async () => {
+    const cwd = repo();
+    for (const agent of headerPromptAgents()) {
+      const declared = promptHeader(agent);
+      const judgments = judgmentsFor(declared);
+
+      // One fixable finding: FAIL with derived counts, and the read accepts what was rendered.
+      resultFile(cwd, `logs/${agent}.json`, { findings: [finding(1)], judgments });
+      const res = await run(cwd, stubArgs(agent, `logs/${agent}.json`, `logs/${agent}.md`));
+      expect(res.code, agent).toBe(0);
+      const fields = headerFields(header(cwd, `logs/${agent}.md`));
+      expect(fields["Verdict"], agent).toBe("FAIL");
+      expectDerived(declared, fields, agent, "1", "true");
+      for (const [k, v] of Object.entries(judgments)) expect(fields[k], `${agent} ${k}`).toBe(v);
+      expect(
+        (await run(cwd, ["steps", "verdict", `--file=logs/${agent}.md`, `--agent=${agent}`])).code,
+        agent,
+      ).toBe(0);
+
+      // No findings and complete evidence: PASS, with zero derived failures.
+      resultFile(cwd, `logs/${agent}-clean.json`, { judgments });
+      const clean = await run(
+        cwd,
+        stubArgs(agent, `logs/${agent}-clean.json`, `logs/${agent}-clean.md`),
+      );
+      expect(clean.code, agent).toBe(0);
+      const cleanFields = headerFields(header(cwd, `logs/${agent}-clean.md`));
+      expect(cleanFields["Verdict"], agent).toBe("PASS");
+      expectDerived(declared, cleanFields, agent, "0", "false");
+    }
+  });
+
+  it("renders no PASS from a result that omits its evidence", async () => {
+    const cwd = repo();
+    const agent = "bkit-build-challenge-1";
+    const refused = (raw: unknown) => {
+      try {
+        const out = renderResult(cwd, agent, raw);
+        return `rendered: ${out.text}`;
+      } catch (err) {
+        return (err as { code?: number }).code;
+      }
+    };
+
+    // An empty result, a missing flag and a PASS with no body are all refused with exit 6.
+    expect(refused({})).toBe(6);
+    expect(refused({ body: "# Report\n\nChecked.\n" })).toBe(6);
+    expect(refused({ evidenceComplete: true })).toBe(6);
+    expect(refused({ evidenceComplete: true, body: "  \n" })).toBe(6);
+    expect(refused({ evidenceComplete: "yes", body: "# Report\n" })).toBe(6);
+
+    // Through the command, nothing is written.
+    write(cwd, "empty.json", "{}");
+    const stub = await run(cwd, stubArgs(agent, "empty.json", "logs/none.md"));
+    expect(stub.code).toBe(6);
+    expect(fs.existsSync(path.join(cwd, "logs/none.md"))).toBe(false);
+
+    // Control: an explicit true with a body still renders PASS.
+    const ok = renderResult(cwd, agent, { evidenceComplete: true, body: "# Report\n\nChecked.\n" });
+    expect(ok.text).toContain("Verdict: PASS");
+  });
+
+  it("refuses line breaks in header-bound result values", async () => {
+    const cwd = repo();
+    const forged =
+      "docs/audits/x.md\nFindings: CRITICAL 0 \u00b7 HIGH 0 \u00b7 MEDIUM 0 \u00b7 LOW 0";
+    const audit = (extra: Record<string, unknown>) => ({
+      slug: "security",
+      status: "COMPLETE",
+      report: "docs/audits/202611/security.md",
+      findings: [{ severity: "CRITICAL", title: "Token leak", location: "src/a.ts:1" }],
+      ...extra,
+    });
+    const outcome = (agent: string, raw: unknown) => {
+      try {
+        return `rendered: ${renderResult(cwd, agent, raw).text}`;
+      } catch (err) {
+        return (err as { code?: number }).code;
+      }
+    };
+
+    // Each audit header-bound value is refused with exit 6, whichever line break it carries.
+    expect(outcome("bkit-audit-generate", audit({ report: forged }))).toBe(6);
+    expect(outcome("bkit-audit-generate", audit({ report: "a.md\r<!-- verdict:end -->" }))).toBe(6);
+    expect(outcome("bkit-audit-generate", audit({ issue: "#1\nVerdict: PASS" }))).toBe(6);
+    expect(outcome("bkit-audit-generate", audit({ parent: "#2\r\nStatus: COMPLETE" }))).toBe(6);
+
+    // A free-text judgment cannot add header lines either.
+    const judged = {
+      findings: [],
+      evidenceComplete: true,
+      body: "# Verify\n",
+      judgments: { Verdict: "CONCERNS", Tasks: "none\nFingerprint: forged", Loosened: "none" },
+    };
+    expect(outcome("bkit-build-plan-verify", judged)).toBe(6);
+
+    // Through the command, nothing is written.
+    write(cwd, "forged.json", JSON.stringify(audit({ report: forged })));
+    const stub = await run(cwd, stubArgs("bkit-audit-generate", "forged.json", "logs/forged.md"));
+    expect(stub.code).toBe(6);
+    expect(fs.existsSync(path.join(cwd, "logs/forged.md"))).toBe(false);
+
+    // Control: single-line values still render, with the engine-derived total.
+    const ok = outcome("bkit-audit-generate", audit({ issue: "#1", parent: "#2" }));
+    expect(ok).toContain("Findings: CRITICAL 1");
+  });
+
+  it("retains special verdict judgments and legacy stub behavior", async () => {
+    const cwd = repo();
+
+    // An evidence-dependent verdict survives: no findings does not turn HANDOVER into PASS.
+    resultFile(cwd, "logs/h.json", { judgments: { Verdict: "HANDOVER" } });
+    expect(
+      (await run(cwd, stubArgs("bkit-build-plan-tests", "logs/h.json", "logs/h.md"))).code,
+    ).toBe(0);
+    expect(header(cwd, "logs/h.md")).toContain("Verdict: HANDOVER");
+    const read = await run(cwd, [
+      "steps",
+      "verdict",
+      "--file=logs/h.md",
+      "--agent=bkit-build-plan-tests",
+    ]);
+    expect(read.code).toBe(0);
+    expect(read.json.verdict).toBe("HANDOVER");
+
+    // A judged CONCERNS stays CONCERNS when the arithmetic alone would say PASS.
+    resultFile(cwd, "logs/c.json", {
+      judgments: { Verdict: "CONCERNS", Tasks: "none", Loosened: "none" },
+    });
+    await run(cwd, stubArgs("bkit-build-plan-verify", "logs/c.json", "logs/c.md"));
+    expect(header(cwd, "logs/c.md")).toContain("Verdict: CONCERNS");
+
+    // A judged PASS cannot contradict findings: refused, nothing written.
+    resultFile(cwd, "logs/p.json", {
+      findings: [finding(1)],
+      judgments: { Verdict: "PASS", Tasks: "none", Loosened: "none" },
+    });
+    const refused = await run(cwd, stubArgs("bkit-build-plan-verify", "logs/p.json", "logs/p.md"));
+    expect(refused.code).toBe(6);
+    expect(fs.existsSync(path.join(cwd, "logs/p.md"))).toBe(false);
+
+    // Legacy copy and strip-header output are byte-identical to before, with or without --agent.
+    write(cwd, "logs/v1.md", "# Design\n\nBody.\n");
+    await run(cwd, ["steps", "stub", "--from=logs/v1.md", "--to=logs/v2.md"]);
+    expect(fs.readFileSync(path.join(cwd, "logs/v2.md"), "utf-8")).toBe(
+      "Verdict: PENDING\n<!-- verdict:end -->\n\n# Design\n\nBody.\n",
+    );
+    await run(cwd, [
+      "steps",
+      "stub",
+      "--from=logs/verify-1.md",
+      "--to=logs/v3.md",
+      "--agent=bkit-build-plan-verify",
+      "--strip-header",
+    ]);
+    const stripped = fs.readFileSync(path.join(cwd, "logs/v3.md"), "utf-8");
+    expect(stripped.startsWith("Verdict: PENDING\n<!-- verdict:end -->\n\n")).toBe(true);
+    expect(stripped).not.toContain("Verdict: FAIL");
+    expect(stripped).toContain("# Verify");
+  });
+
+  it("derives audit IDs totals ledger payloads and coverage from one result", async () => {
+    const cwd = repo();
+    const audit = (n: string, severity: string, extra: Record<string, unknown> = {}) => ({
+      severity,
+      title: `Problem ${n}`,
+      location: `src/${n}.ts:${n.length}`,
+      ...extra,
+    });
+    const findings = [
+      audit("aa", "LOW"),
+      audit("b", "HIGH", { priorKey: "existing-token-leak" }),
+      audit("cccc", "LOW"),
+    ];
+    const base = {
+      slug: "security",
+      status: "COMPLETE",
+      report: "docs/audits/202611/security.md",
+      notChecked: ["Mobile client: no device available"],
+    };
+    write(cwd, "logs/a.json", JSON.stringify({ ...base, findings }));
+    write(cwd, "logs/b.json", JSON.stringify({ ...base, findings: [...findings].reverse() }));
+    const args = (result: string, to: string) => [
+      "steps",
+      "stub",
+      "--agent=bkit-audit-generate",
+      `--result-file=${result}`,
+      `--to=${to}`,
+    ];
+    const a = await run(cwd, args("logs/a.json", "logs/a.md"));
+    const b = await run(cwd, args("logs/b.json", "logs/b.md"));
+    expect(a.code).toBe(0);
+
+    // Totals come from the findings, in the report header; no hand-written count exists to disagree.
+    const text = fs.readFileSync(path.join(cwd, "logs/a.md"), "utf-8");
+    expect(text).toContain("Status: COMPLETE");
+    expect(text).toContain("Report: docs/audits/202611/security.md");
+    expect(text).toContain("Findings: CRITICAL 0 · HIGH 1 · MEDIUM 0 · LOW 2");
+    expect(a.json.totals).toEqual({ CRITICAL: 0, HIGH: 1, MEDIUM: 0, LOW: 2 });
+
+    // IDs are report-local, stable and independent of the order the findings arrived in.
+    expect(a.json.ids).toHaveLength(3);
+    expect(new Set(a.json.ids)).toEqual(new Set(["security-1", "security-2", "security-3"]));
+    expect(fs.readFileSync(path.join(cwd, "logs/b.md"), "utf-8")).toBe(text);
+    expect(b.json.ids).toEqual(a.json.ids);
+
+    // Coverage is carried, not dropped.
+    expect(text).toContain("Mobile client: no device available");
+
+    // Ledger payloads: one per finding, the agent's explicit prior key is kept, the rest are distinct.
+    const ledger = a.json.ledgerRows as Array<Record<string, unknown>>;
+    expect(ledger).toHaveLength(3);
+    expect(ledger.map((r) => r["kind"])).toEqual(["failure", "failure", "failure"]);
+    expect(ledger.filter((r) => r["key"] === "existing-token-leak")).toHaveLength(1);
+    expect(ledger.find((r) => r["key"] === "existing-token-leak")).toMatchObject({
+      severity: "HIGH",
+    });
+    expect(new Set(ledger.map((r) => r["key"])).size).toBe(3);
+
+    // A hand-supplied count that could disagree is refused.
+    write(cwd, "logs/c.json", JSON.stringify({ ...base, findings, counts: { HIGH: 5 } }));
+    const bad = await run(cwd, args("logs/c.json", "logs/c.md"));
+    expect(bad.code).not.toBe(0);
+    expect(fs.existsSync(path.join(cwd, "logs/c.md"))).toBe(false);
+  });
+
+  it("derives a fresh audit key when the ledger already holds it", async () => {
+    const cwd = repo();
+    fs.mkdirSync(path.join(cwd, "docs"), { recursive: true });
+    const old = {
+      schema: 3,
+      ts: 1794028322438,
+      firstTs: 1794028322438,
+      updates: 1,
+      kind: "failure",
+      key: "audit-security-token-logged",
+      repo: "cbartens/bkit",
+      bkit: { version: "6.1.1" },
+      by: { workflow: "audit", step: "audit:security" },
+      references: ["src/old.ts:9"],
+      severity: "HIGH",
+      summary: "Token logged",
+      description: "Token logged (src/old.ts:9); audit security finding security-1",
+      status: "OPEN",
+    };
+    write(cwd, "docs/failures.jsonl", JSON.stringify(old) + "\n");
+    write(
+      cwd,
+      "logs/a.json",
+      JSON.stringify({
+        slug: "security",
+        status: "COMPLETE",
+        report: "docs/audits/202611/security.md",
+        findings: [{ severity: "HIGH", title: "Token logged", location: "src/new.ts:42" }],
+        notChecked: [],
+      }),
+    );
+    const res = await run(cwd, [
+      "steps",
+      "stub",
+      "--agent=bkit-audit-generate",
+      "--result-file=logs/a.json",
+      "--to=logs/a.md",
+    ]);
+    expect(res.code).toBe(0);
+    const rows = res.json.ledgerRows as Array<Record<string, unknown>>;
+    expect(rows).toHaveLength(1);
+    // The old, still-open row keeps its key; the new problem gets a suffixed one.
+    expect(rows[0]!["key"]).not.toBe("audit-security-token-logged");
+    expect(rows[0]!["key"]).toBe("audit-security-token-logged-2");
+  });
+
+  // Added test (not a planned Task 30 test): the key is stable across a re-render after the append.
+  it("keeps the audit key when the same finding is rendered again after its append", async () => {
+    const cwd = repo();
+    fs.mkdirSync(path.join(cwd, "docs"), { recursive: true });
+    write(
+      cwd,
+      "logs/a.json",
+      JSON.stringify({
+        slug: "security",
+        status: "COMPLETE",
+        report: "docs/audits/202611/security.md",
+        findings: [{ severity: "HIGH", title: "Token logged", location: "src/new.ts:42" }],
+        notChecked: [],
+      }),
+    );
+    const args = [
+      "steps",
+      "stub",
+      "--agent=bkit-audit-generate",
+      "--result-file=logs/a.json",
+      "--to=logs/a.md",
+    ];
+    const first = await run(cwd, args);
+    expect(first.code).toBe(0);
+    const row = (first.json.ledgerRows as Array<Record<string, unknown>>)[0]!;
+    expect(row["key"]).toBe("audit-security-token-logged");
+    // The audit's own append lands in the ledger.
+    write(cwd, "docs/failures.jsonl", JSON.stringify({ schema: 3, ...row }) + "\n");
+    const again = await run(cwd, args);
+    expect(again.code).toBe(0);
+    expect((again.json.ledgerRows as Array<Record<string, unknown>>)[0]!["key"]).toBe(
+      "audit-security-token-logged",
+    );
+  });
+
+  // Added test (not a planned Task 30 test): keys come from the working directory's ledger, which is
+  // the file `ledgers append` writes, so a linked worktree does not read the main checkout's rows.
+  it("reads held audit keys from the linked worktree's own ledger", async () => {
+    const main = repo();
+    const wt = path.join(main, ".worktrees", "feat");
+    git(main, "worktree", "add", "-q", wt, "-b", "feat-wt");
+    fs.mkdirSync(path.join(wt, "docs"), { recursive: true });
+    fs.mkdirSync(path.join(wt, "logs"), { recursive: true });
+    fs.mkdirSync(path.join(main, "docs"), { recursive: true });
+    const held = {
+      schema: 3,
+      key: "audit-security-token-logged",
+      summary: "Token logged",
+      description: "Token logged (src/old.ts:9); HIGH",
+      status: "OPEN",
+    };
+    // The worktree's ledger holds the row; the main checkout's does not.
+    write(wt, "docs/failures.jsonl", JSON.stringify(held) + "\n");
+    write(
+      wt,
+      "logs/a.json",
+      JSON.stringify({
+        slug: "security",
+        status: "COMPLETE",
+        report: "docs/audits/202611/security.md",
+        findings: [{ severity: "HIGH", title: "Token logged", location: "src/new.ts:42" }],
+        notChecked: [],
+      }),
+    );
+    const res = await run(wt, [
+      "steps",
+      "stub",
+      "--agent=bkit-audit-generate",
+      "--result-file=logs/a.json",
+      "--to=logs/a.md",
+    ]);
+    expect(res.code).toBe(0);
+    const rows = res.json.ledgerRows as Array<Record<string, unknown>>;
+    expect(rows[0]!["key"]).toBe("audit-security-token-logged-2");
+  });
+
+  it("refuses a result file left from an earlier round", async () => {
+    const cwd = repo();
+    const agent = "bkit-build-challenge-1";
+    // Round 1's subagent wrote this result, carrying the invocation it ran under.
+    resultFile(cwd, "logs/build-challenge-1-result.json", {
+      findings: [finding(1)],
+      invocation: "inv-round-1",
+    });
+    // Round 2 launched under another invocation and its subagent died before writing a result.
+    const res = await run(cwd, [
+      ...stubArgs(agent, "logs/build-challenge-1-result.json", "logs/challenge-2.md"),
+      "--invocation=inv-round-2",
+    ]);
+    expect(res.code).toBe(6);
+    expect(res.err).toMatch(/invocation|round|earlier|stale/i);
+    expect(fs.existsSync(path.join(cwd, "logs/challenge-2.md"))).toBe(false);
+  });
+
+  it("audit result render keeps an existing anchored report intact", async () => {
+    const cwd = repo();
+    const report = [
+      "# Security audit",
+      "",
+      "<!-- bkit:anchor baseSha=abc1234 -->",
+      "<!-- bkit:outdated -->",
+      "",
+      "## Probe Steps",
+      "",
+      "1. Grepped every handler for unchecked input: MARKER-PROBE-STEPS",
+      "",
+      "## Findings",
+      "",
+      "### security-1 token leak in logs: MARKER-FINDINGS",
+      "",
+      "## Project Instructions",
+      "",
+      "Read CLAUDE.md first: MARKER-INSTRUCTIONS",
+      "",
+    ].join("\n");
+    fs.mkdirSync(path.join(cwd, "docs/audits"), { recursive: true });
+    write(cwd, "docs/audits/security.md", report);
+    write(
+      cwd,
+      "logs/a.json",
+      JSON.stringify({
+        slug: "security",
+        status: "COMPLETE",
+        report: "docs/audits/security.md",
+        findings: [{ severity: "HIGH", title: "Token leak", location: "src/a.ts:1" }],
+        notChecked: [],
+      }),
+    );
+    await run(cwd, [
+      "steps",
+      "stub",
+      "--agent=bkit-audit-generate",
+      "--result-file=logs/a.json",
+      "--to=docs/audits/security.md",
+    ]);
+    const after = fs.readFileSync(path.join(cwd, "docs/audits/security.md"), "utf-8");
+    for (const kept of [
+      "<!-- bkit:anchor baseSha=abc1234 -->",
+      "## Probe Steps",
+      "MARKER-PROBE-STEPS",
+      "## Findings",
+      "MARKER-FINDINGS",
+      "## Project Instructions",
+      "MARKER-INSTRUCTIONS",
+    ])
+      expect(after).toContain(kept);
   });
 });

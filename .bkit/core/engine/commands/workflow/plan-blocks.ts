@@ -150,6 +150,14 @@ function firstTable(lines: string[], heading: RegExp): { head: number; cols: str
   return { head, cols: tableCells(lines[head]!) };
 }
 
+/** The test tier `docs/testing.md` records for a test file's name. */
+export const testTier = (file: string) =>
+  /\.integration\.test\./.test(file)
+    ? "Integration"
+    : /\.live\.test\./.test(file)
+      ? "@live (golden)"
+      : "Unit";
+
 /**
  * The plan's Reuse Inventory: the first table under the first heading naming Reuse
  * Inventory, before the next heading of the same or a higher level. Each row's `File`

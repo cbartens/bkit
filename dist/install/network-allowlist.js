@@ -5,15 +5,20 @@
 // it exists for every host that reads it and `bkit check` reports it missing or stale.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { resolveNetworkAllowlist } from "./cloud-env.js";
+import { egressFingerprint, resolveNetworkAllowlist } from "./cloud-env.js";
 import { readBkitVersion } from "./version-file.js";
 /** Consumer-relative path of the install-written curl/wget allowlist. */
 export const NETWORK_ALLOWLIST_RELPATH = path.join(".bkit", "allowlist.json");
 /** Where the cursor module wrote the allowlist up to 5.2.4 (migrated away). */
 export const RETIRED_NETWORK_ALLOWLIST_RELPATH = path.join(".cursor", "allowlist.json");
-/** The allowlist file body: `{ domains }`, apex + `*.` wildcard per base, sorted. */
+/**
+ * The allowlist file body: `{ domains, fingerprint }` — `domains` is apex + `*.` wildcard
+ * per base, sorted; `fingerprint` is the 8-hex stamp of that list, which the cloud
+ * bootstrap compares with `BKIT_CLOUD_ALLOWLIST_FINGERPRINT`.
+ */
 export function renderNetworkAllowlist(cwd) {
-    return JSON.stringify({ domains: resolveNetworkAllowlist(cwd) }, null, 2) + "\n";
+    const domains = resolveNetworkAllowlist(cwd);
+    return JSON.stringify({ domains, fingerprint: egressFingerprint(domains) }, null, 2) + "\n";
 }
 /**
  * Write `.bkit/allowlist.json` whole (hand edits do not survive — `allowed-domains` in

@@ -311,9 +311,9 @@ describe("workflow progress command wiring", () => {
         point: "ship.merge",
         title: "Merge Gate + Merge PR",
         number: 10,
-        total: 14,
-        percent: 71,
-        bar: "███████░░░",
+        total: 12,
+        percent: 83,
+        bar: "████████░░",
       },
       {
         workflow: "build",
@@ -384,7 +384,7 @@ describe("workflow progress command wiring", () => {
     }
   });
 
-  it("progress specialized completion producers", async () => {
+  it("workflow progress command wiring progress specialized completion producers", async () => {
     const contextCwd = repo("debug");
     write(contextCwd, ".agents/context.md", "# Context\n<!-- bkit:end -->\n");
     write(contextCwd, `${LOG}/context-related-1.md`, "No related issues.\n");
@@ -406,6 +406,30 @@ describe("workflow progress command wiring", () => {
     expect(domainRows(contextCwd).filter((row) => row.step === "context-fetch")).toHaveLength(1);
 
     const dispatchCwd = repo();
+    const invocation = await run(dispatchCwd, [
+      "status",
+      "invocation",
+      "--workflow=build",
+      "--step=build-close-workflow",
+      `--file=${STATUS}`,
+      "--host=claude",
+      "--configured-model=sonnet",
+    ]);
+    expect(invocation.code).toBe(0);
+    const id = String(invocation.json.invocation);
+    // A turn loop saw six errored polls: the re-run decides from them and polls nothing.
+    const turns = await run(dispatchCwd, [
+      "runs",
+      "handoff",
+      `--invocation=${id}`,
+      "--repo=local/origin",
+      "--pr=7",
+      `--head=${git(dispatchCwd, "rev-parse", "HEAD")}`,
+      `--branch=feat/${FID}`,
+      "--result=provider-error",
+      "--polls=6",
+    ]);
+    expect(turns.json).toMatchObject({ nextAction: "verdict", reason: "gh-error" });
     const dispatch = await run(dispatchCwd, [
       "runs",
       "dispatch",
@@ -414,17 +438,18 @@ describe("workflow progress command wiring", () => {
       `--file=${STATUS}`,
       "--workflow=build",
       "--step=build-close-workflow",
-      "--poll-result=err",
-      "--attempts=6",
-      "--all-errored",
+      `--invocation=${id}`,
     ]);
     expect(dispatch.json.row).toMatchObject({ step: "build-close-workflow", status: "DONE" });
     expect
       .soft(dispatch.json.progressLine)
       .toBe("Progress: ██████████ 100% · Step 16/16 Close Workflow & Create PR");
     expect(dispatch.out).toHaveLength(1);
+    // The invocation receipt names the step too; only one completion row is written.
     expect(
-      domainRows(dispatchCwd).filter((row) => row.step === "build-close-workflow"),
+      domainRows(dispatchCwd)
+        .filter((row) => row.type === "step-done")
+        .filter((row) => row.step === "build-close-workflow"),
     ).toHaveLength(1);
 
     const closeCwd = repo("design");
@@ -468,7 +493,7 @@ describe("workflow progress command wiring", () => {
     expect(flushed.code).toBe(0);
     expect
       .soft(flushed.json.progressLine)
-      .toBe("Progress: ██████████ 100% · Step 14/14 Close Workflow");
+      .toBe("Progress: ██████████ 100% · Step 12/12 Close Workflow");
     expect(flushed.out).toHaveLength(1);
     expect(fs.existsSync(ship.worktree)).toBe(false);
     const landed = git(ship.remote, "show", `dev:${STATUS}`)
@@ -477,7 +502,7 @@ describe("workflow progress command wiring", () => {
     expect(landed.filter((row) => row.step === "ship-close-workflow")).toHaveLength(1);
   });
 
-  it("progress accepts the ship base-check regression guard gate", async () => {
+  it("workflow progress command wiring progress accepts the ship base-check regression guard gate", async () => {
     const cwd = repo("ship");
     fs.appendFileSync(
       path.join(cwd, STATUS),
@@ -494,11 +519,11 @@ describe("workflow progress command wiring", () => {
       "--placeholder=BASE_PATH=A",
     ]);
     expect(result.code).toBe(0);
-    expect(result.json?.progressLine).toBe("Progress: ██░░░░░░░░ 21% · Step 3/14 Base Check");
+    expect(result.json?.progressLine).toBe("Progress: ███░░░░░░░ 25% · Step 3/12 Base Check");
     expect(domainRows(cwd)).toEqual(before);
   });
 
-  it("progress gate only completions", async () => {
+  it("workflow progress command wiring progress gate only completions", async () => {
     vi.stubEnv("BKIT_ENGINE_JOURNAL", "on");
     vi.stubEnv("GIT_EXEC_PATH", "");
     const cwd = repo("ship");
@@ -507,8 +532,8 @@ describe("workflow progress command wiring", () => {
     fs.appendFileSync(path.join(cwd, STATUS), jsonl([setup, book]));
     const before = domainRows(cwd);
     for (const [step, number, expected] of [
-      ["ship-worktree-setup", "3", "Progress: ██░░░░░░░░ 21% · Step 3/14 Base Check"],
-      ["ship-bookkeeping-push", "9", "Progress: ██████░░░░ 64% · Step 9/14 Re-validate"],
+      ["ship-worktree-setup", "3", "Progress: ███░░░░░░░ 25% · Step 3/12 Base Check"],
+      ["ship-bookkeeping-push", "9", "Progress: ████████░░ 75% · Step 9/12 Re-validate"],
     ]) {
       const result = await run(cwd, [
         "steps",

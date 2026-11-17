@@ -5,7 +5,6 @@ import * as path from "node:path";
 import { OPENCODE_PROVIDERS } from "../../shared/egress.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { dispatchModules } from "../../install/modules/index.js";
-import { DEFAULT_ISSUE_TRACKER, } from "../../install/manifest.js";
 import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { LOG_PREFIX, setLogPrefix } from "../../shared/log-prefix.js";
@@ -15,6 +14,7 @@ import { formatChecklist, readChangelogVersionDelta, runPostInstallCheck, writeA
 import { collectTips } from "../../checks/tips/index.js";
 import { findMissingOwnedHooks, detectOwnedHookMissing } from "../../checks/after/managed.js";
 import { resolveTokens } from "../../install/placeholders.js";
+import { syncProjectDocs } from "../../install/project-docs.js";
 import { parseModelLookup, applyModelOverrides, unknownModelOverrides, buildOpencodeModelLookup, buildAntigravityModelLookup, parseEffortMap, } from "../../render/models.js";
 import { getBkitDocsRoot } from "../../shared/package-roots.js";
 import { migrateBkitLayout, migrateGithubProjectKey, migrateLinearTeamKey, } from "../../install/modules/core.js";
@@ -81,24 +81,14 @@ export function modulesToCliFlags(mods, opencodeProvider, cloudVariant) {
     return out.join(" ");
 }
 /**
- * Symmetric cloud/tracker constraint (FINAL SCOPE decision 3/4): cloud=claude and
- * cloud=opencode both require tracker=github (both use the bkit-cloud.yml template);
- * cloud=cursor requires tracker=linear. Mismatch is a hard error — checked BEFORE
- * any package.json write so no state is recorded on mismatch ("no files written
- * on hard error" invariant). Returns the error message to print, or `null` when
- * the tracker matches (or no cloud module/variant is in play).
+ * Cloud automation needs a wired tracker. Returns the pre-write error message,
+ * or null when a tracker is wired or no cloud module/variant is being installed.
  */
-export function validateCloudTrackerMatch(cloudVariant, hasCloudModule, issueTracker) {
-    if (cloudVariant === null || !hasCloudModule)
+export function validateCloudTrackerWired(cloudVariant, hasCloudModule, issueTracker) {
+    if (cloudVariant === null || !hasCloudModule || issueTracker !== "none")
         return null;
-    const requiredTracker = cloudVariant === "cursor" ? "linear" : "github";
-    if (issueTracker === requiredTracker)
-        return null;
-    return (`[bkit] --auto=${cloudVariant} requires tracker=${requiredTracker}, ` +
-        `but the resolved tracker is "${issueTracker}". ` +
-        (issueTracker === DEFAULT_ISSUE_TRACKER || issueTracker === "none"
-            ? `Set the tracker first: bkit install --tracker=${requiredTracker} --auto=${cloudVariant}`
-            : `Re-run with the matching tracker: bkit install --tracker=${requiredTracker} --auto=${cloudVariant} (tracker switching is free).`));
+    return (`[bkit] --auto=${cloudVariant} needs a wired tracker: ` +
+        `bkit install --tracker=<github|linear|jira> --auto=${cloudVariant}`);
 }
 /** `parent[key]` as an object, set to a fresh `{}` first when it is absent or not an object. */
 function section(parent, key) {
@@ -327,10 +317,8 @@ export async function runInstall(args, upgradeReport = false) {
         });
     }
     const postDispatch = [];
-    // Symmetric cloud/tracker constraint (FINAL SCOPE decision 3/4) — see
-    // validateCloudTrackerMatch for the full rationale. Checked BEFORE any
-    // package.json write so no state is recorded on mismatch.
-    const cloudTrackerError = validateCloudTrackerMatch(cloudVariant, modules.has("cloud"), issueTracker);
+    // Reject missing tracker wiring before any package.json write.
+    const cloudTrackerError = validateCloudTrackerWired(cloudVariant, modules.has("cloud"), issueTracker);
     if (cloudTrackerError) {
         console.error(cloudTrackerError);
         process.exit(1);
@@ -338,10 +326,18 @@ export async function runInstall(args, upgradeReport = false) {
     if (cloudVariant !== null && modules.has("cloud")) {
         // auto=opencode additionally requires the local opencode host to be installed first
         // (the cloud job runs against the committed .opencode/ — no model is hard-coded in YAML).
-        if (cloudVariant === "opencode" && !fs.existsSync(path.join(process.cwd(), ".opencode"))) {
+        if (cloudVariant === "opencode" &&
+            !modules.has("opencode") &&
+            !fs.existsSync(path.join(process.cwd(), ".opencode"))) {
             console.error(`[bkit] --auto=opencode requires the local opencode host to be installed first.\n` +
                 `Run: bkit install --opencode=<provider>  (e.g. --opencode=opencode-zen)\n` +
                 `The cloud opencode job runs against the committed .opencode/ config — without it there is nothing to run.`);
+            process.exit(1);
+        }
+        if (cloudVariant === "codex" &&
+            !modules.has("codex") &&
+            !fs.existsSync(path.join(process.cwd(), ".codex"))) {
+            console.error(`[bkit] --auto=codex requires the local Codex host. Run: bkit install --codex`);
             process.exit(1);
         }
     }
@@ -441,6 +437,11 @@ export async function runInstall(args, upgradeReport = false) {
     finally {
         discardAllStaging();
     }
+    // The ten project documents belong to the project: drop a legacy ownership wrapper and list
+    // each present document in `Project Documents`. Runs after the managed index is rendered and
+    // before the advisories read the result. `check` is read-only, so it never gets here.
+    if (!dryRun)
+        syncProjectDocs(process.cwd(), { dryRun: false });
     const totalWrites = ws.writes.length;
     // Done banner first so the line count is easy to find above the checklist.
     // For check, "would occur" makes intent explicit; for install, writes already happened.

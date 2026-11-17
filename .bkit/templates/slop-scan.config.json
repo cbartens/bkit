@@ -84,6 +84,7 @@
       "files": [
         ".opencode/plugin/bkit-gateguard.js",
         ".opencode/plugin/bkit-readguard.js",
+        ".opencode/plugin/bkit-guardrails.js",
         ".opencode/plugin/bkit-rules.js"
       ],
       "rules": {
@@ -104,6 +105,7 @@
         "**/.codex/hooks/bkit-readguard.cjs",
         "**/.agents/plugins/bkit/hooks/bkit-readguard.cjs",
         "**/.opencode/plugin/bkit-readguard.js",
+        "**/.opencode/plugin/bkit-guardrails.js",
         "**/.opencode/plugin/bkit-rules.js",
         "**/.codex/hooks/bkit-rules.cjs",
         "**/.agents/plugins/bkit/hooks/bkit-rules.cjs"

@@ -39,7 +39,7 @@ Each phase below lists its subagents in the order they run. "Parallel" means the
 │ workflow_dispatch        → ship|debug|design|plan|build                │
 │ Dispatches the matching /bkit-* skill — runs unattended in cloud       │
 │ (Claude on the web / Cursor cloud agents / OpenCode).                    │
-│ Opt-in: `bkit install --auto=claude|cursor|opencode`. See `.bkit/cloud.md`. │
+│ Opt-in: `bkit install --auto=claude|opencode|codex|cursor`. See `.bkit/cloud.md`. │
 └────────────────────────────────────────────────────────────────────────┘
                                   │
                                   ▼
@@ -88,7 +88,9 @@ Each phase below lists its subagents in the order they run. "Parallel" means the
   │                         unfixable gaps / no progress → Decision Pause (human, in session)
   │ 7. gaps-remediate    (fix verifier gaps, re-verify)
   └ group gate between groups (static + unit) ─────────────────────────────
-  8. verify build        (holistic second pass across whole plan, once)
+  8. verify build        (holistic pass across whole plan; again after later groups;
+                         fixable gaps → holistic gaps-remediate, re-verify;
+                         unfixable / no progress → Decision Pause)
   9. challenge           (size gate first: under 300 lines and 10 files → security only;
                          else both in parallel, distinct lenses, no sibling reads)
     • bug-hunting (large changes)  • security (always)
@@ -98,7 +100,7 @@ Each phase below lists its subagents in the order they run. "Parallel" means the
                          challenged again; unfixable → Decision Pause; two rounds at most)
   11. run tests          (deepest declared local gate, plus bkit check;
                          includes integration when declared, excludes @live)
-    ↳ on test failure → /bkit-debug (debug-failure-diagnose + remediate)
+    ↳ on test failure → debug-failure-diagnose + debug-failure-remediate, run inside build
   12. summary            (engine-written from status rows + plan tasks, tracker-facing;
                          no plan file or an unticked task → FAIL)
   → publish=true: PR opened; CI runs the adopted scaffold below
@@ -141,7 +143,7 @@ Each phase below lists its subagents in the order they run. "Parallel" means the
 
 ## CI test scaffold (runs on every PR + push)
 
-The template `bkit-ci.yml` is copied into `.bkit/templates/`, and the consumer adopts and owns it. It is static: two lanes run in parallel, and the `bkit-tests-check` capstone joins them as the single branch-protection check. There is no planner. The capstone fails unless both lanes concluded `success`, and it fails when the unit lane reports zero executed tests.
+The template `bkit-ci.yml` is copied into `.bkit/templates/`, and the consumer adopts and owns it. It is static: two lanes run in parallel, and the `bkit-tests-check` capstone joins them as the single branch-protection check. The template has no planner. The capstone fails unless both lanes concluded `success`, and it fails when the unit lane reports zero executed tests.
 
 ```
 bkit-tests-static   (typecheck, lint, format, prose lint, slop, actionlint, bkit check)
@@ -153,7 +155,7 @@ bkit-tests-check    (capstone: needs both lanes; sole required check)
 
 Add the lanes the repo has (integration, E2E, migration, live) as further `needs:` of the capstone. The full tier rules are in `docs/testing.md`.
 
-The pipeline stops hard after Design, Plan and Ship. A production merge needs explicit human approval. Some subagents are shared across phases: `bkit-debug-failure-diagnose` and `bkit-debug-failure-remediate` run inside the Build and Ship failure paths as well as in the Debug phase.
+The pipeline stops hard after Design, Plan and Ship. A production merge needs explicit human approval. Some subagents are shared across phases: `bkit-debug-failure-diagnose` and `bkit-debug-failure-remediate` run inside the Build failure path as well as in the Debug phase.
 
 With `bkit-auto` enabled, the loop runs unattended. Build opens a PR, and CI runs. On green, `bkit-auto` dispatches `/bkit-ship`. On red, it dispatches `/bkit-debug`, debug re-pushes, CI re-runs, and `bkit-auto` routes again. No local session is needed until a human gate fires.
 
@@ -207,7 +209,7 @@ Output: a PR to `dev`. This is the heaviest phase: most of its steps verify rath
 | `bkit-build-plan-tasks` | Producer | Implements one task group's tasks from its brief against the tests already recorded failing, touching no planned test. Iterates edit → lint/typecheck/test → edit. Near its turn cap it hands over (`HANDOVER`), and the group re-runs once. |
 | `bkit-build-plan-verify` | Critic | Verifies each task of one group against the group's own diff. Passes the satisfied task numbers, and `bkit tasks tick` sets the boxes. The producer-critic loop uses `bkit.workflows.build.verify.maxAttempts` for its limit. |
 | `bkit-build-plan-gaps-remediate` | Gap-fixer | Fills gaps the verifier found, then re-verifies. |
-| `bkit-build-plan-verify` | Holistic critic | Second, whole-of-plan verification pass across everything built. |
+| `bkit-build-plan-verify` | Holistic critic | Whole-of-plan verification pass across everything built, with its own fix loop through `bkit-build-plan-gaps-remediate` (holistic mode). |
 | `bkit-build-challenge-1` | Bug-hunting | Adversarial review of the full diff. Writes each finding as a plan task with a test first. Forbidden from reading its sibling. Parallel. Runs only on a large change (300+ lines or 10+ files, `docs/plans/**` excluded, measured by `bkit challenge gate`). A small change runs `-2` alone. `bkit challenge merge` then appends the findings to the plan, and execute and verify fix them. |
 | `bkit-build-challenge-2` | Security | Same diff, security lens. Runs on every change, alone on a small one. |
 | `bkit-debug-failure-diagnose` | Diagnostician | When tests fail, diagnoses with Standard / Pivot / Final strategy escalation. Shared with debug. |
@@ -261,8 +263,6 @@ Output: a squash-merged PR, updated docs, pruned skills and a torn-down worktree
 | `bkit-ship-conflict-resolve` | Conflict resolver | Resolves the remaining integration-branch merge conflicts and re-runs the merge block to commit them. |
 | `bkit-ship-deferred-sweep` | Pre-merge completeness gate | Builds the intended-delivery set from the plan's `Acceptance Scenario` sections and `DONE WHEN` fields. FAILs the merge if it finds any unplanned gap (a silent `TODO`, a skipped test). Declared deferrals are resurfaced, never blocking. Gates only what the repo can prove: plan gate checkboxes, `Verification Plan` boxes and `Manual Verification` steps are build-phase process and never gated, and no plan precondition or merge condition blocks, however a log or summary restates it. |
 | `bkit-ship-update-docs` | Docs | Syncs the cataloged docs before the merge, excluding the knowledge and decision ledgers. |
-| `bkit-debug-failure-diagnose` | Diagnostician | Diagnoses a refused merge before a bounded fix attempt. Shared with debug. |
-| `bkit-debug-failure-remediate` | Fixer | Applies the diagnosed fix before merge re-validation. |
 
 Orchestrator-only ship steps: regression guard, merge, skill pruning, update local dev (`bkit branches sync-dev`, which never checks out `dev`) and close (which removes the worktree). The orchestrator performs the guarded git and tracker operations itself, not through subagents.
 

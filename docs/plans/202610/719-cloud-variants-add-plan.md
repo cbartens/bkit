@@ -126,6 +126,7 @@ A team picks whichever cloud agent they like (Claude, opencode, Codex or Cursor)
 <!-- prettier-ignore -->
 | Test description | Type | Target file | Task |
 | --- | --- | --- | --- |
+| `--tracker=jira --codex --auto=codex exits 0 and records codex` checks the current Codex hook footprint while retaining exit and saved-setting assertions | Integration | `.bkit/core/engine/commands/install/install.integration.test.ts` | 19 |
 | GitHub `fetchIssue`: closed → `terminal` true, open → false | Unit | `.bkit/core/engine/commands/workflow/tracker.test.ts` | 1 |
 | Linear `fetchIssue`: `completed` state renamed `Shipped` → `terminal` true | Unit | `.bkit/core/engine/commands/workflow/tracker.test.ts` | 1 |
 | Linear `fetchIssue`: `canceled` → true, `started` → false | Unit | `.bkit/core/engine/commands/workflow/tracker.test.ts` | 1 |
@@ -209,6 +210,12 @@ A team picks whichever cloud agent they like (Claude, opencode, Codex or Cursor)
 | `cloud` tip: Claude App + `BKIT_ANTHROPIC_API_KEY` only for claude | Unit | `.bkit/core/engine/checks/tips/catalogue.test.ts` | 15 |
 | `cloud` tip for codex: `--codex` + `BKIT_OPENAI_API_KEY` | Unit | `.bkit/core/engine/checks/tips/catalogue.test.ts` | 15 |
 | bkit's adopted router equals the template after its listed edits (existing test; `DONE WHEN` of TASKS 7, 8, 10, 11, 12, entry edits land in TASK 8 and TASK 12) | Unit | `.bkit/core/engine/audits/repo/dogfood-templates.test.ts` | 12 |
+| exit 80 reason=auth with BKIT_JIRA_API_KEY set names the secret but never prints its value | Integration | `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts` | 21 |
+| dev arm with absent node_modules/.bin/bkit warns bkit unavailable and exits green | Integration | `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts` | 22 |
+| context job installs and runs bkit from dev, never from the feat/** PR head | Integration | `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts` | 23 |
+| never lets BKIT_OPENAI_API_KEY into the paste block | Unit | `.bkit/core/engine/install/cloud-env.test.ts` | 24 |
+| context job tooling setup steps before Install bkit cannot fail the job | Integration | `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts` | 25 |
+| Select agent job dispatches the agent recorded on dev for a feat branch that predates the recording | Integration | `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts` | 26 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -627,7 +634,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** `terminal` fact on `bkit issues fetch` (`719-issues-fetch-terminal-fact`)
+- [x] **TASK 1:** `terminal` fact on `bkit issues fetch` (`719-issues-fetch-terminal-fact`)
   - **UPDATE:** `fetchIssue` in `.bkit/core/engine/commands/workflow/tracker.ts`: every tracker's result carries `terminal` from one helper; Linear fetch query asks `state { name type }`; Jira fetch (`JIRA_TOOLS.getIssue`, `view: "evidence"`) reads `fields.status.statusCategory.key`, requesting that field explicitly if the evidence view omits it (record which in the code comment beside the call)
   - **UPDATE:** `readBlockers` in `.bkit/core/engine/commands/workflow/tracker.ts`: `open` = not the shared helper's `terminal`
   - **UPDATE:** `.bkit/core/engine/commands/workflow/issues.test.ts`: `fetch` facts case for `terminal` on stdout and in `issue-facts.json`
@@ -648,7 +655,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Rename the guard part to `preflight-tracker.sh`; tracker dispatch, GitHub branch, Linear by category (`719-session-guard-shared-tracker-part`)
+- [x] **TASK 2:** Rename the guard part to `preflight-tracker.sh`; tracker dispatch, GitHub branch, Linear by category (`719-session-guard-shared-tracker-part`)
   - **CREATE:** `.bkit/core/hooks/preflight-tracker.sh`: `git mv` of `.bkit/core/hooks/preflight-linear.sh` (Linear logic carried over); dispatch on `bkit.tracker.default` (`python3`); tracker `linear` keeps today's Linear checks; GitHub REST read (`curl` + `BKIT_GH_TOKEN`, owner/repo from `git remote get-url origin`, id from `GITHUB_ISSUE_ID` else leading digits of `feat/{FID}`); `BKIT_GH_TOKEN` unset → HARD STOP naming it; Linear query `state { name type }`, terminal by `type`; every `curl` with `--connect-timeout 5 --max-time 15`; any unreadable answer HARD STOPs naming tracker + reason; stdout stays one JSON document
   - **UPDATE:** `.bkit/core/.claude/hooks/bkit-preflight.sh`: `# {{BKIT_PART preflight-tracker.sh}}`
   - **UPDATE:** `.bkit/core/.cursor/hooks/bkit-preflight.sh`: `# {{BKIT_PART preflight-tracker.sh}}`
@@ -673,7 +680,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Guard Jira branch, no-id line, Claude `GITHUB_ISSUE_ID` trigger (`719-guard-issue-id-sources`, `719-tracker-guard-no-issue-id-not-verified`, `719-cursor-jira-guard-hard-stop-without-bkit-bin`)
+- [x] **TASK 3:** Guard Jira branch, no-id line, Claude `GITHUB_ISSUE_ID` trigger (`719-guard-issue-id-sources`, `719-tracker-guard-no-issue-id-not-verified`, `719-cursor-jira-guard-hard-stop-without-bkit-bin`)
   - **UPDATE:** `.bkit/core/hooks/preflight-tracker.sh`: Jira key from `feat/{FID}` uppercased, read via `node_modules/.bin/bkit issues fetch --issue KEY --outbox "$TMPDIR" --json` under `timeout 20` when present, output captured (never echoed), pass on `bkit:auto` and `terminal` false; bin absent, `fetch` exit 80 or `timeout` expiry → HARD STOP naming the cause; no id under github / jira → `Guard pre-check: SKIPPED — no issue id; bkit:auto not verified`, exit 0; tracker unset / `none` → Linear branch when `LINEAR_ISSUE_ID` set, else advisory context, exit 0 on both hosts (`719-cursor-guard-tracker-unset-advisory`; Breaking Changes row)
   - **UPDATE:** `.bkit/core/.claude/hooks/bkit-preflight.sh`: trigger `LINEAR_ISSUE_ID` or `GITHUB_ISSUE_ID` (`:77-79`); header comments (`:4-17`) tracker-neutral
   - **UPDATE:** `.bkit/core/.cursor/hooks/bkit-preflight.sh`: header comments (`:4-15`) tracker-neutral
@@ -698,7 +705,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** `codex` cloud variant (`719-any-cloud-agent-any-wired-tracker`)
+- [x] **TASK 4:** `codex` cloud variant (`719-any-cloud-agent-any-wired-tracker`)
   - **UPDATE:** `CLOUD_MODES` in `.bkit/core/engine/install/manifest.ts`: add `codex`
   - **UPDATE:** `CLOUD_VARIANTS` in `.bkit/core/engine/cli.ts`: add `codex`; help text (`:702-709`, `:801`) lists `--auto=<claude|cursor|opencode|codex>` with no tracker pairing; `:708` names the provider's own `BKIT_` key instead of `OPENCODE_PROVIDER_KEY`
   - **UPDATE:** `.bkit/core/engine/install/manifest.test.ts`: `parseCloudAgents` case for `codex`
@@ -715,7 +722,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Cloud advisories from a variant x tracker table; `BKIT_OPENAI_API_KEY` env row (`719-cloud-advisories-variant-by-tracker-table`, `719-cloud-router-secrets-bkit-prefixed`)
+- [x] **TASK 5:** Cloud advisories from a variant x tracker table; `BKIT_OPENAI_API_KEY` env row (`719-cloud-advisories-variant-by-tracker-table`, `719-cloud-router-secrets-bkit-prefixed`)
   - **UPDATE:** `runCloudModule` in `.bkit/core/engine/install/modules/cloud.ts`: per-variant rows (claude: adopt router, `/install-github-app`, `BKIT_ANTHROPIC_API_KEY` or federation variables; opencode: `--opencode` first, configured provider's `BKIT_` key; codex: `--codex` first, `.codex/bkit-cloud.md`, `BKIT_OPENAI_API_KEY`, vendor `@Codex` / Codex for Linear named not installed; cursor: `.cursor/` templates, dashboard CI trigger, per-tracker native trigger) + `trackerAdvisoryLines(ctx.issueTracker, variant)` replacing the hard-coded Linear lines (`:164`, `:181`)
   - **READ:** `OPENCODE_PROVIDER_DEFAULTS` in `.bkit/core/engine/shared/egress.ts`: provider → env var name
   - **UPDATE:** `.bkit/shared/.bkit/.env.example`: `BKIT_OPENAI_API_KEY=` row with its comment, beside `BKIT_ANTHROPIC_API_KEY`
@@ -735,7 +742,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Wired-tracker rule, `.codex/` prerequisite and opencode one-shot install (`719-auto-refuses-tracker-none`, `719-auto-codex-requires-codex-host`, `719-auto-opencode-one-shot-install`)
+- [x] **TASK 6:** Wired-tracker rule, `.codex/` prerequisite and opencode one-shot install (`719-auto-refuses-tracker-none`, `719-auto-codex-requires-codex-host`, `719-auto-opencode-one-shot-install`)
   - **UPDATE:** `validateCloudTrackerMatch` in `.bkit/core/engine/commands/install/install.ts`: renamed `validateCloudTrackerWired`; refuses only tracker `none` with `[bkit] --auto=<v> needs a wired tracker: bkit install --tracker=<github|linear|jira> --auto=<v>`; same pre-write call site (`:393`)
   - **UPDATE:** `.bkit/core/engine/commands/install/install.ts`: prerequisite branch (`:403-413`) adds `codex` → `.codex/` exists or `modules.has("codex")`, else exit 1 naming `bkit install --codex`; the `opencode` check also passes on `modules.has("opencode")` (`719-auto-opencode-one-shot-install`)
   - **UPDATE:** `.bkit/core/engine/cli.ts`: `:817` comment names `validateCloudTrackerWired`
@@ -755,6 +762,29 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 6 end -->
 
+<!-- bkit:task 19 start -->
+
+- [x] **TASK 19:** Correct the stale Codex install footprint assertion
+  - **READ:** `docs/plans/202610/logs/719-cloud-variants-add/build-decision-2-1.md`: the owner's decision.
+  - **UPDATE:** `.bkit/core/engine/commands/install/install.integration.test.ts`: the tests step corrects only the retired `.codex/config.toml` footprint expectation in the named Jira/Codex one-shot case to the current `.codex/hooks.json` output. Retain the test name, successful exit, Jira tracker and saved codex-agent assertions. Add no retired production file and remove no requested behavior assertion.
+  - **DEPENDS ON:** 6
+  - **DONE WHEN:** `--tracker=jira --codex --auto=codex exits 0 and records codex` passes against the existing current Codex host output, with all successful-install and saved-setting assertions retained; the full install integration file passes.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/install/install.integration.test.ts` `--tracker=jira --codex --auto=codex exits 0 and records codex` fails on a refused one-shot install, incorrect saved tracker or cloud agent, or missing current Codex hook output. The prior recorded red and the current stale assertion failure are preserved as evidence; do not undo existing implementation to force another red.
+
+<!-- bkit:task 19 end -->
+
+<!-- bkit:task 20 start -->
+
+- [x] **TASK 20:** Complete group 3 generation and required verification
+  - **READ:** `docs/plans/202610/logs/719-cloud-variants-add/build-decision-2-1.md`: the owner's decision and the linked verification and remediation evidence.
+  - **UPDATE:** `docs/plans/202610/logs/719-cloud-variants-add/build-plan-tasks-3-log.md`: record completed group 3 checks after TASK 19. Respect the shared tests lock and report its holder and stale-duration evidence. Preserve the observed Git-fixture stall record; change code only for a reproduced in-scope root cause.
+  - **DEPENDS ON:** 19
+  - **DONE WHEN:** generation completes successfully and the required changed-files check has a completed passing result; the group static/unit gate can then run through the normal verification step.
+  - **TEST FIRST:** n/a — verification only, no new behavior or test.
+
+<!-- bkit:task 20 end -->
+
 <!-- bkit:group 3 end -->
 
 <!-- bkit:group 4 start -->
@@ -763,7 +793,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** `BKIT_` router secrets and `Select agent job` (`719-cloud-router-secrets-bkit-prefixed`, `719-cloud-router-dispatches-recorded-agent-only`, `719-router-opencode-provider-secrets-direct`)
+- [x] **TASK 7:** `BKIT_` router secrets and `Select agent job` (`719-cloud-router-secrets-bkit-prefixed`, `719-cloud-router-dispatches-recorded-agent-only`, `719-router-opencode-provider-secrets-direct`)
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-cloud.yml`: `Check runner credentials` reads `BKIT_ANTHROPIC_API_KEY` (or both federation variables), any of `BKIT_OPENCODE_API_KEY` / `BKIT_OPENROUTER_API_KEY` / `BKIT_OLLAMA_API_KEY`, `BKIT_OPENAI_API_KEY`; `enabled` = any set
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-cloud.yml`: new `Select agent job` step after checkout: reads `bkit.cloud.agent`, sets exactly one of `claude` / `opencode` / `codex` (plus `agent`) only when that agent's secret is set; else `no-agent` notice naming the missing secret (or Cursor's native triggers / no variant; absent field reads `none` and the notice names `bkit install --auto=<claude|opencode|codex>`) and the ignored secrets; no credential-presence fallback; outputs carry the dispatched / ignored job list for TASK 9's summary `jobs` field; `run` / `opencode` job `if:` read the selected outputs
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-cloud.yml`: `run` job action input `secrets.BKIT_ANTHROPIC_API_KEY`; `opencode` dispatch step maps each provider `BKIT_` secret to its same-named env var (fan-out of `OPENCODE_PROVIDER_KEY` removed); header comments describe one agent per run
@@ -791,7 +821,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** bkit on the runner, per-arm checkout, `bkit_gate`, feat-arm `fids parse` (`719-cloud-kill-switch-one-bkit-path`, `719-router-label-read-via-issues-fetch`, `719-router-bkit-from-consumer-lockfile`, `719-router-gate-outcomes-annotated`, `719-router-tracker-secrets-step-scope`, `719-router-jira-needs-key-only`, `719-router-checks-label-not-state`, `719-cloud-router-issue-id-via-workflow-fids-parse`)
+- [x] **TASK 8:** bkit on the runner, per-arm checkout, `bkit_gate`, feat-arm `fids parse` (`719-cloud-kill-switch-one-bkit-path`, `719-router-label-read-via-issues-fetch`, `719-router-bkit-from-consumer-lockfile`, `719-router-gate-outcomes-annotated`, `719-router-tracker-secrets-step-scope`, `719-router-jira-needs-key-only`, `719-router-checks-label-not-state`, `719-cloud-router-issue-id-via-workflow-fids-parse`)
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-cloud.yml`: context checkout `ref` = PR head branch on `feat/**`, `dev` otherwise; checkout comment (`:160-162`) rewritten to the per-arm rule; `setup-node` `{{NODE_VERSION}}` (`cache: pnpm`) + `pnpm/action-setup` + `Install bkit` (`pnpm install --frozen-lockfile --ignore-scripts`, `continue-on-error: true`), all `if: enabled`; GitHub-only no-op (`:188-194`) deleted
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-cloud.yml`: `bkit_gate <issue>` shell function (outcomes `bkit-unavailable` / `no-issue` / `unreadable` / `label-absent` / `pass`, `|| rc=$?` captures, `::warning::` vs `::notice::`, one `$GITHUB_STEP_SUMMARY` row `tracker | issue | verdict | reason | jobs`) replaces both `gh issue view … grep -qxF 'bkit:auto'` sites (`:341`, `:424`); feat arm `node_modules/.bin/bkit fids parse --marker "$PR_BODY" --branch "$BRANCH" --json` replaces the marker regex + branch fallback (`:395-417`); `BKIT_LINEAR_API_KEY` / `BKIT_JIRA_API_KEY` + `GH_TOKEN` in the ctx step `env:`
   - **UPDATE:** `.github/workflows/bkit-cloud.yml`: re-copy, `runs-on` + `{{NODE_VERSION}}` re-applied
@@ -818,7 +848,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Summary `jobs` field from the `Select agent job` hand-off (`719-cloud-router-dispatches-recorded-agent-only`, `719-cloud-router-secrets-bkit-prefixed`)
+- [x] **TASK 9:** Summary `jobs` field from the `Select agent job` hand-off (`719-cloud-router-dispatches-recorded-agent-only`, `719-cloud-router-secrets-bkit-prefixed`)
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-cloud.yml`: `bkit_gate`'s `$GITHUB_STEP_SUMMARY` row fills `jobs` from the `Select agent job` outputs — the dispatched job + its `BKIT_` secret (`codex:BKIT_OPENAI_API_KEY`) and each ignored job with its reason (`claude: not bkit.cloud.agent`); a `no-agent` row names the recorded agent's missing `BKIT_` secret and the ignored secrets; `BKIT_` names only
   - **UPDATE:** `.github/workflows/bkit-cloud.yml`: re-copy, `runs-on` + `{{NODE_VERSION}}` re-applied
   - **UPDATE:** `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts`: summary-row cases read `$GITHUB_STEP_SUMMARY` after the Select and ctx steps run in sequence
@@ -838,7 +868,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** Dev arm through `fids parse --prompt-file` (`719-cloud-router-issue-id-via-workflow-fids-parse`, `719-router-dev-arm-issue-from-feature-row`)
+- [x] **TASK 10:** Dev arm through `fids parse --prompt-file` (`719-cloud-router-issue-id-via-workflow-fids-parse`, `719-router-dev-arm-issue-from-feature-row`)
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-cloud.yml`: dev arm writes the commit subject (`head -1`) to a `$RUNNER_TEMP` file → `node_modules/.bin/bkit fids parse --prompt-file <file> --json` → `fidNamed`; issue via `fids parse --branch "feat/$FID" --json`; non-zero exit or null `fidNamed` → today's no-FID no-op; every remaining YAML FID / issue regex deleted; then `bkit_gate` before the stale-run guard and `bkit_dev_dispatch_guard`; `bkit_gate` reads `labels` only, never `state` / `terminal`, so a closed issue still carrying `bkit:auto` passes (`719-router-checks-label-not-state`)
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-cloud.yml`: merged-PR body fallback (`:323-326`, same-repo merged PR from the existing `gh api …/commits/$HEAD_SHA/pulls` call) feeds `node_modules/.bin/bkit fids parse --marker "$PR_BODY" --json`; its `grep -oE 'bkit:fid=…'` and the `:327` FID-shape check deleted
   - **UPDATE:** `bkit_dev_dispatch_guard` in `.bkit/templates/.github/workflows/bkit-cloud.yml`: pre-path assert (`:230`) narrowed to the engine slug charset `^[a-z0-9][a-z0-9-]*$` (`FID_PATTERNS.none`: no `/`, no `.`, non-empty; Jira digits pass); comment (`:225-229`) states it checks characters on `fids parse` output, not FID shape (`719-router-dev-guard-slug-charset-assert`)
@@ -859,7 +889,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** Tracker secrets in the claude / opencode dispatch steps (`719-router-tracker-secrets-step-scope`)
+- [x] **TASK 11:** Tracker secrets in the claude / opencode dispatch steps (`719-router-tracker-secrets-step-scope`)
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-cloud.yml`: `BKIT_LINEAR_API_KEY` / `BKIT_JIRA_API_KEY` in the `env:` of the `run` and `opencode` dispatch steps only; `claude_args` comment (`:524-525`) → "GitHub MCP only; other trackers via bkit verbs"
   - **UPDATE:** `.github/workflows/bkit-cloud.yml`: re-copy, edits re-applied
   - **UPDATE:** `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts`: describe "bkit-cloud.yml template — GitHub-only content" "no `BKIT_LINEAR_API_KEY`" pin removed
@@ -872,7 +902,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 12 start -->
 
-- [ ] **TASK 12:** Router `codex` job; `opencode` job dependency install (`719-codex-job-action-prompt-and-pin`, `719-codex-job-installs-deps-before-action`, `719-codex-job-full-access-sandbox-allow-bots`, `719-codex-job-runtime-project-trust`, `719-opencode-job-installs-deps-before-run`)
+- [x] **TASK 12:** Router `codex` job; `opencode` job dependency install (`719-codex-job-action-prompt-and-pin`, `719-codex-job-installs-deps-before-action`, `719-codex-job-full-access-sandbox-allow-bots`, `719-codex-job-runtime-project-trust`, `719-opencode-job-installs-deps-before-run`)
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-cloud.yml`: `codex` job — `if: needs.context.outputs.codex == 'true' && needs.context.outputs.skip != 'true'`; `opencode` permissions; FID concurrency lane suffix `-codex`; checkout `dev` + git user + vale; `setup-node {{NODE_VERSION}}` (`cache: pnpm`) + `pnpm/action-setup` + `pnpm install --frozen-lockfile`; trust step writing `$RUNNER_TEMP/codex-home/config.toml` with `[projects."$GITHUB_WORKSPACE"] trust_level = "trusted"`; `openai/codex-action@<40-char sha> # v1` (re-resolve `v1`) with `openai-api-key: ${{ secrets.BKIT_OPENAI_API_KEY }}`, `sandbox: danger-full-access`, `allow-bots: true`, `codex-home`, `codex-version: "0.165.0"` under `# renovate: datasource=npm depName=@openai/codex`, `prompt: "$bkit-auto ${{ needs.context.outputs.phase }} ${{ needs.context.outputs.arg }}"`, `GH_TOKEN` + tracker secrets in step env; `if: always()` summary step (`action`, `commits`, `comments`); job comment on irreversible `drop-sudo` on reused self-hosted `{{CLOUD_RUNNER}}` and the action's Node 24 on `PATH`
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-cloud.yml`: `opencode` job gains the codex job's install block (`setup-node {{NODE_VERSION}}` + `pnpm/action-setup` + `pnpm install --frozen-lockfile`) before its dispatch step; closes `docs/failures.jsonl` `bkit-cloud-opencode-job-never-installs-repo-deps`
   - **READ:** `.bkit/templates/.github/renovate.json5`: `customManagers` first `matchStrings` (`[\w-]*(?:VERSION|version)[=:]`) covers `codex-version:`
@@ -902,7 +932,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 13 start -->
 
-- [ ] **TASK 13:** Stale-router sniffs and per-variant router text (`719-router-stale-copy-detect-only`)
+- [x] **TASK 13:** Stale-router sniffs and per-variant router text (`719-router-stale-copy-detect-only`)
   - **UPDATE:** `buildCloudSetupAdvisory` in `.bkit/core/engine/checks/after/github.ts`: `cloud-router-tracker-stale` (adopted copy contains `serves the GitHub tracker only` under linear / jira), `cloud-router-codex-missing` (no `openai/codex-action` under `cloud.agent` codex); `cloud-router-agent-unset` (adopted copy present, `bkit.cloud.agent` absent; action inlines `bkit install --auto=<claude|opencode|codex>`; replaces the "active" `cloud-router` text, `:315-317`, `:346-352`, for that case; `719-router-agent-unset-detect-only`); precedence `cloud-claude-missing-id-token` → tracker-stale → codex-missing; id-token action = template re-copy + re-apply `runs-on` / `{{NODE_VERSION}}` (no `--tracker=github`); Jira early return removed; `cloud-router-none` tracker-neutral; `cloud-router` text (`:343-349`) per variant
   - **UPDATE:** `.bkit/core/engine/checks/after/github.test.ts`: describe `buildCloudSetupAdvisory` (`:286-365`) cases asserting the old text
   - **UPDATE:** `docs/migrations.md`: § Detect-only guards rows `cloud-router-tracker-stale`, `cloud-router-codex-missing`, `cloud-router-agent-unset`
@@ -922,7 +952,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 14 start -->
 
-- [ ] **TASK 14:** Router secret findings per variant, renamed-secret guard, dashboards text (`719-router-secret-findings-per-variant`, `719-router-secret-rename-detect-only`)
+- [x] **TASK 14:** Router secret findings per variant, renamed-secret guard, dashboards text (`719-router-secret-findings-per-variant`, `719-router-secret-rename-detect-only`)
   - **UPDATE:** `detectCiRouterSecrets` in `.bkit/core/engine/checks/after/auth.ts`: reads `cloud.agent`, tracker and opencode provider via `readBkitConfig(cwd)`; Anthropic findings (`anthropic-api-key-secret-missing`, `-shadows-federation`, `-federation-template-stale`) only for claude under `BKIT_ANTHROPIC_API_KEY`; `cloud-router-tracker-secret-missing`; `codex-api-key-secret-missing`; `cloud-router-secret-renamed` (legacy `ANTHROPIC_API_KEY` / `OPENCODE_PROVIDER_KEY` present, `BKIT_` twin absent; action inlines `gh secret set <BKIT_NAME>` + `gh secret delete <legacy>`); every secret finding keyed on the names the adopted `.github/workflows/bkit-cloud.yml` reads (`secrets.BKIT_` content sniff, the `buildCloudSetupAdvisory` pattern): a legacy copy gets its findings under the legacy names and no rename finding (`719-router-secret-rename-detect-only`); docblock drops "GitHub-tracker only"
   - **UPDATE:** `buildCloudDashboardsAdvisory` in `.bkit/core/engine/checks/after/auth.ts`: router section names the recorded variant's `BKIT_` secret (opencode: `OPENCODE_PROVIDER_DEFAULTS[provider].envVar`)
   - **UPDATE:** `.bkit/core/engine/checks/after/auth.test.ts`: `detectCiRouterSecrets` (`:163-260`, `mockGhNames`) and dashboards (`:261-300`) cases to the `BKIT_` names
@@ -950,7 +980,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 15 start -->
 
-- [ ] **TASK 15:** `cloud` tip per variant
+- [x] **TASK 15:** `cloud` tip per variant
   - **UPDATE:** `.bkit/core/engine/checks/tips/catalogue.ts`: `cloud` tip `ask` / `steps` (`:237-251`) from the recorded variant; Claude App, `BKIT_ANTHROPIC_API_KEY` and the bootstrap hook only for claude
   - **UPDATE:** `dist/checks/tips/catalogue.js`: `pnpm build` output
   - **DEPENDS ON:** 4
@@ -963,7 +993,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 16 start -->
 
-- [ ] **TASK 16:** Shipped docs under `.bkit/core/.bkit/`
+- [x] **TASK 16:** Shipped docs under `.bkit/core/.bkit/`
   - **UPDATE:** `.bkit/core/.bkit/cloud.md`: Purpose + support matrix one row per agent, no tracker columns (`:20-35`); § Reactive comment handlers `:46` and § Post-CI auto-routing (`:471-519`: § What lives where (post-CI half) routing rows `:482-483`, § bkit-cloud.yml — required GitHub repo credentials table `:503` and its "GitHub-tracker only" sentence `:519`) — one agent per run, codex row, `BKIT_` credentials table incl. tracker keys, GitHub-tracker-only text removed; § Routing decision tracker-neutral; troubleshooting `verdict` / `reason` → cause → action incl. codex summary line; codex runner notes (unguarded diffs, `drop-sudo`, Node 24); session guard per tracker, no-id sessions unguarded, Codex Cloud unguarded; Linear / Jira router dispatch, the codex router job and the Cursor Jira guard (bin present at `sessionStart`) "not yet verified live" (`719-live-checks-deferred-to-owner-use`)
   - **UPDATE:** `.bkit/core/.bkit/providers.md`: `preflight-linear.sh` row (`:307`) → `preflight-tracker.sh`; Codex rows (`--auto=codex`, router job)
   - **UPDATE:** `.bkit/core/.bkit/templates.md`: § Cloud-agent workflow — `bkit-cloud.yml` (`:243`) secrets bullets `Secrets for claude` (`:254`) and `Secrets for opencode` (`:255`) to the `BKIT_` names, plus a codex bullet
@@ -978,7 +1008,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 17 start -->
 
-- [ ] **TASK 17:** Repo docs and code comments
+- [x] **TASK 17:** Repo docs and code comments
   - **UPDATE:** `docs/deployments.md`: § `bkit-cloud.yml` — dual-job cloud-agent lane jobs table and rules (`:659-675`): one agent per run, `BKIT_` secrets, codex job, context install
   - **UPDATE:** `.bkit/shared/docs/security.md`: § Supply-Chain (GitHub Actions) Token isolation bullet `:22` (inside the managed `bkit:start` / `bkit:end` block) secret names → `secrets.BKIT_ANTHROPIC_API_KEY` / the provider `BKIT_` keys / `secrets.BKIT_OPENAI_API_KEY`
   - **UPDATE:** `docs/security.md`: outside the managed block (`:1-67`) only — § Credential surfaces opencode provider keys row (`:90`); § CI Auto-Route Trust (`:172-180`): engine-owned FID parse plus the `bkit_dev_dispatch_guard` charset assert, dev subject via `fids parse --prompt-file`, kill switch on every tracker, tracker keys at step scope, a same-repo PR's head `package.json` (`bkit.cloud.agent`, `bkit.tracker.default`) steering its own routing run (collaborator-trusted); `:22` comes from TASK 18's `bkit install`
@@ -999,7 +1029,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 18 start -->
 
-- [ ] **TASK 18:** Regenerate mirrors, full suite, dogfood
+- [x] **TASK 18:** Regenerate mirrors, full suite, dogfood
   - **UPDATE:** `dist/cli.js`: `pnpm build` (every `dist/` file regenerated)
   - **UPDATE:** `.claude/hooks/bkit-preflight.sh`: regenerated by `bkit install`; header outside `bkit:start/end` hand-synced if the parity test reports it
   - **UPDATE:** `.cursor/hooks/bkit-preflight.sh`: same
@@ -1017,6 +1047,72 @@ Build order: guard (engine fact → hook part) → install engine → router con
 <!-- bkit:task 18 end -->
 
 <!-- bkit:group 9 end -->
+
+<!-- bkit:group 10 start -->
+
+### TASK GROUP 10: Challenge round 1 findings
+
+<!-- bkit:task 21 start -->
+
+- [x] **TASK 21:** A rejected tracker key is printed into the run's warning annotation: on `bkit issues fetch` exit 80 `reason=auth` with `BKIT_JIRA_API_KEY` (or `BKIT_LINEAR_API_KEY`, or `GH_TOKEN`) set, `${!secret_var:-empty or missing}` expands to the secret's value, so the warning reads `set but rejected<value>` and exposure rests on GitHub log masking alone
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/templates/.github/workflows/bkit-cloud.yml:449` · **Round:** 1
+  - **DONE WHEN:** the `reason=auth` warning names the secret and says `set but rejected` or `empty or missing` without ever expanding the secret's value (e.g. a `[ -n "${!secret_var:-}" ]` test choosing the wording); the adopted copy `.github/workflows/bkit-cloud.yml:449` matches the template.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts` `exit 80 reason=auth with BKIT_JIRA_API_KEY set names the secret but never prints its value` fails on stdout containing the fixture value (`BKIT_JIRA_API_KEY: "jira-secret-value"`, `STUB_FETCH_EXIT: "80"`, `STUB_FETCH_OUT: {"reason":"auth"}`, tracker `jira`) right after `set but rejected`
+
+<!-- bkit:task 21 end -->
+<!-- bkit:task 22 start -->
+
+- [x] **TASK 22:** A failed `Install bkit` on a post-merge `dev` CI failure is misreported: with `node_modules/.bin/bkit` absent the dev arm never reaches `bkit_gate`, so it logs the `::notice::Cannot derive FID by dev commit scope or linked PR` no-op instead of the `bkit-unavailable` warning, writes no gate summary row, and the in-code comment ("`bkit_gate` reports an absent bkit") is false
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/templates/.github/workflows/bkit-cloud.yml:502` · **Round:** 1
+  - **DONE WHEN:** a dev-arm run with `node_modules/.bin/bkit` absent emits `::warning::[bkit-cloud] gate: unreadable (bkit-unavailable)` and a `bkit-unavailable` summary row, exits green with `skip=true` and writes no dispatch-cap counter row (same outcome as the feat arm); the adopted copy `.github/workflows/bkit-cloud.yml` matches the template.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts` `dev arm with absent node_modules/.bin/bkit warns bkit unavailable and exits green` fails on stdout carrying only the `Cannot derive FID` notice, with no `::warning::` and no `bkit-unavailable` text or summary row (dev CI `failure`, subject `feat(363-widen-bkit-cloud-trigger): x bkit [auto route]`, `node_modules` removed from the fixture workspace)
+
+<!-- bkit:task 22 end -->
+<!-- bkit:task 23 start -->
+
+- [x] **TASK 23:** A feat branch pushed by a steered agent session ships its own `bkit` (package.json / lockfile / committed `node_modules/.bin/bkit`), which the context job then runs to decide the `bkit:auto` kill switch, so the agent can keep itself dispatched after the human removes the label
+      **Severity:** MEDIUM · **Class:** architectural · **Fixable:** false · **Location:** `.bkit/templates/.github/workflows/bkit-cloud.yml:172` · **Round:** 1
+  - **DONE WHEN:** the owner decides where the kill switch's code comes from, and the router and `docs/security.md` § CI Auto-Route Trust match that decision. Today the feat arm checks out `workflow_run.head_branch` (`:172`), runs `pnpm install --frozen-lockfile --ignore-scripts` from that head's lockfile (`:194`), then executes `node_modules/.bin/bkit fids parse` / `issues fetch` (`:581`, `:439`) inside a `contents: write` job whose step env holds `GH_TOKEN`, `BKIT_LINEAR_API_KEY` and `BKIT_JIRA_API_KEY`. Before this diff the gate was `gh issue view` on a `dev` checkout, which the branch could not change. `docs/security.md` justifies the new steering with "the same collaborator can edit the workflow file", but the codex and opencode jobs push with `GITHUB_TOKEN`, which GitHub refuses to let edit `.github/workflows/*`, while it can edit `package.json`, `pnpm-lock.yaml` and `.bkit/issues.jsonl`. No agent can settle this because it reverses an owner-confirmed plan row (Breaking Changes: "`feat/**` context job checks out the PR head") and the existing `workflow-templates.integration.test.ts` case that pins that ref. The owner chooses one of: (a) install and run `bkit` from a `dev` checkout and read only data (marker, branch, `.bkit/issues.jsonl`) from the PR head; (b) keep the PR-head `bkit` and record in § CI Auto-Route Trust that an agent session writing the branch can defeat the kill switch for that branch.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts` `context job installs and runs bkit from dev, never from the feat/** PR head` fails on the context job's `Install bkit` step running in a checkout whose `ref` resolves to `github.event.workflow_run.head_branch`
+
+<!-- bkit:task 23 end -->
+<!-- bkit:task 24 start -->
+
+- [x] **TASK 24:** A consumer who fills the new `BKIT_OPENAI_API_KEY` row in `.bkit/.env` gets that paid OpenAI key pasted into every generated cloud env block (`.claude/bkit-cloud.md`, `.cursor/bkit-cloud.md`, `.codex/bkit-cloud.md`), so every cloud agent session that reads untrusted issue / PR text holds it
+      **Severity:** MEDIUM · **Class:** architectural · **Fixable:** false · **Location:** `.bkit/shared/.bkit/.env.example:88` · **Round:** 1
+  - **DONE WHEN:** the owner settles the plan's open Suggested Scope Expansion row ("`BKIT_OPENAI_API_KEY` reaches every generated cloud env block … Owner security decision"), which no plan task builds, and the code matches it. The key is used only by the `codex` router job as a repo Actions secret. `.bkit/core/engine/install/cloud-env.ts:35-39` (`SESSION_HIJACK_KEYS`) drops only the three Anthropic keys and pastes every other resolved `.envrc` key. No agent can settle this because `cloud-env.test.ts` `drops exactly the three documented session-hijack keys` and `docs/security.md` § Secrets Management pin the current list. The owner chooses one of: (a) drop `BKIT_OPENAI_API_KEY` from the paste block (add it to the drop list, or a new router-only list) and update that test and § Secrets Management; (b) remove the row from `.env.example`, because the key belongs only in repo secrets; (c) keep the paste and record why in § Credential surfaces.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/cloud-env.test.ts` `never lets BKIT_OPENAI_API_KEY into the paste block` fails on `renderCloudEnvBlock(resolveCloudEnvVars(tmpDir))` containing `BKIT_OPENAI_API_KEY` and the sentinel value `sk-openai-must-not-leak` when `.bkit/.env` sets it
+
+<!-- bkit:task 24 end -->
+<!-- bkit:group 10 end -->
+
+<!-- bkit:group 11 start -->
+
+### TASK GROUP 11: Challenge round 2 findings
+
+<!-- bkit:task 25 start -->
+
+- [x] **TASK 25:** A consumer whose repo has no `packageManager` field or no `pnpm-lock.yaml` (or any run where the pnpm download or the pnpm cache restore fails) gets a red context job instead of the documented green `bkit-unavailable` no-op: `pnpm/action-setup` and `actions/setup-node` (`cache: pnpm`) sit before `Install bkit` without `continue-on-error`, so they abort the job before the gate can report anything
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/templates/.github/workflows/bkit-cloud.yml:195` · **Round:** 2
+  - **DONE WHEN:** a failure in any context-job tooling step before `Install bkit` (`pnpm/action-setup` `:195`, `actions/setup-node` `:198`) leaves the job running, so `bkit_gate` emits `::warning::[bkit-cloud] gate: unreadable (bkit-unavailable)` plus its summary row, no agent starts and the run is green, matching plan § Breaking Changes and `docs/observability.md:190`; the adopted copy `.github/workflows/bkit-cloud.yml` matches the template.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts` `context job tooling setup steps before Install bkit cannot fail the job` fails on the parsed `jobs.context.steps` entries whose `uses` starts with `pnpm/action-setup@` or `actions/setup-node@` having no `continue-on-error: true`
+
+<!-- bkit:task 25 end -->
+<!-- bkit:task 26 start -->
+
+- [x] **TASK 26:** A consumer records `--auto=codex` on `dev`, but every feature branch cut before that commit has no `bkit.cloud.agent` in its own `package.json`, so `Select agent job` reads `none` from `pr-head/`, starts nothing, and its notice tells them to "Run bkit install --auto=<claude|opencode|codex>", a command they already ran; the reverse also holds: setting `bkit.cloud.agent` to `none` (or another agent) on `dev` does not reach in-flight branches, which keep starting the agent their own `package.json` names
+      **Severity:** MEDIUM · **Class:** architectural · **Fixable:** false · **Location:** `.bkit/templates/.github/workflows/bkit-cloud.yml:225` · **Round:** 2
+  - **DONE WHEN:** the owner decides which copy of `bkit.cloud.agent` (and `bkit.tracker.default`, read the same way by `bkit_gate` `:417` and by bkit under `cd pr-head`) wins when the feat/** head and `dev` disagree, and the router and its notice match that decision. No agent can settle it because owner decision `build-decision-4-1.md` Q1 explicitly lists `bkit.cloud.agent` / `bkit.tracker.default` as data read from the feat/** head. The owner chooses one of: (a) read routing config from the `dev` checkout (workspace root) and only marker / branch / `.bkit/issues.jsonl` from `pr-head/`; (b) read the feat/** head first and fall back to `dev` when the head lacks the field, with the notice naming which copy decided; (c) keep the head-only read and make the notice say the branch predates the recording (merge `dev` into it) instead of telling the user to run `bkit install --auto=`.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts` `Select agent job dispatches the agent recorded on dev for a feat branch that predates the recording` fails on `codex=false` and the "Run bkit install --auto=" notice when the root `package.json` records `bkit.cloud.agent: "codex"`, `HEAD_DIR` points at a `package.json` with no `bkit.cloud.agent`, and `BKIT_OPENAI_API_KEY` is set
+
+<!-- bkit:task 26 end -->
+<!-- bkit:group 11 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 

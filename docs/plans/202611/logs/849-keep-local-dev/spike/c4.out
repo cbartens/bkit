@@ -1,0 +1,80 @@
+git 2.56.0
+-- 1 empty-from-start, --empty=drop alone
+$ git cherry-pick --empty=drop 0c61b8352486f3d9bf67e98fb916ee55b7a051dc
+The previous cherry-pick is now empty, possibly due to conflict resolution.
+If you wish to commit it anyway, use:
+
+    git commit --allow-empty
+
+Otherwise, please use 'git cherry-pick --skip'
+HEAD detached at c69f393
+You are currently cherry-picking commit 0c61b83.
+  (all conflicts fixed: run "git cherry-pick --continue")
+  (use "git cherry-pick --skip" to skip this patch)
+  (use "git cherry-pick --abort" to cancel the cherry-pick operation)
+
+nothing to commit, working tree clean
+[exit 1]
+HEAD moved: no
+-- 2 empty-from-start, --allow-empty --empty=drop
+$ git cherry-pick --allow-empty --empty=drop 0c61b8352486f3d9bf67e98fb916ee55b7a051dc
+[detached HEAD 9937034] X2 empty from the start
+ Date: Mon Nov 9 20:41:49 2026 +1000
+[exit 0]
+HEAD moved: 1 commit(s): X2 empty from the start=0; 
+-- 3 becomes-empty, --allow-empty --empty=drop
+$ git cherry-pick --allow-empty --empty=drop 0e14ce85133ec698044b680a54640f13b21c6e83
+dropping 0e14ce85133ec698044b680a54640f13b21c6e83 X1 becomes empty on replay -- patch contents already upstream
+[exit 0]
+HEAD moved: no
+-- 4 X1 X2 X3 in one call, --allow-empty --empty=drop
+$ git cherry-pick --allow-empty --empty=drop 0e14ce85133ec698044b680a54640f13b21c6e83 0c61b8352486f3d9bf67e98fb916ee55b7a051dc 4495fa21efaf3633184754458989cac4dcea3024
+dropping 0e14ce85133ec698044b680a54640f13b21c6e83 X1 becomes empty on replay -- patch contents already upstream
+[detached HEAD 9937034] X2 empty from the start
+ Date: Mon Nov 9 20:41:49 2026 +1000
+[detached HEAD 78b961e] X3 real change
+ Date: Mon Nov 9 20:41:49 2026 +1000
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+[exit 0]
+HEAD moved: 2 commit(s): X3 real change=1; X2 empty from the start=0; 
+-- 5 becomes-empty, today's --allow-empty --keep-redundant-commits
+$ git cherry-pick --allow-empty --keep-redundant-commits 0e14ce85133ec698044b680a54640f13b21c6e83
+[detached HEAD 633b4b4] X1 becomes empty on replay
+ Date: Mon Nov 9 20:41:49 2026 +1000
+[exit 0]
+HEAD moved: 1 commit(s): X1 becomes empty on replay=0; 
+-- 6 merge commit, --allow-empty --empty=drop
+$ git cherry-pick --allow-empty --empty=drop 17f89152d1935b0b3d14838cd52af3f1339e32ca
+error: commit 17f89152d1935b0b3d14838cd52af3f1339e32ca is a merge but no -m option was given.
+fatal: cherry-pick failed
+[exit 128]
+HEAD moved: no
+-- 7 merge commit, -m 1 --allow-empty --empty=drop
+$ git cherry-pick -m 1 --allow-empty --empty=drop 17f89152d1935b0b3d14838cd52af3f1339e32ca
+[detached HEAD 90dc08f] Merge branch 'side' into dev
+ Date: Mon Nov 9 20:41:49 2026 +1000
+ 1 file changed, 1 insertion(+)
+ create mode 100644 c.txt
+[exit 0]
+HEAD moved: 1 commit(s): Merge branch 'side' into dev=1; 
+-- 8 fallback without --empty: becomes-empty, --allow-empty only
+$ git cherry-pick --allow-empty 0e14ce85133ec698044b680a54640f13b21c6e83
+The previous cherry-pick is now empty, possibly due to conflict resolution.
+If you wish to commit it anyway, use:
+
+    git commit --allow-empty
+
+Otherwise, please use 'git cherry-pick --skip'
+HEAD detached at c69f393
+You are currently cherry-picking commit 0e14ce8.
+  (all conflicts fixed: run "git cherry-pick --continue")
+  (use "git cherry-pick --skip" to skip this patch)
+  (use "git cherry-pick --abort" to cancel the cherry-pick operation)
+
+nothing to commit, working tree clean
+[exit 1]
+HEAD moved: no
+sequencer state: stopped
+$ git cherry-pick --skip
+[exit 0]
+HEAD after --skip equals base: yes

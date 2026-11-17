@@ -1,6 +1,25 @@
-import { describe, expect, it, vi } from "vitest";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { testLockDecision, testWorkers } from "../../../../../vitest.test-lock";
+
+const probeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-test-workers-"));
+afterAll(() => fs.rmSync(probeRoot, { recursive: true, force: true }));
+
+/** An env whose PATH answers the script's core probe with `cores`, for the real slots reader. */
+function coreProbe(cores: number): NodeJS.ProcessEnv {
+  const bin = path.join(probeRoot, `cores-${cores}`);
+  fs.mkdirSync(bin, { recursive: true });
+  fs.writeFileSync(
+    path.join(bin, "getconf"),
+    `#!/bin/sh\n[ "$1" = _NPROCESSORS_ONLN ] || exit 1\nprintf "${cores}\\n"\n`,
+    { mode: 0o755 },
+  );
+  return { PATH: bin + path.delimiter + (process.env.PATH ?? "") };
+}
 
 const files = new Set(["src/a.test.ts", "src/b.integration.test.ts"]);
 const decision = (
@@ -62,14 +81,41 @@ describe("raw Vitest lock decisions", () => {
     expect(decision({ env: { CI: "0" } })).toBe(true);
   });
 
-  it("BKIT_TEST_WORKERS sets maxWorkers when present", () => {
-    expect(testWorkers({ BKIT_TEST_WORKERS: "4" })).toEqual({ maxWorkers: 4 });
-    expect(testWorkers({ BKIT_TEST_WORKERS: "1" })).toEqual({ maxWorkers: 1 });
-    expect(testWorkers({})).toEqual({});
-    expect(testWorkers({ BKIT_TEST_WORKERS: "0" })).toEqual({});
-    expect(testWorkers({ BKIT_TEST_WORKERS: "-2" })).toEqual({});
-    expect(testWorkers({ BKIT_TEST_WORKERS: "1.5" })).toEqual({});
-    expect(testWorkers({ BKIT_TEST_WORKERS: "invalid" })).toEqual({});
+  it("an inherited BKIT_TEST_WORKERS beats the script's workers", () => {
+    const read = vi.fn(() => "slots=2 workers=4\n");
+    expect(testWorkers({ BKIT_TEST_WORKERS: "7" }, read)).toEqual({ maxWorkers: 7 });
+    expect(testWorkers({ BKIT_TEST_WORKERS: "1" }, read)).toEqual({ maxWorkers: 1 });
+    expect(testWorkers({ BKIT_TEST_WORKERS: "7", CI: "true" }, read)).toEqual({ maxWorkers: 7 });
+    expect(read).not.toHaveBeenCalled();
+    for (const invalid of ["", "0", "-2", "1.5", "invalid"])
+      expect(testWorkers({ BKIT_TEST_WORKERS: invalid }, read)).toEqual({ maxWorkers: 4 });
+  });
+
+  it("testWorkers reads the script's slots output and returns four workers on 10 local cores", () => {
+    const read = vi.fn(() => "slots=2 workers=4\n");
+    const env = { BKIT_RUNTIME: "LOCAL" };
+    expect(testWorkers(env, read)).toEqual({ maxWorkers: 4 });
+    expect(read).toHaveBeenCalledWith(env);
+    expect(testWorkers({ ...coreProbe(10), BKIT_RUNTIME: "LOCAL" })).toEqual({ maxWorkers: 4 });
+  });
+
+  it("testWorkers returns cores - 1 with BKIT_TEST_SLOTS=1 or a cloud runtime, and no limit under CI", () => {
+    const tenCores = coreProbe(10);
+    expect(testWorkers({ ...tenCores, BKIT_RUNTIME: "LOCAL", BKIT_TEST_SLOTS: "1" })).toEqual({
+      maxWorkers: 9,
+    });
+    expect(testWorkers({ ...tenCores, BKIT_RUNTIME: "CURSOR" })).toEqual({ maxWorkers: 9 });
+    expect(testWorkers({ ...tenCores, CLAUDE_CODE_REMOTE: "true" })).toEqual({ maxWorkers: 9 });
+    expect(testWorkers({ ...coreProbe(4), BKIT_RUNTIME: "LOCAL" })).toEqual({ maxWorkers: 3 });
+    const read = vi.fn(() => "slots=2 workers=4\n");
+    expect(testWorkers({ CI: "true" }, read)).toEqual({});
+    expect(testWorkers({ CI: "1" }, read)).toEqual({});
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("testWorkers throws when the script prints no workers", () => {
+    expect(() => testWorkers({}, () => "")).toThrow(/slots/);
+    expect(() => testWorkers({}, () => "slots=2 workers=0\n")).toThrow(/slots/);
   });
 
   it("a watch-mode run takes no lock", () => {

@@ -2,7 +2,7 @@
 
 {{BKIT_MANAGED_MARKER}}
 
-<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. -->
+<!-- Note: @bkit-audit-generate fills this template. The report lives at `docs/audits/{YYYYMM}/{slug}.md`, where `{YYYYMM}` is the UTC month of the run and `{slug}` is this file's name without `bkit-audit-` and `.md`. **If** that month already has `{slug}.md` or `{slug}-{TIMESTAMP}.md` → write `{slug}-{TIMESTAMP}.md`, where `{TIMESTAMP}` is the output of `date -u +%Y%m%dT%H%M%SZ`. NEVER overwrite an earlier report. The report is stamped with a `bkit:anchor` block that records the audited commit (`baseSha`) and branch (`baseRef`). NEVER write or edit that block by hand. When you edit this template, follow `.bkit/authoring.md` § Doc Templates. -->
 
 # Dependency Triage
 
@@ -218,7 +218,7 @@ The batch verdict goes in `Summary`, not on each PR. The CI result of the landin
   - Run a frozen install, then the static, unit and integration gate, then local E2E for each app. A store build or a deployed environment tests none of the batch, so use the local-build substrate.
   - Go beyond a green typecheck: run the framework's dependency doctor, where the framework ships one (e.g., `expo-doctor`), because packages outside the SDK's range compile and typecheck, then break the native app.
   - Run a single-version check for the runtime packages named in `Project Instructions`. Two versions is trap (3): report it, and the fix is one version everywhere.
-  - **If** a red is a timeout under heavy load (e.g., exit 143) → re-run that file alone and record the load average before blaming the batch.
+  - **If** a red is a timeout or a killed run (e.g., exit 143) → re-run that file alone and match it against open `docs/failures.jsonl` rows before blaming the batch.
   - A red can come from a stale install. Clear the installed dependencies (e.g., `node_modules`, `.venv`, `target/`), run a frozen install, and re-run before blaming the bump.
   - Reproduce each red on the audited commit without the batch, in a clean worktree off `baseSha`. A red there is a baseline red: it goes in `Verification` as a finding, reported apart from the batch, and it is not a batch FAIL.
   - Judge the batch on the remaining reds.
@@ -310,7 +310,7 @@ The batch verdict goes in `Summary`, not on each PR. The CI result of the landin
 <!-- prettier-ignore -->
 | Severity | Use |
 | --- | --- |
-| `CRITICAL` | There is no dependency updater config. A shipped dependency has a known-bad install script, or a publisher change the trust policy should have refused. A lockfile entry has no integrity hash, or a tarball comes from off the configured registry. A CRITICAL advisory in a shipped dependency is older than 7 days. |
+| `CRITICAL` | The repo has no dependency updater config. A shipped dependency has a known-bad install script, or a publisher change the trust policy should have refused. A lockfile entry has no integrity hash, or a tarball comes from off the configured registry. A CRITICAL advisory in a shipped dependency is older than 7 days. |
 | `HIGH` | A HIGH advisory in a shipped dependency is older than 30 days. A lockfile-maintenance update automerged or landed inside the release-age window. A shipped dependency has a copyleft or missing licence. |
 | `MEDIUM` | The updater config scans bkit-owned trees (`.bkit/templates/**`, `.agents/skills/**`). A supply-chain setting is missing or weaker than the standard. A setting multiplies PR or CI runs. A shipped dependency is unmaintained or deprecated. An end of life falls inside 90 days. A runtime package has two versions. An off-manifest CLI floats in CI or a build image, or is a major behind. |
 | `LOW` | The bot stopped rebasing a PR. A grouping miss caused no failure. The shipped licence notice was not regenerated. An off-manifest CLI is unwatched. |

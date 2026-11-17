@@ -5,6 +5,7 @@ import * as path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useGateRunner } from "../../../../vitest.gate-fixture";
+import { tierTimeouts } from "../../../../vitest.timeout-budget";
 
 import { replayBuild } from "./workflow/branches";
 import {
@@ -199,7 +200,7 @@ describe("withoutHooks", () => {
   });
 });
 
-describe("pushToDev", () => {
+describe("pushToDev", { timeout: tierTimeouts(true).testTimeout }, () => {
   it.each([
     ["docs/plans/notes.md", false, "min"],
     ["code.ts", false, "unit"],
@@ -224,6 +225,44 @@ describe("pushToDev", () => {
       expect(fs.readFileSync(path.join(root, ".git", "gate-runs"), "utf8")).toBe(`${expected}\n`);
     },
   );
+
+  it("runs docs/audits/202611/logs.md through its declared gate in the built checkout", async () => {
+    const file = "docs/audits/202611/logs.md";
+    const { root, dir } = fixture({
+      script: `if (!fs.existsSync(${JSON.stringify(file)})) process.exit(9);`,
+    });
+    const res = await pushToDev({
+      root,
+      dir,
+      build: (d) => {
+        fs.mkdirSync(path.dirname(path.join(d, file)), { recursive: true });
+        commitIn(d, file, "# Report\n");
+      },
+      log: () => {},
+    });
+    expect(res.kind).toBe("landed");
+    expect(fs.readFileSync(path.join(root, ".git", "gate-runs"), "utf8")).toBe("min\n");
+  });
+
+  it("runs an audit template's project-section change through bkit:gate:min", async () => {
+    const file = "docs/templates/bkit-audit-x.md";
+    const template = (project: string) =>
+      `<!-- bkit:start -->\n<!-- managed-version: 1 -->\nblock\n<!-- bkit:end -->\n\n## Project Instructions\n${project}\n`;
+    const { root, dir } = fixture();
+    fs.mkdirSync(path.join(root, "docs", "templates"), { recursive: true });
+    fs.writeFileSync(path.join(root, file), template("old"));
+    git(root, "add", "-A");
+    git(root, "commit", "-qm", "add audit template");
+    git(root, "push", "-q", "origin", "dev");
+    const res = await pushToDev({
+      root,
+      dir,
+      build: (d) => commitIn(d, file, template("new project text")),
+      log: () => {},
+    });
+    expect(res.kind).toBe("landed");
+    expect(fs.readFileSync(path.join(root, ".git", "gate-runs"), "utf8")).toBe("min\n");
+  });
 
   it.each([
     { script: "process.exit(7);" },

@@ -42,7 +42,11 @@ const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
 
+// {{BKIT_PART gateguard-engine.js}}
+
 // {{BKIT_PART guardrails-shell.js}}
+
+// {{BKIT_PART guardrails-deny.js}}
 
 // {{BKIT_PART guardrails-tiers.js}}
 
@@ -90,37 +94,31 @@ function bkitGuardrails(payload) {
   const input = p.tool_input || {};
   if (READ_TOOL_NAMES.has(tool)) return decideRead(input.AbsolutePath ?? input.file_path);
   if (!SHELL_TOOL_NAMES.has(tool)) return null;
-  const raw = Array.isArray(input.command)
-    ? input.command.join(" ")
-    : (input.CommandLine ?? input.command);
+  const raw = shellCommandText(input.CommandLine ?? input.command);
   if (typeof raw !== "string") return null;
 
   const cmd = raw.trim();
-  const tier = classifyShell(cmd, hookDirs(p));
+  const ctx = hookContext(p);
+  const tier = classifyShell(cmd, "antigravity", ctx);
   if (!tier) return null;
-  if (tier.tier === "deny") {
-    return {
-      decision: "deny",
-      reason: `Blocked by bkit Antigravity guardrails: ${tier.what}. ${tier.fix}`,
-    };
-  }
-  if (tier.tier === "ask") {
-    return {
-      decision: "ask",
-      reason: `bkit Antigravity guardrails: this is a destructive or privileged command (${tier.what}). It is on the PROHIBITED list in every bkit workflow. If the user did not ask for this exact command, NEVER run it. The commands git clean and git checkout -- . destroy untracked files and uncommitted work, which no reflog can recover. Command: ${cmd}`,
-    };
-  }
-  if (tier.tier === "secret") {
-    return {
-      decision: "ask",
-      reason: `bkit Antigravity guardrails: this command reads ${tier.path}, an env, secrets or private-key file, which may expose secrets. Prefer direnv or documented non-secret examples. Command: ${cmd}`,
-    };
-  }
-  const advisory =
-    tier.tier === "fetch"
-      ? `bkit Antigravity guardrails: outbound fetch to a host that is not on the network allowlist.\nConfirm the destination is intended before you rely on the result.\nCommand: ${cmd}`
-      : shellEditAdvisory(tier.edits);
-  return adviseOnce("guardrails", p.session_id, agCallSignature(tool, input), advisory);
+  const hold = tier.tier !== "deny" && tier.tier !== "ask" && tier.tier !== "secret";
+  const advice = composeAdvice(tier, "antigravity", ADVICE_BUDGETS.antigravity, {
+    command: cmd,
+    ctx,
+    session: p.session_id,
+    agent: p.agent_id,
+    // The retry text the hold-once delivery appends counts against the budget.
+    reserve: hold ? adviceSize(AG_RETRY_SUFFIX, ADVICE_BUDGETS.antigravity.unit) : 0,
+  });
+  if (!hold) return { decision: tier.tier === "deny" ? "deny" : "ask", reason: advice.text };
+  const sent = adviseOnceDelivery(
+    "guardrails",
+    p.session_id,
+    agCallSignature(tool, input),
+    advice.text,
+  );
+  if (sent.delivered) acknowledgeSelected(advice.selected);
+  return sent.decision;
 }
 
 // bkit:end

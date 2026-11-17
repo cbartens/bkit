@@ -12,12 +12,10 @@
 // Path-conditional expectations:
 //   - Path A (dev is ancestor): skips ship-conflict-resolve.
 //   - Path B (dev moved): includes ship-conflict-resolve.
-//   - MERGED-on-entry (Step 2 detects state=MERGED → Step 13): skips the entire
+//   - MERGED-on-entry (Step 2 detects state=MERGED → Step 11): skips the entire
 //     middle (base check, integrate, deferred-sweep, the pre-merge docs /
 //     summary / prune / bookkeeping-push steps, merge-pr).
 //   - Aborted (workflow-failed row present): no post-abort holes expected.
-//   - ship-failure-diagnose / ship-failure-remediate are NEVER mandatory — they
-//     appear only in the merge-retry loop.
 //
 // Usage (advisory CI step or manual):
 //   npx tsx .bkit/core/engine/checks/status-holes.ts <status.jsonl>...
@@ -48,19 +46,15 @@ export const SHIP_STEP_ORDER = [
     "ship-prune-skills",
     "ship-bookkeeping-push",
     "ship-merge-pr",
-    "ship-failure-diagnose",
-    "ship-failure-remediate",
     "ship-switch-to-dev",
     "ship-close-workflow",
 ];
-/** Steps that appear only in the merge-retry loop — never mandatory, never holes. */
-const RETRY_LOOP_STEPS = new Set(["ship-failure-diagnose", "ship-failure-remediate"]);
 /** The step that Path A skips (dev is ancestor → no integration needed). */
 const PATH_B_ONLY_STEPS = new Set(["ship-conflict-resolve"]);
 /**
  * The steps a MERGED-on-entry resume skips entirely.
  *
- * bkit-ship.md Step 2 routes to Step 13 at sub-step 5 (`state` = MERGED), which
+ * bkit-ship.md Step 2 routes to Step 11 at sub-step 5 (`state` = MERGED), which
  * is BEFORE sub-step 8 writes `ship-worktree-setup` + `ship-regression-guard` —
  * so those two are absent too, not just the middle. The pre-merge docs,
  * summary, prune and bookkeeping-push steps (6-8) ride the PR, so a PR that is
@@ -76,14 +70,16 @@ const MERGED_ON_ENTRY_SKIP = new Set([
     "ship-prune-skills",
     "ship-bookkeeping-push",
     "ship-merge-pr",
-    // failure-diagnose/remediate are already in RETRY_LOOP_STEPS (never expected)
 ]);
 /**
  * Step rows an engine verb writes itself, keyed by noun + verb: `tests red` writes the
- * `RED_STEP` row of `commands/workflow/tests.ts` inside build Step 7.
+ * `RED_STEP` row of `commands/workflow/tests.ts` inside build Step 7, and a code step's
+ * `steps finish` the `TAKEOVER_STEP` row when its change contradicts a ticked task's test.
+ * Only keys with the workflow's own prefix count, so `steps finish` adds nothing elsewhere.
  */
 const VERB_ROWS = {
     "tests red": ["build-tests-red"],
+    "steps finish": ["build-takeover"],
 };
 // A step that reads a verb row (`counters derive --step=build-tests-red`) does not own it.
 const VERB_ROW_KEYS = new Set(Object.values(VERB_ROWS).flat());
@@ -257,9 +253,12 @@ function stepWrites(text) {
     });
     return [...new Set(found)];
 }
-const stepKeys = (text) => [
-    ...new Set([...text.matchAll(STEP_KEY_RE)].filter((m) => !m[2]).map((m) => m[1])),
-];
+// `{key}-fix` beside `{key}` is the label a fix agent's gate run puts on its test-run rows
+// (`build-holistic-gate-fix`), not a row key: no step writes a step row under it.
+const stepKeys = (text) => {
+    const keys = new Set([...text.matchAll(STEP_KEY_RE)].filter((m) => !m[2]).map((m) => m[1]));
+    return [...keys].filter((k) => !(k.endsWith("-fix") && keys.has(k.slice(0, -"-fix".length))));
+};
 /** A step is conditional under a column-0 marker line anywhere in its section, or a `(Path X only)` heading. */
 export function isConditionalSection(body) {
     const lines = body.split("\n");
@@ -755,14 +754,14 @@ export function computeMandatoryForPath(path, sourceUniverse) {
     const universe = new Set(sourceUniverse);
     switch (path) {
         case "PATH_A":
-            // Skip conflict-resolve + retry-loop steps
-            return new Set([...universe].filter((s) => !PATH_B_ONLY_STEPS.has(s) && !RETRY_LOOP_STEPS.has(s)));
+            // Skip conflict-resolve
+            return new Set([...universe].filter((s) => !PATH_B_ONLY_STEPS.has(s)));
         case "PATH_B":
-            // Include conflict-resolve, skip retry-loop steps
-            return new Set([...universe].filter((s) => !RETRY_LOOP_STEPS.has(s)));
+            // Include conflict-resolve
+            return new Set(universe);
         case "MERGED_ON_ENTRY":
-            // Skip the entire middle + retry-loop steps
-            return new Set([...universe].filter((s) => !MERGED_ON_ENTRY_SKIP.has(s) && !RETRY_LOOP_STEPS.has(s)));
+            // Skip the entire middle
+            return new Set([...universe].filter((s) => !MERGED_ON_ENTRY_SKIP.has(s)));
         case "COMPLETED":
             // Non-ship runs derive their mandatory set from the contract (auditRun)
             return new Set(universe);
@@ -800,8 +799,8 @@ export function detectHoles(observed, sourceUniverse, path) {
         if (lastObservedIdx < 0)
             return { missing: [], unexpected };
         // For aborted runs, expected = everything before the last step, minus
-        // retry-loop steps and minus conflict-resolve (unless it was observed)
-        const skipSet = new Set([...RETRY_LOOP_STEPS]);
+        // conflict-resolve (unless it was observed)
+        const skipSet = new Set();
         if (!observed.has("ship-conflict-resolve"))
             skipSet.add("ship-conflict-resolve");
         const missing = [];

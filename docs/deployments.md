@@ -1,7 +1,3 @@
-<!-- bkit:start -->
-
-<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
-
 # Deployments
 
 > [!CAUTION]
@@ -123,7 +119,7 @@ bkit's `bkit-ci.yml` recognises the tags below. They are case-sensitive and use 
 | `[verbose ci]` | Escalates log detail for one run. Shipped stub flips turbo / Node / Vercel / Supabase / Playwright knobs: `TURBO_LOG_LEVEL=full`, `NODE_OPTIONS=--trace-warnings --trace-deprecation` (a job-level `env:` key, never a `$GITHUB_ENV` write, which the runner rejects while still reporting success), `DEBUG=vercel:*,supabase:*`, plus Playwright `--trace=on` (when E2E stub enabled). Add your stack's equivalents to the same `env:`. Use when `bkit-debug` diagnose returns thin evidence; never for routine pushes (trace.zip files are MB-scale). See `testing.md` for the full knob list and the `--reporter=line` hostile gap. | Read by the job-level `env:` of `bkit-tests-static` (copy the same `env:` onto each lane) |
 | `[skip ci]` / `[skip actions]` | Honoured natively by GitHub Actions, so it suppresses workflow dispatch entirely. Use sparingly: the suppressed run will not appear in `gh run list`, and downstream `workflow_run` triggers will not fire. | Native GitHub behaviour, not a bkit-level toggle |
 
-**Two deploy-forcing markers only: `[force build]` and `[force full]`.** There is no granular `[force e2e]` or `[force live]`, because they would be silent no-ops gated behind `web_affected`. `[force full]` is the single gate bypass ("validate everything"): one effective `web_affected` drives integration, e2e and @live the same way.
+**Two deploy-forcing markers only: `[force build]` and `[force full]`.** No granular `[force e2e]` or `[force live]` marker exists, because they would be silent no-ops gated behind `web_affected`. `[force full]` is the single gate bypass ("validate everything"): one effective `web_affected` drives integration, e2e and @live the same way.
 
 - **Precedence: `[skip ci]` / `[skip actions]` vetoes any force marker.** A `[skip ci]` commit never dispatches, because GitHub suppresses it natively before `bkit-ci.yml` runs. No force marker undoes that. To validate a commit that would be skipped, drop `[skip ci]` and push with `[force full]`.
 - **`[force cache]` is a separate axis.** It busts task-runner replay (for example, turbo `TURBO_FORCE=1`), which is a different axis from which lanes run. It is never folded into `[force full]`. Combine `[force full] [force cache]` for "everything, fresh."
@@ -299,12 +295,12 @@ The cap is undocumented and invisible to the toolchain, because the file stays v
 
 ## Ship gate + bookkeeping
 
-`/bkit-ship` is keyed on `bkit branches sync --head=<PR head>`, which reports whether `origin/dev` is an ancestor of the PR head (`basePath`).
+`/bkit-ship` first reconciles the feature branch with `origin/{branch}` (`bkit branches sync --reconcile-feature`): it fast-forwards a behind branch, merges a diverged one (never a rebase or force-push) and plain-pushes unpublished code with a CI-running head. Setup and every reconciled candidate refuse inherited unpublished `dev` commits, naming them. It is then keyed on `bkit branches sync --head=<PR head>`, which reports whether `origin/dev` is an ancestor of the PR head (`basePath`). A merged PR is reused only when the branch holds no work past its recorded head; otherwise ship opens a new PR.
 
 - **Path A** (`dev` has not moved) resumes read-only: no merge, no bookkeeping commits, no push. Then it merges.
 - **Path B** (`dev` moved) merges `origin/dev` into the feature branch locally with `bkit branches sync --merge`, pushes it plain, and re-validates the merged head. The block commits the run's uncommitted work first, unions the append-only ledgers, takes a conflicted lockfile from `dev` before regenerating it, takes a conflicted generated register (`docs/capabilities.md`) from `dev` before rebuilding it, with `dev`'s copy of the generated block in a doc the register's script copies that block into, and merges a conflicted install record (`.bkit/version`) entry by entry, with `dev`'s value where both sides changed an entry; a conflict outside those goes to `@bkit-ship-conflict-resolve`, which hand-resolves it and re-runs the block. A server-side update-branch is never used, because GitHub ignores `merge=union` and reports a ledger-only divergence as a conflict.
 
-Both paths end at the same gate: `bkit runs gate --head=<current>` exits 0 (capstone concluded `success`) at the current PR head.
+Both paths end at the same gate: `bkit runs gate --head=<current> --fresh-base` exits 0 (capstone concluded `success`) at the current PR head. `--fresh-base` also requires a freshly fetched `dev` to be an ancestor of the validated code head, before any override or bookkeeping carry-forward. Stale `dev` exits 19 and returns to the Step 4 integration; missing or mismatched base evidence exits 20. Merge refusals are classified by `bkit prs merge --ship-retry` from an independent reread: a moved head returns to validation, a new conflict with `dev` returns to integration, and any other refusal stops with its reason. All of these consume the same `bkit.workflows.ship.merge.maxAttempts` allowance. The merge API does not pin the base SHA, so a `dev` update between the final read and the merge remains a residual race; the post-merge capstone check reports it. Exit codes: `docs/observability.md` § `[bkit-runs]` prefix — ship merge gate.
 
 ### Consumer CI contract — `pull_request` resolves to `run_level=full`
 
@@ -328,12 +324,12 @@ Codes 10-15 still carry the guarantee that a green result is not vacuous: a run 
 
 A run that is present and degraded but not skipped (for example, a required lane ran a reduced test set because of a consumer config the gate cannot see) is a residual risk. It is named here, and not claimed as covered. The capstone is green because bkit's own `run_level` planner computed `full`, and a consumer narrowing inside a lane bkit does not own is invisible to the gate. Keep the capstone (`bkit-tests-check`) as the sole branch-protection required check, so `green == validated` survives a docs-only push. Do not add per-lane required checks, because a hollow lane then green-bars the capstone.
 
-**No duplicate dispatch on an already-triggered head (ship Step 9):** a branch push fires `pull_request` at the new SHA on its own, unless its HEAD carries `[skip ci]`. Ship's Step 4 merge push carries no skip token, so it fires a run there. The scaffold keys a pull request on `pr-{number}` and a `workflow_dispatch` on `github.ref`. The two are separate groups, so a redundant dispatch is never cancelled and burns a full duplicate run. Ship probes the head whose CI the gate will check (`VALIDATED_HEAD`) with `bkit runs wait --head=<VALIDATED_HEAD> --branch=<branch> --until=present --dispatch-if-absent`, which dispatches only when no run appears. The probe is not a pass condition. The completion wait (`bkit runs wait --head=<VALIDATED_HEAD> --until=completed`) reads only runs at that exact head, so a completed run from a superseded head never answers it. Gate codes 10 / 11 / 14 / 17 re-enter that probe-and-poll only, never the deferred sweep. `bkit.workflows.ship.merge.maxAttempts` bounds the retries, and it counts gate refusals and failed merges together.
+**No duplicate dispatch on an already-triggered head (ship Step 9):** a branch push fires `pull_request` at the new SHA on its own, unless its HEAD carries `[skip ci]`. Ship's Step 4 merge push carries no skip token, so it fires a run there. The scaffold keys a pull request on `pr-{number}` and a `workflow_dispatch` on `github.ref`. The two are separate groups, so a redundant dispatch is never cancelled and burns a full duplicate run. Ship probes the head whose CI the gate will check (`VALIDATED_HEAD`) with `bkit runs wait --head=<VALIDATED_HEAD> --branch=<branch> --until=present --dispatch-if-absent`, which dispatches only when no run appears. The probe is not a pass condition. The completion wait (`bkit runs wait --head=<VALIDATED_HEAD> --until=completed`) reads only runs at that exact head, so a completed run from a superseded head never answers it. Gate codes 10 / 11 / 14 re-enter that probe-and-poll only, never the deferred sweep. Codes 17 and 19 (and revalidation code 21) return to Step 3 or Step 4 instead, and imported feature code invalidates the covered sweep and docs work. `bkit.workflows.ship.merge.maxAttempts` bounds the retries, and it counts gate refusals and failed merges together.
 
 **No CI run for ship's own docs commit (validated-head carry-forward):** ship's pre-merge `[skip ci]` bookkeeping commit (docs, summaries, ledgers, skill removals) runs no CI.
 
 - **If** every path between the last CI-tested commit and the PR head is on the bookkeeping allow-list (`bkit ledgers only-bookkeeping`) → `bkit runs gate --validated=<sha>` checks CI at the tested commit.
-- **Else** → the gate refuses with code 17.
+- **Else** → the gate refuses with code 17 and ship returns to Step 3 to reconcile the new feature code.
 
 The merge still pins the exact head (`--match-head-commit`). A green PR costs zero extra runs. The bookkeeping commit merges untested, and post-merge `dev` CI (the `ship-merge-ci` row) is the backstop. **If** `dev` requires status checks (classic branch protection or a ruleset) → GitHub refuses a head with no run, so ship runs CI at the PR head.
 
@@ -346,7 +342,7 @@ To unwind a bad ship surface (the gate command, managed config, or a rewritten `
 3. **Audit any `BKIT_SHIP_GATE_OVERRIDE` rows** written in the meantime in `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`. Each `type:"ship-gate-override"` row is a sanctioned escape that turned a refusal into a merge. Treat every row as a PR whose capstone was not green at the merged head, and re-verify it against the pinned-good gate (`bkit runs gate --head=<sha>`). `[bkit-runs] override honoured for head …` is the matching `docs/observability.md` grep key.
 4. **No per-workflow pin or revert exists.** The package pin plus the selective `bkit upgrade` hold is the recovery path. Document any incident in `docs/failures.jsonl`.
 
-Ship's docs sync, summaries, `SHIPPED` roadmap row and skill removals ride the PR as one `[skip ci]` commit on the feature branch before the merge. The other pre-merge pushes are opening a missing PR, the Path B merge push, a `bkit:generate` commit (Path A, and the regenerate round after a red CI run) and a Failure Remediate fix. Status rows (`status.jsonl`) go to the feature worktree's tree on every runtime (`BOOK_ROOT` = `{WORKTREE_PATH}`), and ship never checks out `dev`. See `.bkit/workflows.md` § `status.jsonl` — workflow state SoT. The post-merge tail is one `[skip ci]` close commit, built in a throwaway checkout of `origin/dev`, that carries the book:
+Ship's docs sync, summaries, `SHIPPED` roadmap row and skill removals ride the PR as one `[skip ci]` commit on the feature branch before the merge. The other pre-merge pushes are opening a missing PR, the Path B merge push, a `bkit:generate` commit (Path A, and the regenerate round after a red CI run). Status rows (`status.jsonl`) go to the feature worktree's tree on every runtime (`BOOK_ROOT` = `{WORKTREE_PATH}`), and ship never checks out `dev`. See `.bkit/workflows.md` § `status.jsonl` — workflow state SoT. The post-merge tail is one `[skip ci]` close commit, built in a throwaway checkout of `origin/dev`, that carries the book:
 
 - Ship pushes it to `dev`.
 - **If** `dev` moved → ship rebuilds the commit and pushes again.
@@ -470,7 +466,7 @@ Use one, because both open PRs for the same packages. Record your choice in `bki
 <!-- prettier-ignore -->
 | Setting | Effect |
 | --- | --- |
-| `rebaseWhen: "conflicted"` | A PR is rebased only when it conflicts; the default re-runs CI on every auto-merge PR each time the base branch moves. |
+| `rebaseWhen: "never"` | Renovate never rebases or updates an open PR by itself, so each update runs CI once. A PR that conflicts with `dev` waits until you tick its rebase checkbox. Otherwise each merge makes the other `pnpm-lock.yaml` PRs conflict, rebase and re-run the full CI. The Dependabot example sets `rebase-strategy: disabled` for the same reason. |
 | `schedule` | Every hour of Monday (UTC). A scheduled GitHub run can start hours after its cron time, so a window of a few hours misses the daily wake. |
 | `lockFileMaintenance.schedule` | Every hour of the first day of the month (UTC), for the same reason. |
 | Majors rule `dependencyDashboardApproval: true` | No branch, PR or CI run until you tick the update on the Dependency Dashboard issue. |
@@ -525,7 +521,7 @@ Fine-grained permissions for this repo:
 
 When Renovate is the updater, leave alerts on and turn security updates and version updates off so Dependabot does not open competing PRs.
 
-**Runner labels for bkit workflows.** `bkit-ci.yml`, `bkit-cloud.yml`, `bkit-renovate.yml` and `bkit-trivy.yml` are templates you copy and own; edit `runs-on` in your copy. The `bkit-cloud.yml` template ships the `{{CLOUD_RUNNER}}` placeholder in both jobs: replace it with a label (e.g. `ubuntu-latest`).
+**Runner labels for bkit workflows.** `bkit-ci.yml`, `bkit-cloud.yml`, `bkit-renovate.yml` and `bkit-trivy.yml` are templates you copy and own; edit `runs-on` in your copy. The `bkit-cloud.yml` template ships the `{{CLOUD_RUNNER}}` placeholder in all four jobs (`context`, `claude`, `opencode`, `codex`): replace it with a label (e.g. `ubuntu-latest`).
 
 ### Manual CVE handling (when an alert fires)
 
@@ -538,13 +534,11 @@ Renovate's `osvVulnerabilityAlerts: true` opens CVE-driven PRs against `dev` imm
 4. Open a PR against `dev` titled `fix(security): bump <pkg> >=<fixed-version> (CVE-XXXX-YYYY)`. After the merge to `dev → main`, the alert closes automatically once GitHub re-scans the default branch.
 5. **If** a CVE has no impact on your usage pattern (for example, a dev-server-only vuln in a build tool that you never run as a server) → dismiss it in the GitHub UI with the "Vulnerable code is not actually used" reason and a one-line justification. Do not dismiss an alert without documenting why.
 
-<!-- bkit:end -->
-
 ## Project
 
 ### Pre-push checklist
 
-The full pre-push gate checks the same static, unit and integration tiers as CI. `.husky/pre-push` runs `bkit check` first, then calls `bkit ci push-gate` with `bkit:gate:static-unit-integration`, which chains `bkit:gate:static-unit`. Revert and minimum-gate selection are described below. The table groups checks by purpose; it is not their execution order.
+The full pre-push gate checks the same static, unit and integration tiers as CI. `.husky/pre-push` runs `bkit check` first, then calls `bkit ci push-gate` with `bkit:gate:static-unit-integration`, which chains `bkit:gate:static-unit`. Build Step 12 runs the same deepest gate through `bkit tests run` and records the same receipt, so the first push of a build branch skips this gate when only bookkeeping commits follow the Step 12 commit; any code change after it runs the full gate. Revert and minimum-gate selection are described below. The table groups checks by purpose; it is not their execution order.
 
 <!-- prettier-ignore -->
 | # | Gate | Command | Hook block | Failure mode |
@@ -559,6 +553,8 @@ The full pre-push gate checks the same static, unit and integration tiers as CI.
 | 8 | Dist freshness | `pnpm bkit:check:dist` | source-repo only (appended directly to the source-repo copy; not in the consumer template) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate. |
 | 9 | Workflow lint | `pnpm bkit:lint:workflows` | source-repo only (appended directly; not in the consumer template) | actionlint finding in `.github/workflows/*` → fix the workflow. Guard-skips when actionlint is absent locally; CI installs it so it always enforces there. A YAML parse is not enough, because actionlint catches valid-YAML-but-invalid-GHA. |
 
+**direnv load (pre-push, before every gate):** when the repo has an `.envrc`, `direnv` is on `PATH` and `CI` is unset, the logged inner run goes through `direnv exec .`, so the gate sees `.envrc`'s variables whatever shell pushed. An untrusted `.envrc` → blocked before `bkit check`, with the `direnv allow .` fix. Every path then unsets the bkit tooling keys (`docs/security.md` § `.bkit/.env` scope). Contract: `.bkit/templates.md` § Git hooks — Husky.
+
 **Delete-only push (pre-push, first):** every stdin ref carries an all-zero local SHA (`git push origin --delete <branch>`) → exit 0, no gates. Any ref with a non-zero local SHA, empty stdin, or stdin a terminal (hook run by hand) → all gates run.
 
 **CI-suppressor HEAD guard (pre-push, before gates):** it applies on a branch other than `dev` / `main` whose HEAD carries a skip-CI token (`[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`), which `bkit ci skip-token` reports with exit 0. The hook then probes `gh pr list --head <branch> --state open`. First match wins:
@@ -567,10 +563,20 @@ The full pre-push gate checks the same static, unit and integration tiers as CI.
 - **If** a PR is open → blocked, because the PR's checks would stay green without testing the pushed code. This covers any other file, a rewritten head and no remote head. Add a clean trigger commit and push again.
 - **If** no PR is open → allowed. Workflows push `[skip ci]` heads for mid-loop status and the abort handover.
 - **If** `gh` is unavailable → warn and allow. This is the manual-push backstop, and the workflows' CI-Dispatch Gate covers the close push.
+- **If** the lookup returned a full page (1000 open PRs share the head branch name, none from this repo) → blocked, because an open PR cannot be ruled out.
+
+The guard reads the PR number from the shared open-PR lookup that also feeds the PR conflict check below: one `gh pr list --head <branch> --state open` per push of any branch but `dev` / `main`. It keeps same-repo PRs and a cross-repository PR whose head repository is the push target; a fork PR with the same head branch name is ignored.
+
+**PR conflict check (pre-push, before `bkit check` and the gates):** a feature branch whose open PR does not merge into its base never starts CI, so the hook stops it in seconds. Contract: `.bkit/templates.md` § Git hooks — Husky.
+
+- **If** the branch has an open PR and the push carries a commit → the hook fetches the base with an explicit refspec (`+refs/heads/<base>:refs/remotes/origin/<base>`), then runs `git merge-tree --write-tree --name-only` of `origin/<base>` against the pushed commit, ignoring the work tree's `.gitattributes` as GitHub does, so a `merge=union` ledger conflict blocks. Exit 1 with a tree OID on the first line → blocked, naming the files and the fix. This holds for a min push too.
+- **If** `gh` is missing or fails, the lookup returned a full page, the clone is shallow, the base fetch fails, or `git merge-tree` fails for another reason → warn that the check was skipped and go on. CI reports the conflict itself.
+- **If** no PR is open, or the branch is `dev` / `main` → no fetch and no message.
+- `BKIT_PR_CONFLICT_CHECK=false` skips the check with one stderr line. `/bkit-ship` and `/bkit-debug` set it on their pushes: the conflict is what ship's Step 4 merges away, and a `dev` that moves after Step 4 is left to `bkit runs gate --fresh-base`; debug's fix commits must always reach `origin`. A repo whose hook copy lacks the check gets the `pre-push-pr-conflict` tip from `bkit tips`.
 
 **Revert-branch bypass:** `revert-*` branch or HEAD subject `Revert "` → run `pnpm bkit:gate:static` instead of the full gate, dropping the test suites. Gates 5-9 still run unless the push qualifies for the minimum gate. Rollback trees can be temporarily inconsistent, and surviving tests may reference deleted files.
 
-**Min push:** every changed file is one bkit writes (`.bkit/templates.md` § Git hooks — Husky) or one `bkit.testing.minPushPaths` adds (bkit's own `package.json`: `docs/**`) → `bkit:gate:min` only (format, tables, prose, bkit:slop:delta, ledger-integrity); `bkit:check:dist` + actionlint skipped. The hook classifies every outgoing old/new pair, including bookkeeping increments over a locally checked ancestor. `bkit ci push-gate` executes the chosen script and records successful full checks; the receipt and fallback contract lives in `.bkit/templates.md` § Git hooks. Files and evidence decide, never a commit subject. The `dev` / `main` skip-CI guard remains based on the complete branch diff, independently of the local minimum-gate decision.
+**Min push:** every changed file is one bkit writes (`.bkit/templates.md` § Git hooks — Husky) or one `bkit.testing.minPushPaths` adds (bkit's own `package.json`: `docs/**`) → `bkit:gate:min` only (format, tables, prose, bkit:slop:delta, ledger-integrity, and the installed audit-template tests `templates.test.ts` and `template-no-userpath.test.ts`, which read text below `<!-- bkit:end -->`); `bkit:check:dist` + actionlint skipped. The hook classifies every outgoing old/new pair, including bookkeeping increments over a locally checked ancestor and a new branch whose only commits after a receipted ancestor (such as build's Step 12 run) are bookkeeping. `bkit ci push-gate` executes the chosen script and records successful full checks; the receipt and fallback contract lives in `.bkit/templates.md` § Git hooks. Files and evidence decide, never a commit subject. The `dev` / `main` skip-CI guard remains based on the complete branch diff, independently of the local minimum-gate decision.
 
 Pre-commit: `pnpm bkit:gate:format` — prettier over staged files, seconds. Prose is not here: `bkit:lint:prose` scans a fixed whole-repo file set, so it gates at pre-push inside `bkit:gate:static`. Enforcing slop gate: pre-push `pnpm bkit:slop:delta` via the same gate (Gate 6); `pnpm lint:slop` is report-only and sits in no lane. CI re-runs bkit:lint:prose + bkit:slop:delta in `bkit-tests-static`.
 
@@ -614,7 +620,7 @@ GitHub Actions suppresses `pull_request` + `push` when HEAD has `[skip ci]` or `
 
 **Poll anchors the check namespace, not a lane name**: the capstone `bkit.testing.ciCapstone` minus its last `-segment` (`bkit-tests-check` → any check containing `bkit-tests`). Single-job anchor PROHIBITED. Alignment: `.bkit/core/engine/audits/workflows/ci-dispatch-gate-alignment.test.ts`; legacy scaffolds: `ci-legacy-scaffold-job-names` advisory.
 
-**Gate sites (2):** build Step 16; debug Step 11 sub-step 7 (PR-mode and LOCAL-mode). Ship out — Step 14 reads the squash commit's capstone with `bkit runs gate --head=<SQUASH_SHA> --capstone-only`; CI-Dispatch there masks "essential tests skipped".
+**Gate sites (2):** build Step 16; debug Step 11 sub-step 7 (PR-mode and LOCAL-mode). Ship out — Step 12 waits for the squash commit's CI run with `bkit runs wait --head=<SQUASH_SHA> --branch=dev --until=completed`, then reads its capstone with `bkit runs gate --squash-of=<PR> --capstone-only`; CI-Dispatch there masks "essential tests skipped".
 
 **Open-PR pre-flight (build Step 16):** `bkit prs probe --base=dev` first; open PR → Failure Path (`feat/{FID} already has open PR #N to dev`). `bkit prs open` probes `--head` again before creating: exit 3 on an existing open PR (`--existing=fail`, the default), exit 5 on a `gh` error, never a blind create.
 
@@ -637,7 +643,7 @@ GitHub Actions suppresses `pull_request` + `push` when HEAD has `[skip ci]` or `
 | build / debug PR push (final close-workflow) | `chore({FID}): close-workflow` — no skip tags; loud. Opted-in builds additionally append `bkit [auto route]` (conditional on issue `bkit:auto` at close time). Pushed with `bkit branches push --require-ci`, which on an unshared feature branch first merges `origin/dev`'s `docs/` and ledger commits. Debug PR-mode: the push fires `pull_request` synchronize. Build: the push lands before the PR exists; `bkit prs open` then creates the PR, which fires `pull_request`. |
 | build `worktree-setup` commit | `chore({FID}): worktree-setup bkit [skip ci]` — bookkeeping; no CI trigger. |
 | debug LOCAL-mode `create-pr` commit | `chore({FID}): create-pr` — loud; the CI-triggering HEAD in LOCAL mode, pushed with `bkit branches push --require-ci`. Build has no `create-pr` commit. |
-| ship squash merge | `gh pr merge --squash --body ""` — empty body strips PR-body `bkit [skip ci]` from the squash subject so `dev`'s merge HEAD is clean. Step 14 then runs `bkit runs gate --head=<SQUASH_SHA> --capstone-only` (the capstone job's result alone; deploy and other jobs never fail the close) and records its run in the `ship-merge-ci` row. |
+| ship squash merge | `gh pr merge --squash --body ""` — empty body strips PR-body `bkit [skip ci]` from the squash subject so `dev`'s merge HEAD is clean. Step 12 then waits for that commit's CI run to finish (`bkit runs wait --head=<SQUASH_SHA> --branch=dev --until=completed`), runs `bkit runs gate --squash-of=<PR> --capstone-only` (the capstone job's result alone; deploy and other jobs never fail the close) and records its run in the `ship-merge-ci` row, which is written only once the run has a final verdict. |
 
 All other docs-only intermediates (start-workflow, summary, install-skills, update-docs, archive, worktree-cleanup) keep `bkit [skip ci]`. Only trailing `close-workflow` (build / debug; debug LOCAL mode: `create-pr`) + squash-merge subject (ship) are loud.
 
@@ -662,23 +668,26 @@ Or Actions tab → CI → Run workflow → select branch. Same pattern as consum
 
 `pnpm bkit install` — all three phases. `pnpm bkit check` / `pnpm bkit doctor` — Phase 1 + 3; write only `.bkit/advisories.md`. `check` exits 1 on Tier-1 / Tier-2 drift. `pnpm bkit upgrade` — diff vs `canonicalHashes`; conflicts stderr (`--auto-apply` non-zero). Offline re-render at installed version; `--latest`/`--to=<version>` bump + re-exec atomically. Also re-renders output outside `.bkit/templates/` — host agents / commands + `.bkit/*.md` (`runBkitDocs`) per installed host (by `agents/` dir). Force-overwritten; `.bkit/prompts.md` markered — consumer overrides below `bkit:end` block-merge-preserved.
 
-### `bkit-cloud.yml` — dual-job cloud-agent lane
+### `bkit-cloud.yml` — cloud-agent lane (one agent per run)
 
-The `bkit-cloud.yml` template (`bkit install --auto=…` points at it; copy it to `.github/workflows/bkit-cloud.yml`) carries two runtime-gated dispatch jobs so one GitHub-tracker repo can run claude and OpenCode cloud agents from one file (additive):
+The `bkit-cloud.yml` template (`bkit install --auto=…` points at it; copy it to `.github/workflows/bkit-cloud.yml`) carries one dispatch job per router agent (claude, OpenCode, codex). A `context` job reads `bkit.cloud.agent` and starts only that agent's job, on any wired tracker (GitHub, Linear or Jira):
 
 <!-- prettier-ignore -->
 | Job | Dispatch | Gated on | LLM credential |
 | --- | --- | --- | --- |
-| `claude` | `claude-code-action` (OIDC via Claude GitHub App) | `context` job's `Check runner credentials` step sets `claude=true` when `ANTHROPIC_API_KEY` is non-empty or both `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` vars are; absent / one var alone → `::notice::… no-op` | `ANTHROPIC_API_KEY` secret, or workload identity federation (vars → OIDC exchange for a short-lived token; set key wins) |
-| `opencode` | `opencode run` CLI (installed in-job) | same step sets `opencode=true` only when `OPENCODE_PROVIDER_KEY` is non-empty; absent → no-op | `OPENCODE_PROVIDER_KEY` |
+| `claude` | `claude-code-action` (OIDC via Claude GitHub App) | agent is `claude` and `Select agent job` sets `claude=true`: `BKIT_ANTHROPIC_API_KEY` is non-empty or both `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` vars are; absent / one var alone → `::notice::… no-op` | `BKIT_ANTHROPIC_API_KEY` secret, or workload identity federation (vars → OIDC exchange for a short-lived token; set key wins) |
+| `opencode` | `opencode run` CLI (installed in-job, after the repo's dependencies) | agent is `opencode` and one of `BKIT_OPENCODE_API_KEY` / `BKIT_OPENROUTER_API_KEY` / `BKIT_OLLAMA_API_KEY` is non-empty; absent → no-op | the provider's `BKIT_` secret |
+| `codex` | `openai/codex-action` (`sandbox: danger-full-access`, workspace trusted through codex-home) | agent is `codex` and `BKIT_OPENAI_API_KEY` is non-empty; absent → no-op | `BKIT_OPENAI_API_KEY` secret |
 
 **Rules:**
 
-- **Credential-gated, never branch-gated.** Missing credential → no-op (not fail). Both → both jobs; serialise via `concurrency.group` (`bkit-auto-${{ inputs.issue || …head_branch }}`).
-- **`--auto=opencode` requires `tracker=github`.**
-- **Single fanned-out `OPENCODE_PROVIDER_KEY`** under committed `opencode.json` `envVar`; no `BKIT_ANTHROPIC_API_KEY` in OpenCode job. GHA-injection hardened, with `PHASE` / `ARG` via `env:`; `ARG` validated `^[0-9A-Za-z.*/-]+$`.
+- **Credential-gated, never branch-gated.** Missing credential → no-op (not fail). Only the recorded agent's job starts; a credential set for another agent is ignored and named in the log. Serialise via `concurrency.group` (`bkit-auto-${{ inputs.issue || …head_branch }}`, `-codex` suffix on the codex job).
+- **The `context` job installs bkit from the consumer's lockfile.** The gate reads the issue id with `bkit fids parse` and the `bkit:auto` label with `bkit issues fetch`; an unreadable label starts no agent and the log + job summary name the reason.
+- **Tracker keys** (`BKIT_LINEAR_API_KEY`, `BKIT_JIRA_API_KEY`) are set at step scope, never job-wide.
+- **Every router secret carries its `BKIT_` name.** The OpenCode job passes each provider key under its own name to the committed `opencode.json` `envVar`; no `BKIT_ANTHROPIC_API_KEY` in the OpenCode job. GHA-injection hardened, with `PHASE` / `ARG` via `env:`; `ARG` validated `^[0-9A-Za-z.*/-]+$`.
+- **The `codex` job runs `drop-sudo`** (irreversible on a reused self-hosted runner): use an ephemeral runner.
 - **SHA pins** follow § GitHub Actions pinning; your updater refreshes them in your copy. **`bkit [auto route]` gate** — commit-tag taxonomy.
-- **Disabled in bkit's own repo.** `.github/workflows/bkit-cloud.yml` (the dogfood copy of the template) is disabled in repo settings (`gh workflow list --all` shows `disabled_manually`); no `ANTHROPIC_API_KEY` / `OPENCODE_PROVIDER_KEY` secret or federation variable is set. Re-enable with `gh workflow enable bkit-cloud.yml` after setting a credential.
+- **Disabled in bkit's own repo.** `.github/workflows/bkit-cloud.yml` (the dogfood copy of the template) is disabled in repo settings (`gh workflow list --all` shows `disabled_manually`); no `BKIT_ANTHROPIC_API_KEY` / provider `BKIT_` / `BKIT_OPENAI_API_KEY` secret or federation variable is set. Re-enable with `gh workflow enable bkit-cloud.yml` after setting a credential.
 
 ### Release test runs
 

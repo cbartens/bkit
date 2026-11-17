@@ -9,6 +9,9 @@ import {
   stripBkitBlock,
   detectGitignoreBlockDuplicates,
   detectPlaywrightReporterHostile,
+  detectOpencodeSubstringFetchGrants,
+  detectCloudBootstrapFingerprintMissing,
+  redactUrlParts,
   MARKERED_TEXT_DRIFT_PATHS,
   detectTier2TextDrift,
 } from "./files";
@@ -240,6 +243,139 @@ describe("detectPlaywrightReporterHostile", () => {
     expect(f?.id).toBe("playwright-reporter-line-override-hostile");
     expect(f?.detect).toContain(".github/workflows/ci.yml");
     expect(f?.detect).not.toContain("bkit-ci.yml");
+  });
+});
+
+describe("detectOpencodeSubstringFetchGrants", () => {
+  const OC_REL = path.join(".opencode", "opencode.json");
+
+  function writeOpencode(content: string): string {
+    const abs = path.join(tmpDir, OC_REL);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, content, "utf-8");
+    return abs;
+  }
+
+  function writeBash(bash: Record<string, string>, webfetch?: Record<string, string>): string {
+    return writeOpencode(
+      JSON.stringify({ permission: { bash, ...(webfetch ? { webfetch } : {}) } }, null, 2),
+    );
+  }
+
+  it("reports each substring curl and wget allow with its removal action", () => {
+    writeBash({ "curl *": "ask", "curl *github.com*": "allow", "wget *github.com*": "allow" });
+    const f = detectOpencodeSubstringFetchGrants(tmpDir);
+    expect(f).not.toBeNull();
+    expect(f?.id).toBe("opencode-substring-fetch-grants");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.detect).toContain("curl *github.com*");
+    expect(f?.detect).toContain("wget *github.com*");
+    expect(f?.detect).toContain(OC_REL);
+    expect(f?.action).toContain("permission.bash");
+    expect(f?.action).toMatch(/remove|delete/i);
+  });
+
+  it("ignores webfetch, non-allow and unrelated consumer entries", () => {
+    writeBash(
+      {
+        "curl *": "ask",
+        "curl *x*": "ask",
+        "git status*": "allow",
+        "npm run *": "allow",
+      },
+      { "*": "ask", "*github.com*": "allow", "https://api.example.com/*": "allow" },
+    );
+    expect(detectOpencodeSubstringFetchGrants(tmpDir)).toBeNull();
+  });
+
+  it("redacts URL credentials and query strings in a reported key", () => {
+    writeBash({ "curl *https://user:tok@example.com/p?k=v*": "allow" });
+    const f = detectOpencodeSubstringFetchGrants(tmpDir);
+    expect(f).not.toBeNull();
+    const text = `${f?.detect}\n${f?.action}`;
+    expect(text).not.toContain("user:tok");
+    expect(text).not.toContain("k=v");
+    expect(text).toContain("example.com");
+    const red = redactUrlParts("curl *https://user:tok@example.com/p?k=v*");
+    expect(red).not.toContain("user:tok");
+    expect(red).not.toContain("k=v");
+  });
+
+  it("redacts schemeless user-info in a reported key", () => {
+    writeBash({ "curl *user:tok@example.com*": "allow" });
+    const f = detectOpencodeSubstringFetchGrants(tmpDir);
+    expect(f).not.toBeNull();
+    const text = `${f?.detect}\n${f?.action}`;
+    expect(text).not.toContain("user:tok");
+    expect(text).toContain("example.com");
+  });
+
+  it("redactUrlParts drops user-info with no scheme", () => {
+    const red = redactUrlParts("wget *user:tok@example.com/p*");
+    expect(red).not.toContain("user:tok");
+    expect(red).toContain("example.com");
+  });
+
+  it("reports nothing and writes nothing for an absent, unparseable or map-less file", () => {
+    expect(detectOpencodeSubstringFetchGrants(tmpDir)).toBeNull();
+    expect(fs.existsSync(path.join(tmpDir, OC_REL))).toBe(false);
+
+    for (const content of [
+      "{ not json",
+      JSON.stringify({ permission: { bash: "allow" } }),
+      JSON.stringify({ permission: "allow" }),
+      JSON.stringify({}),
+    ]) {
+      const abs = writeOpencode(content);
+      const before = fs.readFileSync(abs, "utf-8");
+      expect(detectOpencodeSubstringFetchGrants(tmpDir)).toBeNull();
+      expect(fs.readFileSync(abs, "utf-8")).toBe(before);
+    }
+
+    // A reported file is never rewritten either.
+    const abs = writeBash({ "curl *github.com*": "allow" });
+    const before = fs.readFileSync(abs, "utf-8");
+    expect(detectOpencodeSubstringFetchGrants(tmpDir)).not.toBeNull();
+    expect(fs.readFileSync(abs, "utf-8")).toBe(before);
+  });
+});
+
+describe("detectCloudBootstrapFingerprintMissing", () => {
+  const BOOTSTRAP_REL = path.join(".claude", "hooks", "bkit-cloud-bootstrap.sh");
+
+  function writeBootstrap(body: string): void {
+    const abs = path.join(tmpDir, BOOTSTRAP_REL);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, body, "utf-8");
+  }
+
+  it("reports an adopted bootstrap that never reads BKIT_CLOUD_ALLOWLIST_FINGERPRINT", () => {
+    // A bootstrap copied from the pre-fingerprint template: the trust check, no compare.
+    writeBootstrap(
+      "#!/usr/bin/env bash\nset -euo pipefail\ncat >/dev/null\n" +
+        'if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then exit 0; fi\n' +
+        "pnpm install --frozen-lockfile\n",
+    );
+    const f = detectCloudBootstrapFingerprintMissing(tmpDir);
+    expect(f).not.toBeNull();
+    expect(f?.id).toBe("cloud-bootstrap-fingerprint-missing");
+    expect(f?.detect).toContain(BOOTSTRAP_REL);
+    expect(f?.detect).toContain("BKIT_CLOUD_ALLOWLIST_FINGERPRINT");
+    expect(f?.action).toContain(".bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh");
+  });
+
+  it("accepts a customised bootstrap that reads the variable", () => {
+    // Rewritten, not byte-equal to the template, but it compares the variable itself.
+    writeBootstrap(
+      "#!/usr/bin/env bash\nmy_custom_setup() { :; }\n" +
+        'if [ "${BKIT_CLOUD_ALLOWLIST_FINGERPRINT:-}" = "$(my_stamp)" ]; then echo same; fi\n',
+    );
+    expect(detectCloudBootstrapFingerprintMissing(tmpDir)).toBeNull();
+  });
+
+  it("stays silent when no bootstrap is adopted", () => {
+    expect(fs.existsSync(path.join(tmpDir, BOOTSTRAP_REL))).toBe(false);
+    expect(detectCloudBootstrapFingerprintMissing(tmpDir)).toBeNull();
   });
 });
 

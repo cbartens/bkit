@@ -38,22 +38,22 @@ These references locate related work; their bodies add no scope beyond the paren
 
 ### Narrative
 
-Before I change some files, my agent runs one command and gets back the brain rows that name those files or a folder above them, plus a short capped summary, instead of reading a whole ledger. When I replace, close or falsify a row, the append prints every current row that rested on it, and `bkit brain check` lists all of them whenever I ask. On demand or on an opt-in schedule, brain update tidies the brain, re-tests rows against the code, proposes links, summaries, contradiction fixes, pattern rows and fades, and, depending on `bkit.brain.update.ask`, either offers them to me for approval or applies them and lists what it applied.
+Before I change some files, my agent receives capped summaries of entries associated with those files and general pathless entries. It selects relevant keys, fetches their complete current entries and reads them before editing. Search also matches full entries but returns summaries first. When I replace, close or falsify a row, the append prints every current row that rested on it, and `bkit brain check` lists all of them whenever I ask. On demand or on an opt-in schedule, brain update tidies the brain, re-tests rows against the code, proposes links, summaries, contradiction fixes, pattern rows and fades, and, depending on `bkit.brain.update.ask`, either offers them to me for approval or applies them and lists what it applied.
 
 ### Success Criteria
 
-1. The pre-code ledger read costs measurably fewer tokens: characters / 4 of what the agent is told to read, before (every current `docs/knowledge.jsonl` row) and after (`bkit brain context` output), on the same three recorded tasks. No shipped prompt, rule or doc index tells an agent to read a whole ledger file.
+1. On the same three recorded tasks, the total pre-code read costs fewer characters / 4 than reading every current knowledge row. Count all context previews, selection handoffs and fetched details, including retries; also compare with the planned full-row context baseline. Every relevant entry in the fixture is read completely before the first edit. No shipped rule, prompt or doc index substitutes summaries for applicable facts or directs a whole-ledger read.
 2. `bkit upgrade` turns the four ledgers into `docs/brain.jsonl` envelope rows with no distinct source line lost. Migration and cleanup deduplicate only equivalent normalized content; divergent rows with equal identity and timestamp remain recoverable and visible as conflicts after repeated cleanup and compaction. Source deletion follows durable destination verification, with recovery after interruption at every publication boundary. Running migration twice, or on two branches from the same base, gives byte-identical output. Fold winners (under the new identity), the whole `.bkit/stats.md` render (each reader filtered to the kinds it read before) and the `docs/roadmap.md` render are unchanged.
 3. Every link is followed by a tool: a `SUPERSEDED` row's successor is found through the reverse of `links.supersedes`. Superseding, closing or falsifying a row prints every current row whose `links.dependsOn` names it, at write time and in `bkit brain check`. A `SUPERSEDED` row with no successor link is listed as a check finding.
-4. Keyword search runs on Node alone (`ledgerScan` over the current fold winners, no index, no dependency), and filters by kind. Every reader that folded one per-kind file has a kind-filtered read path that returns the same rows after the merge. Search by meaning is the opt-in qmd template, off by default.
+4. Keyword search ranks complete current entries through Node-only `ledgerScan`, then returns summary previews with kind filters. Description-only matches remain discoverable. Context and agent-facing list output use the same preview fields; `get` retrieves complete selected entries by key. Previews record no recalls. Machine readers retain full kind-filtered data, and qmd remains opt-in. Writers check summary accuracy against the entry on creation/update; maintenance reviews and repairs weak summaries through the existing approval procedure.
 5. With `ask: true`, brain update changes nothing beyond mechanical cleanup without owner approval, and a rejected suggestion is not offered again until one of its target versions changes. With `ask: false`, it applies the same changes directly and lists each one in its run report. All local brain writes share a short write lock; two concurrent runs never apply one change twice, no cleanup loses an append, and a chain of brain-update rows never gains priority over unseen newer content. Every applied change has a validated undo that preserves history and refuses a changed target.
 
 ### Process Sketch
 
 - WHEN a maintainer upgrades the example repository → THEN every old line reaches the brain before old files are truncated or deleted, and a second upgrade changes no brain byte.
-- WHEN their agent starts the recorded file task → THEN it receives the capped pathless summary first and the current rows that match its files, with a token estimate.
+- WHEN their agent starts the recorded file task → THEN it receives pathless and file-matching previews, selects relevant keys and reads their complete current entries before editing. Every preview and detail response contributes to the total token estimate.
 - WHEN they close a premise → THEN append lists its current dependents and check reports the same dead premises, with a bounded printout.
-- WHEN they search for the example’s terms → THEN search ranks current, kind-filtered winners using Node alone and records only returned keys as recalls.
+- WHEN they search → THEN complete current entries are ranked with Node alone but only summary previews are returned. Selected complete `get` results, not previews, enter the recall log.
 - WHEN they run brain update with approval enabled → THEN cleanup lands, suggestions remain in a report, and only their approved rows are appended.
 - WHEN another branch brings back an old ledger file → THEN readers include its new rows and the next update moves them safely into the brain.
 - WHEN the same suggestion runs concurrently → THEN its deterministic id prevents a second application and newer unseen content remains the winner.
@@ -65,15 +65,18 @@ Before I change some files, my agent runs one command and gets back the brain ro
 **Steps:**
 
 1. The maintainer runs `bkit upgrade` → all old lines appear durably in `docs/brain.jsonl`. After complete-content verification and proven incompatible-writer quiescence, the branch touching an old path causes zero-byte union stubs to remain; unproven quiescence retains full source files. A second upgrade produces identical brain bytes.
-2. Their agent runs `bkit brain context --files=.bkit/core/engine/ledgers/telemetry.ts` → the capped pathless bundle precedes matching current rows and `tokensEst` records the read cost.
+2. Their agent runs `bkit brain context --files=.bkit/core/engine/ledgers/telemetry.ts` → capped pathless previews precede file-matching previews. It selects relevant keys, calls `bkit brain get --keys=<selected-keys>`, reads the full entries and records fetched versions before its first edit. Count both stages and any handoff in read cost.
 3. The maintainer appends a terminal premise through `bkit brain append` → the current dependents are printed; `bkit brain check` lists them and the missing-successor cases.
-4. The agent uses `bkit brain search "ledger fold" --kind=knowledge,decision` → results contain only current winners of those kinds, and returned keys enter the recall log.
+4. The agent uses `bkit brain search "ledger fold" --kind=knowledge,decision` → full-text ranking returns only previews. A term found only in a description still matches. The agent fetches selected keys, checks current versions and reads full details before relying on them.
 5. The feature branch lands its old-path append; the maintainer runs brain update following `.bkit/brain.md` → the new row is visible before cleanup, then moves to the brain. Suggested link repairs and summaries await approval in the report.
 6. The maintainer approves one suggestion and rejects another → the approved row is appended once; the rejected id remains suppressed until a target changes. A later feature-branch content update defeats a proposal based on older content.
 
 **Outcome:** The maintainer can retrieve the relevant rows with fewer tokens, follow invalidated premises, retain branch contributions, and review an auditable update without losing unseen content.
 
 ### Edge Cases
+
+- **Weak summary or changed entry:** if a preview cannot establish irrelevance, fetch the details. Compare the preview version with the fetched version and reassess changed content. Missing, terminal or conflicting entries are explicit unresolved results, not empty success.
+- **Summary creation and maintenance:** an author checks the summary against the complete entry before append, including its conditions and exceptions. A deterministic first-sentence fallback preserves legacy compatibility but does not certify semantic accuracy. Maintenance proposes corrections through normal same-key writes.
 
 - **Pre-upgrade branch:** a branch opened before the upgrade appends old-shape rows to `docs/knowledge.jsonl` after `dev` merged. The zero-byte stub union-merges the branch's lines in, together with the base's old lines: the spike's real-`git` fixture (C1) showed the emptied side does not win under `git merge`, `git merge --squash -X ours` or the reverse merge, with no conflict. Readers fold `[docs/brain.jsonl, the four stubs]` and deduplicate only equivalent normalized full content. The next brain update moves every distinct line durably into the brain, verifies it there and empties the stub under the shared write lock. Destructive cleanup waits until incompatible old writers have been upgraded or quiesced. When the migration found no unmerged branch or worktree touching the old files, it deleted them instead; a branch that appears later and still appends to one hits a modify/delete conflict, which bkit's ledger conflict resolution settles by keeping the branch's file. Readers fold it, `bkit brain check` reports it, and the next brain update moves its lines into the brain before deleting it again. A pre-upgrade worktree whose prompts still call `bkit ledgers append --ledger=knowledge` through the upgraded engine is refused with exit 8 and a message naming `bkit brain append`; nothing is written.
 - **Migration run twice or on two branches:** the migration is a pure line-by-line function of its input, so both sides produce identical lines and union keeps one copy.
@@ -85,8 +88,8 @@ Before I change some files, my agent runs one command and gets back the brain ro
 - **Undo:** undoing an applied kind change restores the previous kind through the dedicated validated restore operation, without opening normal append to reverse transitions. Undoing a created row appends `WITHDRAWN`. A changed current fingerprint or missing verified restore evidence refuses the undo with no write.
 - **Divergent duplicate version:** equal `(repo, key, ts)` with different normalized content preserves both rows and emits a conflict finding. Neither migration nor compaction silently picks one for deletion; ordinary mutation of that unresolved entry is refused until an explicit resolution names all variants.
 - **Recall across branches and people:** two branches write different `lastRecalled` dates for one entry. The fold takes the newest date across all of the entry's rows, so a merge never loses a recent recall.
-- **Subagent with no shell:** the orchestrator runs `bkit brain context` and passes the rows in, the way subagents hand rows back for `append` today.
-- **Large selection under the clamp:** a task touching many files selects more rows than the `ledger` clamp keeps (97 rows on one recorded task). The always-loaded part is written first, inside its own reserved budget, so the clamp cuts only path-selected rows.
+- **Subagent with no shell:** the orchestrator passes context previews to the subagent, receives selected keys, fetches them with `bkit brain get`, then resumes or redispatches it with the complete entries. The subagent reads those entries before editing or completing its review. Summary selection is a read-only handoff; an unresolved detail request prevents dependent edits.
+- **Large selection under the clamp:** the reserved pathless previews precede path-selected previews. Both budgets apply to serialized preview bytes. Dropped keys are explicitly not read; agents retrieve potentially relevant dropped entries by key or narrow the query before editing. Detail responses contain complete rows; callers split large selections into batches and resolve host truncation before claiming a read.
 - **Older bkit after the migration:** an older bkit, or a pre-upgrade worktree's engine, reads the emptied stubs, or finds the old files gone, and sees zero rows with no error. Recovery is `bkit upgrade` forward or `git revert` of the migration commit; `docs/migrations.md` records the step as one-way.
 
 ### Derived Test Matrix
@@ -100,33 +103,34 @@ Each row names the task that lands its test. `Unit` includes a single module aga
 | Pin full stats and roadmap output from the old layout and capture three task read baselines | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 2 |
 | Brain identity, defaults, summary fill, statuses and unchanged non-brain identities | Unit | `.bkit/core/engine/ledgers/telemetry.test.ts` | 3 |
 | Allowed transitions drop old fields; invalid transitions, malformed links, assumptions and summaries refuse atomically | Unit | `.bkit/core/engine/ledgers/telemetry.test.ts` | 4 |
-| Brain-plus-stub reads normalize, deduplicate and filter kind/current, with diagnostic counts | Unit | `.bkit/core/engine/ledgers/brain.test.ts` | 5 |
+| Brain-plus-stub reads normalize, deduplicate and filter kind/current; previews and exact-key details preserve versions and diagnose missing/conflicting keys | Unit | `.bkit/core/engine/ledgers/brain.test.ts` | 5 |
 | Reverse links, dead premises, dangling keys, cycles, expiry, missing successor and duplicate timestamps are reported | Unit | `.bkit/core/engine/ledgers/brain.test.ts` | 6 |
 | Path registries exclude data from canonical hashes and keep modify/delete branch additions | Unit | `.bkit/core/engine/commands/workflow/branches.test.ts` | 7 |
 | Merge mapping is line-preserving and deterministic, including collision stragglers and crash recovery | Unit | `.bkit/core/engine/ledgers/migrate.test.ts` | 8 |
 | Shared write-lock primitives enforce bounded refusal without writes, live/unknown-owner protection, nested ownership and stale-token publication/release refusal against real files/processes | Unit | `.bkit/core/engine/ledgers/brain.test.ts` | 8 |
 | Upgrade/check dry run, stub-or-delete, one-way migration and partial-state diagnostics exercise the actual install path | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 9 |
 | Source cleanup requires fresh explicit maintenance confirmation; absent confirmation, generic auto-apply and active Git operations preserve source bytes | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 9 |
-| Brain append/list/check/compact and old-name refusal reach the real CLI and files | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 10 |
+| Brain append/list/get/check/compact, summary projection, exact-key detail/error handling and full machine exports reach the real CLI | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 10 |
 | Stats/roadmap full output and reader-kind parity survive the merge and kind transitions | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 11 |
 | No live engine, workflow bash or template reader retains a forbidden old-path read | Unit | `.bkit/core/engine/audits/repo/ledger-integrity.test.ts` | 12 |
 | Path normalization/ranking and capped pathless selection are deterministic | Unit | `.bkit/core/engine/ledgers/brain.test.ts` | 13 |
-| Context reserves the pathless budget, prints dropped keys/tokens, and shares best-effort recall across worktrees | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 14 |
-| Five host renders deliver context to no-shell subagents and remove whole-ledger read instructions | Unit | `.bkit/core/engine/audits/repo/ledger-integrity.test.ts` | 15 |
-| Same three tasks have lower after-read character/4 estimates | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 16 |
-| Search keeps current winners, kind/all filtering, ledgerScan ranking and top-40 notice, and recalls returned keys | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 17 |
-| Plan/ship search readers preserve per-kind context and output artifact contracts | Unit | `.bkit/core/engine/audits/repo/ledger-integrity.test.ts` | 18 |
+| Context reserves pathless preview budget; only complete get results share best-effort recalls across worktrees | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 14 |
+| Five host renders enforce summary selection and full-detail handoffs before edits, including resume/remediation | Unit | `.bkit/core/engine/audits/repo/ledger-integrity.test.ts` | 15 |
+| Three tasks count previews, handoffs and details with required-key coverage and both baselines | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 16 |
+| Search matches full text then returns bounded previews, keeps ranking/top-40, records no recalls and measures total retrieval cost | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 17 |
+| Plan/ship preserve candidate artifacts and selected full-entry evidence through resume | Unit | `.bkit/core/engine/audits/repo/ledger-integrity.test.ts` | 18 |
 | Proposal rank, maximum recall date, deterministic ids and stale/applied skip converge under permutations | Unit | `.bkit/core/engine/ledgers/telemetry.test.ts` | 19 |
-| Settings default/validation, 180-day fade and 90-day recall boundaries, recall rename and rejection pruning | Unit | `.bkit/core/engine/ledgers/brain.test.ts`, `.bkit/core/engine/shared/settings.test.ts` | 20 |
-| Update cleanup and common locked publication retain real filesystem data and produce clustered packets | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 21 |
+| Settings, 180-day fade and 90-day recall boundaries, get-only recall, recall rename and rejection pruning | Unit | `.bkit/core/engine/ledgers/brain.test.ts`, `.bkit/core/engine/shared/settings.test.ts` | 20 |
+| Update cleanup and locked publication retain data and produce clustered preview indexes with full-entry artifacts, without usage recalls | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 21 |
 | Apply/approve/reject, report freshness/undo and headless restrictions protect the real brain | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 22 |
 | Counters, stale-report checks, report provenance and stdout/stderr separation follow the contract | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 23 |
-| Unified updater/procedure renders cover all inference types and retirement removes four obsolete agents | Unit | `.bkit/core/engine/audits/repo/ledger-integrity.test.ts` | 24 |
+| Unified updater/procedure renders cover inference and per-entry summary quality checks; retirement removes four obsolete agents | Unit | `.bkit/core/engine/audits/repo/ledger-integrity.test.ts` | 24 |
 | Scheduled template is opt-in, issue-less, headless, uses existing secrets, retries pushes once and fails with run id | Unit | `.bkit/core/engine/audits/templates/brain-schedule.test.ts` | 25 |
 | Disposable-repository scheduled/issue-less execution boots a configured provider and produces an actual run URL plus cleanup/report-only commit | @live | `.github/workflows/bkit-cloud.yml` | 25 |
 | qmd export uses shipped current reads, preserves row identity/metadata, prunes old exports and ignores generated files | Integration | `.bkit/core/engine/audits/templates/qmd-export.integration.test.ts` | 26 |
 | Optional pinned qmd/model returns the seeded row key from its real semantic index and leaves generated data ignored | @live | `.bkit/templates/scripts/qmd/bkit-qmd-smoke.mjs` | 26 |
 | Fresh consumer install/upgrade across five hosts retains data, generates expected mirrors and passes check | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 27 |
+| Writer/update summary accuracy and full-detail-before-edit behavior have recorded host traces | Smoke | Existing task/context artifacts and host action traces | 27 |
 | Build, test inventories, source mirrors, command docs and compiled dist agree | Static | `docs/testing.md`, `dist/` | 28 |
 | retains divergent equal-version content until exact-set resolution | Unit | `.bkit/core/engine/ledgers/brain.test.ts` | 5 |
 | preserves divergent same-version rows through repeated full-content drains | Unit | `.bkit/core/engine/ledgers/migrate.test.ts` | 8 |
@@ -149,7 +153,7 @@ Each row names the task that lands its test. `Unit` includes a single module aga
 | Change / name | Contract and impact |
 | --- | --- |
 | `docs/brain.jsonl` | Replaces four per-kind files; schema stays 3, identity becomes `(repo, key)` for six brain kinds only. Older engines see no rows after migration and must upgrade forward or revert the complete migration commit. |
-| `bkit brain append\|check\|compact\|context\|list\|search\|undo\|update` | Owns brain-row operations. After migration old brain-kind `bkit ledgers append --ledger=…` calls exit 8 with the replacement command; bookkeeping, friction and stats stay under `ledgers`. |
+| `bkit brain append\|check\|compact\|context\|get\|list\|search\|undo\|update` | Owns brain-row operations. After migration old brain-kind `bkit ledgers append --ledger=…` calls exit 8 with the replacement command; bookkeeping, friction and stats stay under `ledgers`. |
 | `links.supersedes`, `links.dependsOn`, `links.relatedTo` | Typed key arrays live beside flat per-kind fields. Exact-key references remain and backfill only `relatedTo`. |
 | `assumption`, `summary`, `FADED`, `proposal`, `lastRecalled` | Adds required falsifiers for assumptions, capped summary bodies, terminal fade, proposal provenance/rank and cross-row maximum recall. Normal append accepts only the three settled kind transitions; dedicated validated undo has the narrow historical restore exception. |
 | `.bkit/brain-rejections.jsonl`, `.bkit/brain.md` | Rejections are a separate union-merged process ledger. The procedure is a shared chat/scheduled entry point, not another phase workflow. |
@@ -157,7 +161,7 @@ Each row names the task that lands its test. `Unit` includes a single module aga
 | `tmp/bkit-brain/`, `.qmd/` | Derived local recall/packets/export/index files are gitignored; resolve shared temporary state through the common Git directory. |
 | Opt-in `bkit-brain-update` job | Weekly Monday 03:00 UTC schedule and issue-less dispatch use the existing cloud credentials. It commits cleanup and reports to `dev`, holds inferred changes, and retries a rejected push once after merging `origin/dev`. |
 
-The design owner settled these names and the one-way migration. Confirmation boxes remain for the owner; this plan does not check them on their behalf.
+The owner approved summary-first discovery for search, browsing and pre-code context, with relevant full entries read before editing. The design defines the new `get --keys` detail contract and machine-only `list --full` projection. Other names and the one-way migration retain their existing decisions; confirmation boxes are not checked on the owner's behalf.
 
 ### 👤 ✅ Human Confirmation
 
@@ -167,6 +171,7 @@ The design owner settled these names and the one-way migration. Confirmation box
 
 **Open questions:** None. The design records the owner’s answers, including capped pathless context, relatedTo backfill, flat fields, old-name refusal, conditional stubs, direct scheduled cleanup commits, the procedure document, `.qmd/` ignores, and the 180/90-day fade/recall windows.
 
+- **Assumption:** summaries expose the conditions needed to judge relevance → vague or uncertain matches must be fetched, and behavioral scenarios verify full-entry reads before edits. Preview size alone cannot establish correctness or savings.
 - **Assumption:** Node >=24 and the current Node-only term-overlap search remain sufficient → an external index in core would break the zero-dependency runtime and the agreed search contract.
 - **Assumption:** The branch enumeration can see only local refs, fetched remote refs and local worktrees → another person’s unpushed branch may later cause a modify/delete conflict; preserving its file is necessary to retain its rows.
 - **Assumption:** Recall writers open append descriptors only after acquiring the common write lock, and roll-up renames under that same lock → bypassing the protocol could lose recalls and cause an earlier fade proposal. Bounded acquisition or filesystem failure remains best-effort with the documented warning.
@@ -265,6 +270,16 @@ Serena semantic reads used the active main-project language server; worktree-loc
 
 No service database is involved. The canonical row schema lives in `.bkit/core/.bkit/jsonl.md`; `docs/data-schema.md` remains a production database catalog and receives only ledger-reference wording where applicable.
 
+### Summary-first retrieval contract
+
+Implement the design's § Summary-first read contract. `context`, `search` and default `list` return only `key`, `summary`, `kind`, `status`, `references`, `version` and `detailTokensEst`, plus bounded-output accounting and fetch guidance. Search ranks full canonical text before projecting results. `get --keys=<comma-list|-> [--all] [--json]` returns complete selected current entries and their versions, naming unresolved keys with exit 1. Stdin is a JSON key array. Default get excludes terminal entries; explicit `--all` permits historical investigation. Conflicts are unresolved, never silently chosen.
+
+The reserved 2,000-token pathless context contains previews too. Every agent selects relevant keys and reads complete details before editing. Fetch uncertain matches; resolve omitted, missing, changed or host-truncated relevant content before dependent work. There is no pre-code full-body exception. Machine consumers may use `readBrain` or `list --full` without exposing full discovery bodies to an agent.
+
+Only fully delivered `get` rows write usage recalls. Preview, machine export and maintenance reads do not. The agent records selected/fetched versions and pending keys in existing context artifacts; delivery is a measurable proxy, not proof of comprehension. No-shell agents use preview dispatch → selected-key handoff → orchestrator get → resumed/redispatched read → edit. Cover resume, no-plan conversion, per-group execution and remediation, not only the initial dispatch.
+
+Authors compare summaries with full content before writing, preserving conditions, consequences and exceptions. Example: `Retry API calls only when idempotency prevents duplicate effects`. Mechanical validation covers nonblank one-line shape, while author/reviewer checks establish accuracy. Maintenance reviews each entry's summary and proposes fixes through existing approvals, separately from the `kind: summary` cluster records. Migration keeps deterministic fallback and existing source content.
+
 ### Data Schema Usage
 
 - **Input:** schema-3 and historical rows in the four old ledgers, the brain, rejection rows, `.bkit/issues.jsonl` feature data, and temporary recall lines. Old source lines remain read-tolerant.
@@ -273,7 +288,7 @@ No service database is involved. The canonical row schema lives in `.bkit/core/.
 ### Data Schema Changes
 
 - **Brain kinds:** `knowledge`, `decision`, `deferral`, `failure`, `assumption`, `summary`; identity `(repo, key)`. Other kinds retain their existing identity and writer rules.
-- **Envelope:** schema remains 3; default per-kind `status`; mandatory one-line `summary`, filled from the first sentence of `description` capped at 200 characters when absent; optional typed `links`, day-grain `lastRecalled`, and `proposal: {id, expectedVersion, contentBase, targets}, engine-only undo, exact-set resolves and terminal WITHDRAWN`. Per-kind fields remain flat.
+- **Envelope:** schema remains 3; default per-kind `status`; mandatory nonblank one-line `summary`, intentionally authored and checked against the full entry on creation/update. The missing-value fallback stays the first description sentence capped at 200 characters for compatibility; it is not a semantic quality check. Read projections add computed `version` and `detailTokensEst` without persisting them; optional typed `links`, day-grain `lastRecalled`, and `proposal: {id, expectedVersion, contentBase, targets}, engine-only undo, exact-set resolves and terminal WITHDRAWN`. Per-kind fields remain flat.
 - **Terminals:** `SUPERSEDED`, `CLOSED`, `FALSIFIED`, `FADED`, undo-only `WITHDRAWN`. `TRIAGED` and unknown free-string failure statuses remain current. Preserve each kind’s vocabulary from the design.
 - **Assumptions/summaries:** assumptions require a concrete `falsifiedBy`, accept `validUntil`; summaries require `links.relatedTo` and description no longer than 2,000 characters.
 - **Transitions:** failure → knowledge drops severity/category; needs-decision deferral → decision drops reason/type/severity/category; active assumption → knowledge drops falsifiedBy/validUntil. Each produces ACTIVE. All other normal cross-kind transitions refuse atomically; dedicated validated undo alone may restore a verified prior kind.
@@ -358,12 +373,12 @@ None — local JSONL upgrade only. Extend the existing install migration, regist
 #### [MODIFY] `.bkit/core/engine/commands/workflow/ledgers.ts`
 
 - **Existence Check:** current append/check/bookkeeping wrapper inspected.
-- Keep bookkeeping separate; the sibling brain command module owns the new noun and imports reusable handlers without introducing command cycles. Plain check is advisory exit 0; plan-named missing-row check preserves its current nonzero exit. List sorts newest first and filters kinds/current. Context and search share recall writes. Update owns deterministic cleanup, reports, approval/rejection validation and counters.
+- Keep bookkeeping separate; the sibling brain command module owns the new noun and imports reusable handlers without introducing command cycles. Plain check is advisory exit 0; plan-named missing-row check preserves its current nonzero exit. List sorts newest first and filters kinds/current, returning previews unless a deterministic caller requests `--full`. Context and search return previews only. Key-selective `get` returns full rows and alone records delivery recalls. Update owns deterministic cleanup, reports, approval/rejection validation and counters.
 
 #### [NEW] `.bkit/core/engine/commands/workflow/brain.ts`
 
 - **Reuse Check:** reason (b), the existing ledgers wrapper cannot import context safely because context reaches steps/tests and steps reads ledgers constants during initialization.
-- Own all eight brain verb specifications and handlers; reuse existing pure behavior without a back-edge and verify built distribution startup as soon as imports are introduced.
+- Own all nine brain verb specifications and handlers; reuse existing pure behavior without a back-edge and verify built distribution startup as soon as imports are introduced.
 
 #### [MODIFY] `.bkit/core/engine/commands/registry.ts`
 
@@ -457,7 +472,7 @@ Edit canonical payload sources and regenerate their managed mirrors. The final d
 | Doc | Change required |
 | --- | --- |
 | `.bkit/core/.bkit/jsonl.md` → `.bkit/jsonl.md` | Envelope, six kinds, transition/writer tables, proposal/recall fold, rejection rows, brain write idiom and local-state contract. |
-| `.bkit/core/.bkit/cli.md` → `.bkit/cli.md` | Regenerate all eight brain verb specs, including undo, exits, mode/output and old-name refusal. |
+| `.bkit/core/.bkit/cli.md` → `.bkit/cli.md` | Regenerate all nine brain verb specs, including get and undo, exits, preview/detail output and old-name refusal. |
 | `.bkit/core/.bkit/install.md` → `.bkit/install.md` | Explain the per-invocation maintenance acknowledgement, source-retaining default and safe cleanup retry for install/upgrade. |
 | `.bkit/core/.bkit/workflows.md` → `.bkit/workflows.md` | Kind-filtered reads, context dispatch and search calls; no sixth phase. |
 | `.bkit/core/.bkit/prompts.md` → `.bkit/prompts.md` | Unified updater description/tools/model columns and retirement of four rows. |
@@ -516,7 +531,7 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
   - **READ:** `.bkit/core/engine/commands/stats.ts`: capture the full report, not selected counts.
   - **READ:** `.bkit/core/engine/commands/workflow/roadmap.ts`: preserve the complete render including consumer notes.
   - **DEPENDS ON:** 1
-  - **DONE WHEN:** the fixture has stable expected full outputs and all three before estimates from current knowledge-row characters/4, and its baseline characterization passes through the actual CLI with explicit module flags and requireTsx.
+  - **DONE WHEN:** the fixture has stable expected full outputs and all three before estimates from current knowledge-row characters/4, and its baseline characterization passes through the actual CLI with explicit module flags and requireTsx. Record fixture relevance keys before implementation, complete full-row path-context baseline as well as whole-knowledge baseline, and broad/pathless/description-only search queries with expected matches. Include a vague summary, a crucial condition only in details, changed/terminal/missing/conflicting keys, a large entry and an over-budget selection.
   - **TEST FIRST:** n/a — characterization fixture and measurement only; no behavior changes.
 
 <!-- bkit:task 2 end -->
@@ -528,6 +543,7 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
   - **UPDATE:** `.bkit/core/engine/ledgers/telemetry.ts`: interim APPEND_LEDGERS brain entry for assumption/summary only, rejections separate and matching KIND_WRITERS/doc-table entries in this task, existing kinds in their unique old entries until Task 10; six brain kinds, `(repo,key)` identity, unchanged non-brain identity, default statuses, summary fill, current/terminal semantics and lineage across kind changes.
   - **UPDATE:** `.bkit/core/engine/ledgers/telemetry.test.ts`: new codec cases and existing expectations affected by the envelope.
   - **UPDATE:** `.bkit/core/.bkit/jsonl.md`: document the envelope and status defaults beside the codec change.
+  - **UPDATE:** `.bkit/core/.bkit/jsonl.md`: distinguish summary authoring/accuracy from deterministic missing-value fill; preserve historical supplied summaries and keep preview metadata out of persisted rows.
   - **DEPENDS ON:** 2
   - **DONE WHEN:** typecheck and existing exactly-one-ledger-per-kind and writer parity tests pass at this boundary; brain entries fold across kinds while feature/friction/chat/run remain separate; absent defaults normalize consistently; unknown failure statuses and TRIAGED remain current; new kinds validate and all affected codec tests pass; interim writer-table entries required by AppendKind land with the registry, with Task 4 tightening transition validation.
   - **TEST FIRST:**
@@ -544,7 +560,7 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
   - **UPDATE:** `.bkit/core/engine/ledgers/telemetry.test.ts`: table-driven refusal and allowed-transition cases, preserving no-write-on-any-invalid-row.
   - **UPDATE:** `.bkit/core/.bkit/jsonl.md`: writer and transition tables with parity tests.
   - **DEPENDS ON:** 3
-  - **DONE WHEN:** only the three design transitions succeed with the correct ACTIVE status and removed fields; invalid batch rows return exit 8 with unchanged file bytes; writer-table parity covers assumption/summary/rejection and existing roles.
+  - **DONE WHEN:** only the three design transitions succeed with the correct ACTIVE status and removed fields; invalid batch rows return exit 8 with unchanged file bytes; writer-table parity covers assumption/summary/rejection and existing roles. Verify that new writes have nonblank one-line summaries after normalization; author prompts compare meaning with full content. A shape check cannot certify accuracy. Keep migration read tolerance and the separate 2,000-character description limit for `kind: summary`.
   - **TEST FIRST:**
     - `.bkit/core/engine/ledgers/telemetry.test.ts` `allows only the three documented brain kind transitions` fails on unsupported transitions succeeding or required old fields remaining.
     - `.bkit/core/engine/ledgers/telemetry.test.ts` `refuses malformed links assumptions and oversized summaries atomically` fails on an invalid row being appended or a valid sibling being partially written.
@@ -562,6 +578,8 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
 - [ ] **TASK 5:** Introduce the brain path constants and tolerant kind-filtered read helper.
   - **UPDATE:** `.bkit/core/engine/ledgers/brain.ts`: canonical path constants and readBrain using the existing normalizer/fold over brain plus stubs, source counts and once-per-process warnings.
   - **CREATE:** `.bkit/core/engine/ledgers/brain.test.ts`: old-shape, duplicate, missing-file, kind-filter and malformed-source cases.
+  - **UPDATE:** `.bkit/core/engine/ledgers/brain.ts`: a shared preview projection from complete canonical rows, exact-key selection preserving request order, computed version/detail cost, and named missing/terminal/conflict outcomes. Projection never mutates source rows or leaks description/rationale/remediation fields.
+  - **UPDATE:** `.bkit/core/engine/ledgers/brain.test.ts`: test projection fields, source immutability, ordered key selection, versions and unresolved outcomes.
   - **DEPENDS ON:** 3, 4
   - **DONE WHEN:** an absent stub is harmless, only equivalent full-content copies are deduplicated; divergent variants are retained and diagnosed, a new stub row stays visible, kinds/current select only the intended winners, and stderr counts each degraded source once without altering source files.
   - **TEST FIRST:**
@@ -569,6 +587,7 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
     - `.bkit/core/engine/ledgers/brain.test.ts` `filters the winner kind and terminal state` fails on mixed-kind rows leaking into a per-kind view.
     - `.bkit/core/engine/ledgers/brain.test.ts` `reports malformed and waiting source lines once without writes` fails on missing diagnostics, repeated warnings or changed source bytes.
     - `.bkit/core/engine/ledgers/brain.test.ts` `retains divergent equal-version content until exact-set resolution` fails on a distinct variant disappearing or incomplete/forged resolution succeeding.
+    - `.bkit/core/engine/ledgers/brain.test.ts` `projects summaries and selects ordered complete details without mutating rows` fails on leaked full fields, incorrect versions/cost estimates, changed source content or unresolved keys being silently omitted.
 
 <!-- bkit:task 5 end -->
 
@@ -661,6 +680,7 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
   - **UPDATE:** `.bkit/core/engine/commands/workflow/brain.integration.test.ts`: command and actual file effects.
   - **UPDATE:** `.bkit/core/.bkit/cli.md`: basic verb generated specifications.
   - **UPDATE:** `docs/observability.md`: basic brain diagnostic/append/check lines.
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/brain.ts`: implement get with keys/all/json flags per the retrieval contract; default list emits previews and list --full preserves deterministic complete JSON-line exports. Get deduplicates keys, returns whole rows/current versions, reports each unresolved key and exits 1 if any are unresolved. No row-body truncation; callers batch keys. Usage-recall wiring lands in Task 14.
   - **DEPENDS ON:** 2, 9
   - **DONE WHEN:** valid rows append atomically; terminal writes print at most 20 dependents plus the remainder/check hint; advisory check exits 0 with grouped fixes/source counts; plan check preserves EXIT_ROWS_MISSING; list filters/sorts and compact dry run is read-only; migrated old-name appends exit 8 with unchanged files and exact replacement guidance.
   - **TEST FIRST:**
@@ -670,6 +690,8 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
     - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `refuses migrated old ledger names with the brain replacement command` fails on an old-path row being written or missing exit 8 guidance.
     - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `serializes append compact and migration with safe bounded lock ownership` fails on a live owner eviction or concurrent append loss.
     - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `starts built brain help and verbs without initialization cycles` fails on a built CLI crash before dispatch.
+    - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `lists previews and fetches complete canonical entries by selected keys` fails on preview body leakage, wrong request ordering, silent missing/terminal/conflict keys, or truncated detail bodies.
+    - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `keeps full machine exports independent of preview output` fails on summary projection entering a deterministic export or exported reads mutating recall state.
 
 <!-- bkit:task 10 end -->
 
@@ -689,7 +711,7 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
   - **UPDATE:** `.bkit/core/engine/commands/workflow/brain.integration.test.ts`: parity and transition-history cases.
   - **UPDATE:** `scripts/harvest/ledgers.test.ts`: affected mixed-layout count cases.
   - **DEPENDS ON:** 2, 10
-  - **DONE WHEN:** before/after whole stats/roadmap outputs and fold winners match on the baseline fixture; every per-kind consumer sees the same former kinds; transitions update kind counts without erasing reason verdicts; harvest preserves source bytes and copies no brain prose; affected existing tests pass.
+  - **DONE WHEN:** before/after whole stats/roadmap outputs and fold winners match on the baseline fixture; every per-kind consumer sees the same former kinds; transitions update kind counts without erasing reason verdicts; harvest preserves source bytes and copies no brain prose; affected existing tests pass. Verify that deterministic engine/statistics/roadmap readers keep full `readBrain` data. Any CLI-based machine consumer explicitly uses `list --full`; preview defaults cannot alter its fields or counts.
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `preserves complete stats roadmap and per-kind reader outputs after the merge` fails on any full-output change or a formerly visible row disappearing.
     - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `counts winner kinds without erasing the last deferral reason` fails on a converted entry losing its adjudication history.
@@ -710,6 +732,9 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
   - **UPDATE:** `.bkit/core/docs/templates/bkit-audit-deferrals.md`: current deferral list through the command.
   - **UPDATE:** `scripts/readme/readme-art.mjs`: ledger-name copy, with generated SVG refresh.
   - **UPDATE:** `docs/architecture.md`: local brain module/data locations.
+  - **UPDATE:** `.bkit/instructions.md`: shared ledger-writing clauses require an informative summary on creation, comparison with the full entry before append and revision on substantive updates. Inventory and synchronize all carrying writer prompts and examples.
+  - **UPDATE:** `.bkit/core/.bkit/jsonl.md`: document summary quality checks on creation and substantive updates, separately from the missing-value fallback.
+  - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-verify.md`: check full relevant-entry reads before edits and preserve pending-read evidence. Audit interim agent kind-based reads for list previews followed by selected-key get, and machine readers for explicit full output.
   - **DEPENDS ON:** 11
   - **DONE WHEN:** bulk inventory covers all old-path/name mentions under core/shared/templates and named external scripts/assets; every reading instruction is reviewed for kind filters; source indexes change beside their payload; four old updaters temporarily use brain views until Task 24; the widened audit passes with no old-path exception outside brain.ts.
   - **TEST FIRST:**
@@ -728,7 +753,7 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
   - **UPDATE:** `.bkit/core/engine/ledgers/brain.ts`: normalization, exact/ancestor ranking, kind order, timestamp order and capped pathless bundle.
   - **UPDATE:** `.bkit/core/engine/ledgers/brain.test.ts`: table-driven normalization and path boundary cases.
   - **DEPENDS ON:** 3, 5, 12
-  - **DONE WHEN:** ./, trailing slash, :line and section qualifiers normalize; folder ancestry respects path segments; exact file outranks near/far folder, then failure/knowledge/assumption/decision/deferral/summary and newest; only pathless current summary/knowledge/assumption rows enter the 2,000-token bundle.
+  - **DONE WHEN:** ./, trailing slash, :line and section qualifiers normalize; folder ancestry respects path segments; exact file outranks near/far folder, then failure/knowledge/assumption/decision/deferral/summary and newest; only previews of pathless current summary/knowledge/assumption rows enter the 2,000-token bundle; serialize the shared projection before budget accounting.
   - **TEST FIRST:**
     - `.bkit/core/engine/ledgers/brain.test.ts` `normalizes references and matches only files or ancestor folders` fails on valid qualified paths being missed or sibling prefixes matching.
     - `.bkit/core/engine/ledgers/brain.test.ts` `ranks exact nearer kind and newest matches deterministically` fails on an older broad match outranking the relevant file row.
@@ -738,23 +763,23 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
 
 <!-- bkit:task 14 start -->
 
-- [ ] **TASK 14:** Wire context output, clamp reservation and shared best-effort recalls.
+- [ ] **TASK 14:** Wire summary context, clamp reservation and get-only best-effort recalls.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/brain.ts`: context files/list/stdin and JSON modes.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/context.ts`: reuse ledger clamp/accounting with an explicit reserved prefix budget.
-  - **UPDATE:** `.bkit/core/engine/ledgers/brain.ts`: resolve shared tmp via common Git directory and append returned-key recalls.
+  - **UPDATE:** `.bkit/core/engine/ledgers/brain.ts`: resolve shared tmp via common Git directory and append recalls for fully delivered get keys only.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/brain.integration.test.ts`: real output/recall file checks.
   - **DEPENDS ON:** 2, 3, 5, 10, 13
-  - **DONE WHEN:** no ledgers-to-context/tests/steps import cycle exists; build then execute node dist/cli.js help and the introduced brain verb in this group; recall opens append descriptors only after obtaining the common lock; always-loaded rows survive the 97-row large selection before path rows; dropped keys and not-read/search hints are explicit; tokensEst uses characters/4; context from two worktrees appends to one shared log; failed recall writes warn and exit 0.
+  - **DONE WHEN:** no ledgers-to-context/tests/steps import cycle exists; build then execute node dist/cli.js help and the introduced brain verb in this group; recall opens append descriptors only after obtaining the common lock; reserved pathless previews survive the 97-row selection before path previews; dropped pathless/path keys and fetch hints are explicit; tokensEst uses serialized characters/4; context/list never append recalls; get from two worktrees appends complete returned keys to one shared log; failed recall writes warn without failing otherwise resolved detail reads.
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `preserves the reserved always-loaded prefix under a large context clamp` fails on the cap cutting any eligible reserved row or omitting dropped-key notice.
-    - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `records only returned keys in a shared worktree recall log` fails on separate disposable logs or recalls for dropped rows.
-    - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `prints tokens and succeeds with a warning when recall is unwritable` fails on missing read-cost output or recall failure rejecting a valid read.
+    - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `records only complete get results in a shared worktree recall log` fails on context/list previews refreshing recalls, unresolved get keys being recalled, or separate disposable worktree logs.
+    - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `prints tokens and succeeds with a warning when get recall is unwritable` fails on missing preview/detail cost accounting or recall failure rejecting resolved detail reads.
 
 <!-- bkit:task 14 end -->
 
 <!-- bkit:task 15 start -->
 
-- [ ] **TASK 15:** Switch rules/prompts to context and inject rows for no-shell agents.
+- [ ] **TASK 15:** Switch all pre-code reads to previews, selected details and read-before-edit handoffs.
   - **UPDATE:** `.bkit/instructions.md`: canonical Check gotchas first clause with file-scoped context.
   - **UPDATE:** `.bkit/core/.agents/rules.md`: synchronized context instruction.
   - **UPDATE:** `.bkit/core/.agents/docs.md`: context as the brain entry point.
@@ -762,21 +787,22 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: orchestrator context before execute/verification dispatch as required by host tools.
   - **UPDATE:** `.bkit/core/workflows/bkit-debug.md`: context before diagnostic dispatch.
   - **UPDATE:** `.bkit/core/engine/audits/repo/ledger-integrity.test.ts`: no-whole-ledger and five-host no-shell checks.
+  - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-verify.md`: inspect pending-read manifests and full-entry evidence before accepting edits. All three workflow updates above and their dispatched prompts require full relevant reads, fetch vague/uncertain previews, and refresh on changed task files or unavailable resume evidence. Apply the same ordering to no-plan conversion, per-group execution and remediation.
   - **DEPENDS ON:** 14
-  - **DONE WHEN:** shared sync covers every old gotcha clause, affected prompt sources receive context or command access, five host renders deliver the same selected rows, no no-shell agent is told to execute an unavailable command, and no shipped rule/prompt/index instructs a whole-ledger read.
+  - **DONE WHEN:** shared sync covers every old gotcha clause, affected prompt sources receive context or command access, five host renders deliver the same previews then selected full entries, no no-shell agent is told to execute an unavailable command, no edit precedes resolution of relevant detail requests, and no rule/prompt/index permits a whole-ledger or summary-only substitute for the required read. Verify that no-shell dispatch first requests selection only; selected keys return to the orchestrator, get runs, and the worker resumes or is redispatched with full entries and versions before edits. Existing context artifacts carry selected/fetched/pending keys and detail paths. Unit audits check five-host prompt wiring; actual agent behavior is exercised in Task 27.
   - **TEST FIRST:**
-    - `.bkit/core/engine/audits/repo/ledger-integrity.test.ts` `delivers file context to every host without whole-ledger read instructions` fails on a raw full-ledger directive or a no-shell dispatch lacking injected rows.
+    - `.bkit/core/engine/audits/repo/ledger-integrity.test.ts` `delivers summary selection and full detail handoffs before edits on every host` fails on a raw whole-ledger directive, a full-body discovery bypass, missing selected-key response handling or a no-shell edit before detail delivery.
 
 <!-- bkit:task 15 end -->
 
 <!-- bkit:task 16 start -->
 
-- [ ] **TASK 16:** Measure after-read cost on the exact three baseline tasks.
-  - **UPDATE:** `.bkit/core/engine/commands/workflow/brain.integration.test.ts`: run context for the file sets and compare with the recorded Task 2 estimates.
+- [ ] **TASK 16:** Measure complete summary-to-detail pre-code cost on the three baseline tasks.
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/brain.integration.test.ts`: run context then get for the fixture's predeclared relevant keys; count preview, selection/handoff and detail outputs, retries and repeated reads against both Task 2 baselines.
   - **DEPENDS ON:** 2, 15
-  - **DONE WHEN:** each recorded task costs fewer characters/4 after context than the original current-knowledge read; task logs carry source file sets, both figures, cap and dropped-row counts; the log re-evaluates the agreed cap against source figures and surfaces any unsupported trade-off to the owner without silently changing the cap or writing governance rows.
+  - **DONE WHEN:** each recorded task costs fewer characters/4 across its complete retrieval than the original whole-knowledge read, with every required key fully read; separately report the incremental change against full-row path context and any extra calls/latency; task logs carry file sets, expected/fetched keys, all costs, cap and dropped counts; the log re-evaluates the agreed cap against source figures and surfaces any unsupported trade-off to the owner without silently changing the cap or writing governance rows.
   - **TEST FIRST:**
-    - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `reduces pre-code read tokens on the three recorded file tasks` fails on any after estimate meeting or exceeding its preserved before estimate.
+    - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `counts previews handoffs and complete details on the three file tasks` fails on omitted detail cost, a missing required key, or a total meeting/exceeding the whole-knowledge baseline. Report any regression against the tighter full-row context baseline rather than claiming an incremental saving.
 
 <!-- bkit:task 16 end -->
 <!-- bkit:group 4 end -->
@@ -788,15 +814,15 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
 <!-- bkit:task 17 start -->
 
 - [ ] **TASK 17:** Add keyword search over current kind-filtered fold winners.
-  - **UPDATE:** `.bkit/core/engine/commands/workflow/brain.ts`: search text/kind/all/json handler and recall writes.
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/brain.ts`: search text/kind/all/json handler: rank full rows, project results to previews, apply output budget and emit fetch guidance without recall writes.
   - **READ:** `.bkit/core/engine/commands/workflow/context.ts`: reuse ledgerScan unchanged for rank/top-40/notice.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/brain.integration.test.ts`: actual CLI search tests.
   - **DEPENDS ON:** 2, 10, 16
-  - **DONE WHEN:** no ledgers-to-context/tests/steps import cycle exists; build then execute node dist/cli.js help and the introduced brain verb in this group; recall opens append descriptors only after obtaining the common lock; search uses serialized winners rather than raw history; kind/current/all behavior and empty results match the contract, top-40 notice survives, and recalls contain only returned keys; no index or dependency is introduced.
+  - **DONE WHEN:** no ledgers-to-context/tests/steps import cycle exists; build then execute node dist/cli.js help and the introduced brain verb in this group; recall opens append descriptors only after obtaining the common lock; search uses serialized winners rather than raw history; kind/current/all behavior and empty results match the contract, top-40 ranking and truncation notice survive, description-only matches appear as summaries, and search writes no recalls; no index or dependency is introduced. After search exists, run the Task 2 broad/pathless and description-only queries through preview → get. Count total tokens, calls, latency and required-key coverage against the same full-row search results; report regressions. This search benchmark follows Task 16 and does not create a backward task dependency.
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `searches current winners with kind and all filters` fails on stale history appearing or a requested terminal row being absent under all.
     - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `preserves ledgerScan ranking and the forty-hit truncation notice` fails on changed rank semantics or an unmarked dropped result.
-    - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `recalls only search results and reports an empty query result honestly` fails on missing result recalls or a fabricated match.
+    - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `searches complete text but emits only previews without recalls` fails on a description-only match being missed, a description leaking into output, a preview updating recall, or a fabricated empty-result match.
 
 <!-- bkit:task 17 end -->
 
@@ -809,9 +835,9 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
   - **UPDATE:** `.bkit/core/.bkit/cli.md`: context/search specs.
   - **UPDATE:** `.bkit/core/engine/audits/repo/ledger-integrity.test.ts`: assert actual command/kind/artifact wiring rather than a magic sentence.
   - **DEPENDS ON:** 17
-  - **DONE WHEN:** both workflows get exactly the prior kind-specific current rows and write the same required related-artifact paths with clamp metadata; their gates and resume contracts remain valid.
+  - **DONE WHEN:** both workflows preserve the prior candidate key/rank set and required related-artifact paths with clamp metadata; artifacts contain previews plus selected/fetched/pending versions and linked full-detail artifacts. Reviewers read full relevant entries before findings or edits. Resume reuses valid full evidence or performs the selection/fetch handoff again; no gate treats a preview as a full read.
   - **TEST FIRST:**
-    - `.bkit/core/engine/audits/repo/ledger-integrity.test.ts` `preserves plan and ship related-context artifacts through kind-filtered brain search` fails on a wrong kind, missing artifact or discarded clamp record.
+    - `.bkit/core/engine/audits/repo/ledger-integrity.test.ts` `preserves candidate artifacts and selected full-entry evidence through search and resume` fails on wrong kinds/ranking, missing preview/detail paths, discarded clamp records or a reviewer proceeding with pending details.
 
 <!-- bkit:task 18 end -->
 
@@ -843,7 +869,7 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
   - **UPDATE:** `.bkit/core/engine/ledgers/brain.ts`: UTC-day recall rollup, strict-over-90-day write boundary, 180-day fade/no-current-inbound-link selection and void rejection pruning.
   - **UPDATE:** `.bkit/core/engine/ledgers/brain.test.ts`: exact boundary and concurrent recall-rename cases.
   - **DEPENDS ON:** 3, 5, 19
-  - **DONE WHEN:** settings obey the default and validate type; recently recalled/currently referenced rows never fade; recall metadata rewrites only past half-window; rename rollup leaves new appends in a fresh log; rejected ids persist until inputs change and void rows can be pruned without changing brain rows.
+  - **DONE WHEN:** settings obey the default and validate type; recently recalled/currently referenced rows never fade; recall metadata rewrites only past half-window; rename rollup leaves new appends in a fresh log; rejected ids persist until inputs change and void rows can be pruned without changing brain rows. Verify that preview-only discovery leaves an old row eligible for fading, a successful selected get refreshes it, and maintenance/export reads do not keep every row alive. Existing 180/90-day arithmetic and max recall fold remain unchanged.
   - **TEST FIRST:**
     - `.bkit/core/engine/shared/settings.test.ts` `defaults brain update approval to true and validates explicit booleans` fails on unapproved inference becoming the default or invalid config being accepted.
     - `.bkit/core/engine/ledgers/brain.test.ts` `uses exact recall fade and inbound-link boundaries` fails on early fades or unnecessary recall rewrites.
@@ -862,6 +888,7 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
   - **UPDATE:** `.bkit/core/engine/commands/workflow/brain.ts`: update handler coordinating stragglers, stub check, compact, recall rollup, rejections and packet writes; pass its per-invocation --confirm-writers-stopped acknowledgement through the same maintenance checks as install/upgrade.
   - **UPDATE:** `.bkit/core/engine/ledgers/brain.ts`: shared-root update paths, unseen archived assumption sections, path clusters and report destination.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/brain.integration.test.ts`: real files and coordinated subprocess/race fixtures.
+  - **UPDATE:** `.bkit/core/engine/ledgers/brain.ts`: update packets expose preview indexes and locally generated full-entry artifacts with version fingerprints. The maintenance agent opens the complete entries it reviews before proposing changes. Generating/reading maintenance packets does not record usage recalls. Preserve conflicts, terminal review targets and bounded cluster dispatch.
   - **DEPENDS ON:** 2, 3, 5, 10, 20
   - **DONE WHEN:** cleanup runs under either ask mode; stdout prints run/batches(cluster,packet)/report; each packet has findings, fades, relevant rows and unseen plan assumptions; all shared state survives worktree deletion; all writes hold the common lock from authoritative read through durable publication; bounded contention writes nothing; incompatible writers leave full sources intact.
   - **TEST FIRST:**
@@ -926,8 +953,10 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
   - **UPDATE:** `.bkit/core/.agents/docs.md`: phase-indexed procedure row.
   - **UPDATE:** `.bkit/core/engine/ledgers/telemetry.ts`: remove obsolete writer names and authorize the unified updater for the intended kinds.
   - **UPDATE:** `.bkit/core/engine/audits/repo/ledger-integrity.test.ts`: inference coverage, procedure/dispatch and retired-agent contracts.
+  - **UPDATE:** `.bkit/core/prompts/bkit-utility-update-brain.md`: review each entry's own summary against its full content on every maintenance pass. Fetch full targeted/supporting entries from indexed packet artifacts before judging them. Propose vague/inaccurate/stale-summary corrections through existing approvals, separately from rebuilding cluster kind: summary rows; never claim that presence or first-sentence fill proves quality.
+  - **UPDATE:** `.bkit/core/.bkit/brain.md`: document per-entry summary review and approval-controlled repair alongside the updater's cluster-summary work.
   - **DEPENDS ON:** 23
-  - **DONE WHEN:** every old per-kind responsibility and design inference type is assigned; one packet is dispatched per batch; >120,000-token dispatch halves that cluster’s next batch; the unified writer has Bash and all required host pins; old agents/callers disappear after regeneration; reports/approvals/undo use the engine’s exact data contracts; no inference runs inside a phase workflow.
+  - **DONE WHEN:** every old per-kind responsibility and design inference type is assigned; one packet is dispatched per batch; >120,000-token dispatch halves that cluster’s next batch; the unified writer has Bash and all required host pins; old agents/callers disappear after regeneration; reports/approvals/undo use the engine’s exact data contracts; no inference runs inside a phase workflow. Use authored scenarios for a creation, a changed condition and a legacy vague summary; assert the resulting summary retains the governing condition and matches the full entry. Unit audits verify guidance coverage; Task 27 records actual writer/updater behavior rather than treating string assertions as semantic proof.
   - **TEST FIRST:**
     - `.bkit/core/engine/audits/repo/ledger-integrity.test.ts` `renders the unified brain updater with every inferred action and no retired agent` fails on a missing inference type, model/tool row or surviving obsolete caller.
     - `.bkit/core/engine/audits/repo/ledger-integrity.test.ts` `follows printed brain batches with headless approval safety and adaptive sizing` fails on reconstructed batches, headless apply permission or missing oversized-cluster feedback.
@@ -954,13 +983,13 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
 <!-- bkit:task 26 start -->
 
 - [ ] **TASK 26:** Ship the optional qmd row exporter, configuration and real-model smoke recipe.
-  - **CREATE:** `.bkit/templates/scripts/qmd/bkit-qmd-export.mjs`: call the shipped current brain list, emit one safe markdown document per row with key/kind/status/links and prune stale derived exports.
+  - **CREATE:** `.bkit/templates/scripts/qmd/bkit-qmd-export.mjs`: call the shipped current brain list with --full for deterministic export, emit one safe markdown document per row with key/kind/status/links and prune stale derived exports.
   - **CREATE:** `.bkit/templates/.qmd/index.yml`: collection pointing at tmp/bkit-brain/qmd.
   - **CREATE:** `.bkit/templates/scripts/qmd/bkit-qmd-smoke.mjs`: standalone opt-in fixture/real-qmd query proving semantic retrieval returns a seeded brain row key.
   - **CREATE:** `.bkit/core/engine/audits/templates/qmd-export.integration.test.ts`: actual exporter against the actual local brain CLI in an isolated consumer.
   - **UPDATE:** `.bkit/core/.bkit/templates.md`: exact tested @tobilu/qmd version, copy/install/query steps, model-download cost, Homebrew SQLite note, unconditional .qmd/ ignore and tmp export ignore.
   - **DEPENDS ON:** 24
-  - **DONE WHEN:** current rows alone export with preserved metadata and traversal-safe stable document names; deleted/faded rows leave no stale document; derived files and qmd state are ignored even under git add -A; a scratch run of the pinned qmd/model smoke returns the seeded row key and leaves no binary tracked; installation remains off by default and adds no core dependency. Report a blocked optional binary/model run as incomplete, never as a core pass.
+  - **DONE WHEN:** current rows alone export with preserved metadata and traversal-safe stable document names; deleted/faded rows leave no stale document; derived files and qmd state are ignored even under git add -A; a scratch run of the pinned qmd/model smoke returns the seeded row key and leaves no binary tracked; installation remains off by default and adds no core dependency. Report a blocked optional binary/model run as incomplete, never as a core pass. Verify that qmd indexes complete canonical entries, not preview-only exports. Agent instructions use a result key to obtain the canonical preview and then selected get details before relying on the hit; model chunks never replace full relevant-entry reads. Exports record no usage recalls.
   - **TEST FIRST:**
     - `.bkit/core/engine/audits/templates/qmd-export.integration.test.ts` `exports current brain rows through the real CLI with intact metadata` fails on missing identity/links or terminal rows entering the collection.
     - `.bkit/core/engine/audits/templates/qmd-export.integration.test.ts` `prunes stale export documents and contains unsafe row keys` fails on stale search documents or writes outside the export root.
@@ -976,10 +1005,10 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
 <!-- bkit:task 27 start -->
 
 - [ ] **TASK 27:** Verify the integrated brain on fresh and pre-upgrade consumers for all five hosts.
-  - **UPDATE:** `.bkit/core/engine/commands/workflow/brain.integration.test.ts`: parameterize explicit Claude/Cursor/Codex/Antigravity/opencode install/upgrade module selections with populated old data and all eight brain verbs.
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/brain.integration.test.ts`: parameterize explicit Claude/Cursor/Codex/Antigravity/opencode install/upgrade module selections with populated old data and all nine brain verbs.
   - **READ:** `.bkit/core/engine/render/hosts.test.ts`: preserve provider model/tool transform behavior.
   - **DEPENDS ON:** 2, 25, 26
-  - **DONE WHEN:** real CLI scratch consumers retain source facts, pass repeated upgrade/check, generate callable host context/procedure/unified-updater payload and remove obsolete agents; graph, context, search and attended/headless update produce their observable ground-truth file changes and diagnostics; no command can succeed because its binary never started.
+  - **DONE WHEN:** real CLI scratch consumers retain source facts, pass repeated upgrade/check, generate callable host context/procedure/unified-updater payload and remove obsolete agents; graph, context, search and attended/headless update produce their observable ground-truth file changes and diagnostics; no command can succeed because its binary never started. Run bounded agent acceptance scenarios on each supported host: direct coding, no-shell reviewer/worker handoff, resume, no-plan conversion, later task-group execution and remediation. Save tool/action traces and existing context manifests proving summary selection precedes full relevant-entry reading and the first edit; include a hidden detail condition, vague summary, changed version and pending/missing key. Report unavailable host runs as unverified; rendered text alone is not behavior evidence. Run writer and updater scenarios from Task 24 with full-entry ground truth. Check summary accuracy on creation and changed content, preservation of qualifications, and approval-controlled repair of an existing weak summary. Do not substitute a keyword/string lint for semantic review.
   - **TEST FIRST:** n/a — final characterization/verification of behavior already implemented in earlier groups; retain the actual composed five-host test as verification without forcing a new red.
 
 <!-- bkit:task 27 end -->
@@ -1044,7 +1073,7 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
 > **Owner-run acceptance checks, advisory only.** Unticked boxes add no merge gate.
 
 - [ ] Upgrade an old consumer with an in-flight branch, read context for a real file, append a terminal premise and compare append/check dependents.
-- [ ] Compare the three task before/after estimates and inspect dropped-path notices while confirming the pathless bundle survives.
+- [ ] Compare complete preview/handoff/detail costs against both recorded baselines, inspect dropped-key notices, and confirm full relevant entries are read before edits on the recorded host traces.
 - [ ] Review an OPEN update report, approve one row and reject one, then verify repeat suppression and the recorded undo command.
 - [ ] Inspect Task 25's authorized disposable-repository schedule evidence: actual provider boot, CI run URL and cleanup/report-only commit; untested credential routes remain explicitly unverified.
 - [ ] Install qmd only if wanted, run the semantic smoke, and inspect Git status to confirm all exported/index/model files are ignored.

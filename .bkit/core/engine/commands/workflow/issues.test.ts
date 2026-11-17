@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
 import {
+  auditEntries,
   cutEarlier,
   headingAnchor,
   isGenerated,
@@ -30,6 +31,10 @@ function dir(bkit?: unknown) {
     fs.writeFileSync(path.join(cwd, "package.json"), JSON.stringify({ bkit }));
   return cwd;
 }
+
+/** A `--session-dir` flag naming a session folder in `cwd`'s private outbox: a workflow-run proof. */
+const proofFlag = (cwd: string, name = "s1") =>
+  `--session-dir=${path.join(cwd, ".git", "bkit-outbox", "sessions", name)}`;
 
 const write = (cwd: string, rel: string, body: string) => {
   fs.writeFileSync(path.join(cwd, rel), body);
@@ -440,7 +445,7 @@ describe("bkit issues comment", () => {
   // `body` is the comment with its marker unstamped; every call checks the stamp is
   // the hash of the body below it.
   const comment = async (cwd: string, ...args: string[]) => {
-    const r = await run(cwd, ["issues", "comment", ...args]);
+    const r = await run(cwd, ["issues", "comment", proofFlag(cwd), ...args]);
     const printed = r.json?.comment as string | undefined;
     const body = printed?.replace(/^(###### bkit:generated) [0-9a-f]{12}/, "$1");
     if (body !== undefined) expect(stampMarker(body)).toBe(printed);
@@ -696,6 +701,7 @@ describe("bkit issues comment", () => {
     const missing = await run(cwd, [
       "issues",
       "comment",
+      proofFlag(cwd),
       "--kind=failure",
       "--step-number=1",
       "--step-title=S",
@@ -779,7 +785,9 @@ describe("bkit issues comment", () => {
     [["--kind=audit"]],
     [["--kind=audit", "--audit-slug=Bad Slug"]],
   ])("refuses %j (exit 2)", async (args) => {
-    expect((await comment(dir(), ...args)).code).toBe(2);
+    const r = await comment(dir(), ...args);
+    expect(r.code).toBe(2);
+    expect(r.err).not.toContain("workflow steps only");
   });
 
   it("exits 3 when a body, section or stderr file is missing", async () => {
@@ -802,6 +810,8 @@ describe("issues reaches the tracker only through tracker.ts", () => {
 
 describe("bkit issues comment --post", () => {
   const STEP = ["issues", "comment", "--step-number=3", "--step-title=Plan Verify"];
+  // Every call here carries a session path under the repo's outbox, the workflow-run proof.
+  const proven = (cwd: string, argv: string[]) => run(cwd, [...argv, proofFlag(cwd)]);
   const saved = process.env.BKIT_LINEAR_API_KEY;
   beforeEach(() => {
     delete process.env.BKIT_LINEAR_API_KEY;
@@ -815,7 +825,7 @@ describe("bkit issues comment --post", () => {
   it("without --post prints no tracker key and calls nothing", async () => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
-    const r = await run(dir({ tracker: { default: "linear" } }), STEP);
+    const r = await proven(dir({ tracker: { default: "linear" } }), STEP);
     expect(r.code).toBe(0);
     expect(r.json).not.toHaveProperty("tracker");
     expect(fetch).not.toHaveBeenCalled();
@@ -823,11 +833,11 @@ describe("bkit issues comment --post", () => {
 
   it("skips tracker none and an issue-less FID", async () => {
     expect(
-      (await run(dir({ tracker: { default: "none" } }), [...STEP, "--post", "--fid=x"])).json
+      (await proven(dir({ tracker: { default: "none" } }), [...STEP, "--post", "--fid=x"])).json
         .tracker,
     ).toEqual({ skipped: "tracker-none" });
     expect(
-      (await run(dir({ tracker: { default: "linear" } }), [...STEP, "--post", "--fid=dev-ci-x"]))
+      (await proven(dir({ tracker: { default: "linear" } }), [...STEP, "--post", "--fid=dev-ci-x"]))
         .json.tracker,
     ).toEqual({ skipped: "no-issue" });
   });
@@ -836,16 +846,102 @@ describe("bkit issues comment --post", () => {
     process.env.BKIT_LINEAR_API_KEY = "k";
     const cwd = dir({ tracker: { default: "linear" } });
     const sent = linearCommentServer();
-    const first = await run(cwd, [...STEP, "--post", "--fid=eng-4-x"]);
+    const first = await proven(cwd, [...STEP, "--post", "--fid=eng-4-x"]);
     expect(first.json.tracker).toEqual({ done: true, action: "comment", url: "https://l/c" });
     expect(sent).toEqual([first.json.comment]);
-    const again = await run(cwd, [...STEP, "--post", "--fid=eng-4-x"]);
+    const again = await proven(cwd, [...STEP, "--post", "--fid=eng-4-x"]);
+    expect(again.json.tracker).toMatchObject({ done: true, deduped: true });
+    expect(sent).toHaveLength(1);
+  });
+
+  it("renders audit comments from validated result and preserves tracker adapters", async () => {
+    const AUDIT = ["issues", "comment", "--kind=audit", "--audit-slug=security"];
+    const result = {
+      slug: "security",
+      status: "COMPLETE",
+      report: "docs/audits/202610/security.md",
+      findings: [
+        { severity: "HIGH", title: "Token logged", location: "src/a.ts:10" },
+        { severity: "LOW", title: "Verbose error", location: "src/b.ts:2" },
+        { severity: "LOW", title: "Old cipher", location: "src/c.ts:7" },
+      ],
+      notChecked: [],
+    };
+    const cwd = dir({ tracker: { default: "none" } });
+    write(cwd, "a.md", "## Overview\n\nAll clear.\n");
+    write(cwd, "r.json", JSON.stringify(result));
+
+    // The result renders the very comment the hand-written flags render: same counts, same link.
+    const manual = await proven(cwd, [
+      ...AUDIT,
+      "--field=Status=COMPLETE",
+      "--field=Findings=CRITICAL 0 · HIGH 1 · MEDIUM 0 · LOW 2",
+      "--line=Report: docs/audits/202610/security.md",
+      "--body-file=a.md",
+    ]);
+    const derived = await proven(cwd, [...AUDIT, "--result-file=r.json", "--body-file=a.md"]);
+    expect(derived.code).toBe(0);
+    expect(derived.json.comment).toBe(manual.json.comment);
+
+    // A hand-written count beside the result could disagree with it, so it is refused.
+    const conflicting = await proven(cwd, [
+      ...AUDIT,
+      "--result-file=r.json",
+      "--field=Findings=CRITICAL 9 · HIGH 9 · MEDIUM 9 · LOW 9",
+    ]);
+    expect(conflicting.code).not.toBe(0);
+    expect(conflicting.json?.comment).toBeUndefined();
+
+    // An invalid result produces no comment at all, with or without --post, and calls no tracker.
+    process.env.BKIT_LINEAR_API_KEY = "k";
+    const sent = linearCommentServer();
+    const badDir = dir({ tracker: { default: "linear" } });
+    write(
+      badDir,
+      "bad.json",
+      JSON.stringify({
+        ...result,
+        findings: [{ severity: "SEVERE", title: "x", location: "a:1" }],
+      }),
+    );
+    const invalid = await proven(badDir, [
+      ...AUDIT,
+      "--result-file=bad.json",
+      "--post",
+      "--fid=eng-4-x",
+    ]);
+    expect([undefined, null]).toContain(invalid.json?.comment);
+    expect(sent).toEqual([]);
+
+    // Tracker none still skips, and Linear still posts the printed body once, deduplicated on a re-run.
+    expect(
+      (await proven(cwd, [...AUDIT, "--result-file=r.json", "--post", "--fid=x"])).json.tracker,
+    ).toEqual({ skipped: "tracker-none" });
+    const linear = dir({ tracker: { default: "linear" } });
+    write(linear, "r.json", JSON.stringify(result));
+    const first = await proven(linear, [
+      ...AUDIT,
+      "--result-file=r.json",
+      "--post",
+      "--fid=eng-4-x",
+    ]);
+    expect(first.json.tracker).toMatchObject({ done: true, action: "comment" });
+    expect(sent).toEqual([first.json.comment]);
+    expect(first.json.comment).toContain(
+      "Audit Summary: security - Status: COMPLETE - Findings: CRITICAL 0 · HIGH 1 · MEDIUM 0 · LOW 2",
+    );
+    const again = await proven(linear, [
+      ...AUDIT,
+      "--result-file=r.json",
+      "--post",
+      "--fid=eng-4-x",
+    ]);
     expect(again.json.tracker).toMatchObject({ done: true, deduped: true });
     expect(sent).toHaveLength(1);
   });
 
   it("a failed post exits 0 with done false and the reason", async () => {
-    const r = await run(dir({ tracker: { default: "linear" } }), [
+    const r = await proven(dir({ tracker: { default: "linear" } }), [
       ...STEP,
       "--post",
       "--issue=ENG-4",
@@ -856,7 +952,7 @@ describe("bkit issues comment --post", () => {
 
   it("prints commentFile: the multi-line comment byte-for-byte, for the MCP fallback", async () => {
     const cwd = dir({ tracker: { default: "linear" } });
-    const r = await run(cwd, [
+    const r = await proven(cwd, [
       ...STEP,
       "--line=first",
       "--line=back\\slash",
@@ -877,15 +973,193 @@ describe("bkit issues comment --post", () => {
       `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-10-24T00:00:00Z" })}\n`,
     );
     const sent = linearCommentServer();
-    const first = await run(cwd, [...STEP, "--post", "--issue=ENG-4", `--file=${file}`]);
+    const first = await proven(cwd, [...STEP, "--post", "--issue=ENG-4", `--file=${file}`]);
     expect(first.json.tracker).toEqual({ done: true, action: "comment", url: "https://l/c" });
     const row = JSON.parse(fs.readFileSync(file, "utf-8").trim().split("\n").at(-1)!);
     expect(row).toMatchObject({ type: "engine-action", action: "comment" });
     expect(row.key).toBe("build/1/step/3/-/-/comment");
     vi.stubGlobal("fetch", vi.fn());
-    const again = await run(cwd, [...STEP, "--post", "--issue=ENG-4", `--file=${file}`]);
+    const again = await proven(cwd, [...STEP, "--post", "--issue=ENG-4", `--file=${file}`]);
     expect(again.json.tracker).toMatchObject({ done: true, deduped: true, url: "https://l/c" });
     expect(sent).toHaveLength(1);
+  });
+});
+
+describe("bkit issues comment workflow-run proof", () => {
+  const STEP = ["issues", "comment", "--step-number=3", "--step-title=Plan Verify"];
+  const sessions = (cwd: string) => path.join(cwd, ".git", "bkit-outbox", "sessions");
+  const saved = process.env.BKIT_LINEAR_API_KEY;
+  beforeEach(() => {
+    delete process.env.BKIT_LINEAR_API_KEY;
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (saved === undefined) delete process.env.BKIT_LINEAR_API_KEY;
+    else process.env.BKIT_LINEAR_API_KEY = saved;
+  });
+
+  it("refuses a call with no workflow-run proof and prints no body", async () => {
+    const cwd = dir();
+    write(cwd, "secret-body.md", "Private body.\n");
+    const bare = await run(cwd, STEP);
+    expect(bare.code).toBe(2);
+    expect(bare.err).toContain("workflow steps only");
+    expect(bare.err).toContain("plain markdown");
+    expect(bare.json?.comment).toBeUndefined();
+
+    const outside = "/nowhere/secret-session";
+    const given = await run(cwd, [
+      ...STEP,
+      `--session-dir=${outside}`,
+      "--file=secret-status.jsonl",
+      "--body-file=secret-body.md",
+    ]);
+    expect(given.code).toBe(2);
+    expect(given.err).toContain("workflow steps only");
+    expect(given.json?.comment).toBeUndefined();
+    expect(given.err).not.toContain("secret-session");
+    expect(given.err).not.toContain("secret-status");
+    expect(given.err).not.toContain("secret-body");
+    expect(given.err).not.toContain("Private body");
+  });
+
+  it("refuses an unproven post before any tracker request", async () => {
+    process.env.BKIT_LINEAR_API_KEY = "k";
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const cwd = dir({ tracker: { default: "linear" } });
+    const r = await run(cwd, [...STEP, "--post", "--issue=ENG-4"]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("workflow steps only");
+    expect(fetch).not.toHaveBeenCalled();
+    expect(fs.existsSync(path.join(cwd, "tmp"))).toBe(false);
+  });
+
+  it("session proof accepts a path under the outbox sessions folder even once deleted and refuses one outside it", async () => {
+    const cwd = dir();
+    const root = sessions(cwd);
+    fs.mkdirSync(path.join(root, "live"), { recursive: true });
+    expect((await run(cwd, [...STEP, `--session-dir=${path.join(root, "live")}`])).code).toBe(0);
+
+    // Outside the sessions folder, or nested below a session, is no proof.
+    fs.mkdirSync(path.join(cwd, "other"));
+    fs.mkdirSync(path.join(root, "live", "nested"));
+    for (const bad of [path.join(cwd, "other"), path.join(root, "live", "nested"), root]) {
+      const r = await run(cwd, [...STEP, `--session-dir=${bad}`]);
+      expect(r.code, bad).toBe(2);
+      expect(r.err).toContain("workflow steps only");
+    }
+
+    // A session folder that was cleaned up still proves the call.
+    fs.rmSync(path.join(root, "live"), { recursive: true });
+    expect((await run(cwd, [...STEP, `--session-dir=${path.join(root, "live")}`])).code).toBe(0);
+
+    // With the whole outbox gone, a non-canonical spelling of a session path still resolves.
+    fs.rmSync(path.join(cwd, ".git", "bkit-outbox"), { recursive: true, force: true });
+    const spelled = `${root}/../sessions/./gone`;
+    expect((await run(cwd, [...STEP, `--session-dir=${spelled}`])).code).toBe(0);
+    const escaped = `${root}/../elsewhere`;
+    expect((await run(cwd, [...STEP, `--session-dir=${escaped}`])).code).toBe(2);
+  });
+
+  it("status proof accepts a status file with a run of the workflow and refuses a missing file or one without that run", async () => {
+    const cwd = dir();
+    const row = (workflow: string) =>
+      `${JSON.stringify({ type: "workflow-started", workflow, at: "2026-10-24T00:00:00Z" })}\n`;
+    write(cwd, "build.jsonl", row("build"));
+    write(cwd, "plan.jsonl", row("plan"));
+    write(cwd, "empty.jsonl", "");
+
+    const ok = await run(cwd, [...STEP, "--workflow=build", "--file=build.jsonl"]);
+    expect(ok.code).toBe(0);
+    expect(ok.json.comment).toContain("Plan Verify");
+    expect((await run(cwd, [...STEP, "--file=build.jsonl"])).code).toBe(0);
+
+    for (const bad of [
+      ["--workflow=build", "--file=missing.jsonl"],
+      ["--workflow=build", "--file=plan.jsonl"],
+      ["--workflow=build", "--file=empty.jsonl"],
+      ["--file=empty.jsonl"],
+    ]) {
+      const r = await run(cwd, [...STEP, ...bad]);
+      expect(r.code, bad.join(" ")).toBe(2);
+      expect(r.err).toContain("workflow steps only");
+    }
+  });
+
+  it("audit proof accepts a body file in its own audit outbox folder and refuses one elsewhere", async () => {
+    const cwd = dir();
+    const outbox = path.join(cwd, ".git", "bkit-outbox");
+    const AUDIT = ["issues", "comment", "--kind=audit", "--audit-slug=security"];
+    for (const rel of [
+      "audit-security/body.md",
+      "audit-other/body.md",
+      "audit-security/nested/body.md",
+    ]) {
+      fs.mkdirSync(path.dirname(path.join(outbox, rel)), { recursive: true });
+      fs.writeFileSync(path.join(outbox, rel), "## Overview\n\nAll clear.\n");
+    }
+    write(cwd, "plain.md", "## Overview\n\nAll clear.\n");
+
+    const ok = await run(cwd, [
+      ...AUDIT,
+      `--body-file=${path.join(outbox, "audit-security/body.md")}`,
+    ]);
+    expect(ok.code).toBe(0);
+    expect(ok.json.comment).toContain("Audit Summary: security");
+
+    for (const bad of [
+      path.join(outbox, "audit-other/body.md"),
+      path.join(outbox, "audit-security/nested/body.md"),
+      path.join(cwd, "plain.md"),
+    ]) {
+      const r = await run(cwd, [...AUDIT, `--body-file=${bad}`]);
+      expect(r.code, bad).toBe(2);
+      expect(r.err).toContain("workflow steps only");
+    }
+  });
+
+  it("refuses a call whose proof cannot be resolved", async () => {
+    const outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-nogit-")));
+    dirs.push(outside);
+    const noRepo = await run(outside, [
+      ...STEP,
+      `--session-dir=${path.join(outside, ".git", "bkit-outbox", "sessions", "s1")}`,
+    ]);
+    expect(noRepo.code).toBe(2);
+    expect(noRepo.err).toContain("workflow steps only");
+
+    const cwd = dir();
+    fs.mkdirSync(path.join(cwd, "status-dir"));
+    const asDir = await run(cwd, [...STEP, "--workflow=build", "--file=status-dir"]);
+    expect(asDir.code).toBe(2);
+    expect(asDir.err).toContain("workflow steps only");
+  });
+
+  it("checks the run proof before skipping an issue-less call", async () => {
+    const cases: Array<[unknown, string, string]> = [
+      [{ tracker: { default: "linear" } }, "--fid=dev-ci-x", "no-issue"],
+      [{ tracker: { default: "none" } }, "--fid=x", "tracker-none"],
+    ];
+    for (const [bkit, fid, skipped] of cases) {
+      const cwd = dir(bkit);
+      const bare = await run(cwd, [...STEP, "--post", fid]);
+      expect(bare.code, fid).toBe(2);
+      expect(bare.err).toContain("workflow steps only");
+      expect(bare.json?.tracker).toBeUndefined();
+
+      const proven = await run(cwd, [...STEP, "--post", fid, proofFlag(cwd)]);
+      expect(proven.code, fid).toBe(0);
+      expect(proven.json.tracker).toEqual({ skipped });
+    }
+  });
+});
+
+describe("bkit issues comment summary", () => {
+  it("the comment verb's summary says it is for workflow steps only", () => {
+    expect(issuesCommand.verbs.comment!.summary).toContain(
+      "workflow steps only, never for ad-hoc comments",
+    );
   });
 });
 
@@ -958,6 +1232,7 @@ describe("bkit issues fetch", () => {
       url: "https://linear.app/x/issue/ENG-4",
       state: "Todo",
       labels: ["bkit:design"],
+      terminal: false,
       files: {
         description: path.join(out, "issue-description.md"),
         comments: path.join(out, "issue-comments.json"),
@@ -974,6 +1249,7 @@ describe("bkit issues fetch", () => {
       url: "https://linear.app/x/issue/ENG-4",
       state: "Todo",
       labels: ["bkit:design"],
+      terminal: false,
     });
     // The files feed `issues text` unchanged.
     const text = await run(cwd, [
@@ -983,6 +1259,44 @@ describe("bkit issues fetch", () => {
       `--comments-file=${path.join(out, "issue-comments.json")}`,
     ]);
     expect(text.json.text).toBe("The ask.\n<!-- raw html stays -->\n\nfirst\n\nsecond");
+  });
+
+  it("fetch prints terminal in its facts and in issue-facts.json", async () => {
+    process.env.BKIT_LINEAR_API_KEY = "k";
+    const cwd = dir({ tracker: { default: "linear" } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: {
+                issue: {
+                  identifier: "ENG-4",
+                  title: "Export CSV",
+                  url: "https://linear.app/x/issue/ENG-4",
+                  description: "d",
+                  state: { name: "Shipped", type: "completed" },
+                  labels: { nodes: [{ name: "bkit:auto" }] },
+                  comments: { nodes: [] },
+                },
+              },
+            }),
+          ),
+      ),
+    );
+    const out = path.join(cwd, "session-terminal");
+    const r = await run(cwd, ["issues", "fetch", "--issue=ENG-4", `--session-dir=${out}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.terminal).toBe(true);
+    const facts = JSON.parse(fs.readFileSync(path.join(out, "issue-facts.json"), "utf-8"));
+    expect(facts).toEqual({
+      title: "Export CSV",
+      url: "https://linear.app/x/issue/ENG-4",
+      state: "Shipped",
+      labels: ["bkit:auto"],
+      terminal: true,
+    });
   });
 
   it("needs --session-dir or --outbox; skips tracker none and an issue-less run", async () => {
@@ -1334,5 +1648,38 @@ describe("bkit issues labels --write", () => {
     ]);
     expect(r.json).toMatchObject({ board: null, boardSkipped: "cloud", boardWrite: null });
     expect(fs.readFileSync(path.join(cwd, "gh-calls"), "utf-8")).not.toContain("graphql");
+  });
+});
+
+describe("bkit issues audit ledger keys", () => {
+  it("derives audit ledger keys under the audit-slug prefix", () => {
+    const entries = auditEntries({
+      slug: "security",
+      status: "COMPLETE",
+      report: null,
+      findings: [
+        { severity: "HIGH", title: "Missing CSRF token", location: "src/a.ts:10" },
+        { severity: "LOW", title: "Verbose error", location: "src/b.ts:2" },
+        { severity: "LOW", title: "Verbose error", location: "src/c.ts:7" },
+        {
+          severity: "LOW",
+          title: "Judged",
+          location: "src/d.ts:1",
+          priorKey: "audit-security-old",
+        },
+      ],
+      notChecked: [],
+    });
+    const byLocation = (loc: string) => entries.find((e) => e.location === loc)!;
+    // New keys follow the prompt's `audit-<slug>-<content-slug>` shape; a judged prior key stays.
+    expect(byLocation("src/a.ts:10").key).toBe("audit-security-missing-csrf-token");
+    expect(byLocation("src/d.ts:1").key).toBe("audit-security-old");
+    // Duplicate titles still get distinct keys under the same prefix.
+    const verbose = entries.filter((e) => e.title === "Verbose error").map((e) => e.key);
+    expect(new Set(verbose).size).toBe(2);
+    for (const k of verbose) expect(k.startsWith("audit-security-verbose-error")).toBe(true);
+    // A derived key never equals a report-local finding ID such as `security-1`.
+    const ids = new Set(entries.map((e) => e.id));
+    for (const e of entries) expect(ids.has(e.key)).toBe(false);
   });
 });

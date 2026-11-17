@@ -21,6 +21,7 @@
     "bash": {
       "*": "allow",
       "sudo *": "ask",
+      "doas *": "ask",
       "brew install*": "ask",
       "pnpm publish*": "ask",
       "npm publish*": "ask",
@@ -95,13 +96,21 @@
       "git push* -4f*": "deny",
       "git -* push* -4f*": "deny",
       "git push* -6f*": "deny",
-      "git -* push* -6f*": "deny"
+      "git -* push* -6f*": "deny",
+      "*bkit*tests jump*": "ask",
+      "*cli.js tests jump*": "ask",
+      "*cli.ts tests jump*": "ask"
     }
   },
   "mcp": {
     "@@OPENCODE_TRACKER_MCP@@": {}
   },
-  "plugin": ["./plugin/bkit-gateguard.js", "./plugin/bkit-readguard.js", "./plugin/bkit-rules.js"],
+  "plugin": [
+    "./plugin/bkit-gateguard.js",
+    "./plugin/bkit-readguard.js",
+    "./plugin/bkit-rules.js",
+    "./plugin/bkit-guardrails.js"
+  ],
   "provider": {
     "@@OPENCODE_PROVIDER_KEY@@": {
       "npm": "@ai-sdk/openai-compatible",

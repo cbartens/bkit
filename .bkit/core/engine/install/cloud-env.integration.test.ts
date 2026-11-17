@@ -20,6 +20,7 @@ import {
 } from "./cloud-env";
 import { BKIT_EGRESS_SOURCES } from "../shared/egress";
 import { requireTsx } from "../../../../vitest.tsx-bin";
+import { localLimit } from "../../../../vitest.timeout-budget";
 
 let tmpDir: string;
 let originalCwd: string;
@@ -109,7 +110,7 @@ describe("T4 — the derived egress set reaches all five surfaces", () => {
         // 4 — .claude/settings.json WebFetch grants
         expect(settings.permissions.allow).toContain(`WebFetch(domain:${probe})`);
 
-        // 5 — .opencode/opencode.json permission.bash curl globs
+        // 5 — .opencode/opencode.json permission.webfetch `*{base}*` keys
         expect(opencode).toContain(probe);
       }
 
@@ -138,38 +139,46 @@ describe("T4 — the derived egress set reaches all five surfaces", () => {
 // Provenance leg — claudeAllowDerived creates no drift: the check write-set is IDENTICAL
 // with and without the provenance record.
 describe("T14 — the provenance field contributes no bkit check drift", () => {
-  it("check reports the same write set with and without claudeAllowDerived present", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "drift", version: "1.0.0", packageManager: "pnpm@10.34.3" }, null, 2),
-    );
-    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+  it(
+    "check reports the same write set with and without claudeAllowDerived present",
+    () => {
+      fs.writeFileSync(
+        path.join(tmpDir, "package.json"),
+        JSON.stringify(
+          { name: "drift", version: "1.0.0", packageManager: "pnpm@10.34.3" },
+          null,
+          2,
+        ),
+      );
+      fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
 
-    const run = (args: string[]) =>
-      spawnSync(requireTsx(), [bkitInstallPath, ...args], {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: { ...process.env, NODE_NO_WARNINGS: "1" },
-        timeout: 120_000,
-      });
+      const run = (args: string[]) =>
+        spawnSync(requireTsx(), [bkitInstallPath, ...args], {
+          cwd: tmpDir,
+          encoding: "utf-8",
+          env: { ...process.env, NODE_NO_WARNINGS: "1" },
+          timeout: 120_000,
+        });
 
-    expect(run(["install", "--claude"]).status).toBe(0);
+      expect(run(["install", "--claude"]).status).toBe(0);
 
-    const writeCount = (out: string) => /(\d+) write\(s\) would occur/.exec(out)?.[1];
+      const writeCount = (out: string) => /(\d+) write\(s\) would occur/.exec(out)?.[1];
 
-    const withField = writeCount(run(["check"]).stdout);
-    expect(withField).toBeDefined();
+      const withField = writeCount(run(["check"]).stdout);
+      expect(withField).toBeDefined();
 
-    // strip the record and re-check: the count must not move
-    const versionPath = path.join(tmpDir, ".bkit", "version");
-    const v = JSON.parse(fs.readFileSync(versionPath, "utf-8")) as Record<string, unknown>;
-    expect(Array.isArray(v.claudeAllowDerived)).toBe(true);
-    expect((v.claudeAllowDerived as string[]).length).toBeGreaterThan(0);
-    delete v.claudeAllowDerived;
-    fs.writeFileSync(versionPath, JSON.stringify(v, null, 2) + "\n");
+      // strip the record and re-check: the count must not move
+      const versionPath = path.join(tmpDir, ".bkit", "version");
+      const v = JSON.parse(fs.readFileSync(versionPath, "utf-8")) as Record<string, unknown>;
+      expect(Array.isArray(v.claudeAllowDerived)).toBe(true);
+      expect((v.claudeAllowDerived as string[]).length).toBeGreaterThan(0);
+      delete v.claudeAllowDerived;
+      fs.writeFileSync(versionPath, JSON.stringify(v, null, 2) + "\n");
 
-    expect(writeCount(run(["check"]).stdout)).toBe(withField);
-  }, 180_000);
+      expect(writeCount(run(["check"]).stdout)).toBe(withField);
+    },
+    localLimit(180_000),
+  );
 });
 
 // The generated install-script pieces, executed by a real bash — string checks alone
@@ -277,6 +286,9 @@ describe("cloud install script pieces, run by bash", () => {
     ) => {
       writeFile(".agents/context.md", contextMd);
       writeFile("node_modules/.bin/bkit", bkit, 0o755);
+      // A matching allowlist fingerprint keeps the fingerprint warnings, which also print on
+      // stdout, out of these provisioning cases.
+      writeFile(".bkit/allowlist.json", '{"domains":["example.com"],"fingerprint":"abcd1234"}\n');
       const {
         GH_TOKEN: _gh,
         GITHUB_TOKEN: _github,
@@ -297,40 +309,49 @@ describe("cloud install script pieces, run by bash", () => {
           CLAUDE_CODE_REMOTE: "true",
           CLAUDE_PROJECT_DIR: tmpDir,
           NODE_NO_WARNINGS: "1",
+          BKIT_CLOUD_ALLOWLIST_FINGERPRINT: "abcd1234",
         },
       });
     };
 
-    it("runs every recipe through bkit context provision and tells the agent on stdout what failed", () => {
-      const res = runHook(
-        "<!-- bkit:end -->\n" +
-          block("fails-first", "false\necho fails-first-kept-going") +
-          block("good", "echo good-ran") +
-          block("", 'echo "local Supabase unavailable: 3 GB free" >&2\nexit 3'),
-      );
-      expect(res.status).toBe(0);
-      expect(res.stderr).toContain("good-ran");
-      // `false` stops its own recipe, even though the recipe's last command would succeed.
-      expect(res.stderr).not.toContain("fails-first-kept-going");
-      expect(res.stderr).toContain("provision 'fails-first' failed (non-blocking): exit 1");
-      expect(res.stderr).toContain(
-        "provision '#3' failed (non-blocking): local Supabase unavailable",
-      );
-      expect(res.stderr).not.toContain("'good' failed");
-      expect(res.stdout).toBe(
-        "Cloud setup could not provide these in this session (setup failed; treat them as absent, do not retry the install):\n" +
-          "fails-first: exit 1\n#3: local Supabase unavailable: 3 GB free\n",
-      );
-    }, 90_000);
+    it(
+      "runs every recipe through bkit context provision and tells the agent on stdout what failed",
+      () => {
+        const res = runHook(
+          "<!-- bkit:end -->\n" +
+            block("fails-first", "false\necho fails-first-kept-going") +
+            block("good", "echo good-ran") +
+            block("", 'echo "local Supabase unavailable: 3 GB free" >&2\nexit 3'),
+        );
+        expect(res.status).toBe(0);
+        expect(res.stderr).toContain("good-ran");
+        // `false` stops its own recipe, even though the recipe's last command would succeed.
+        expect(res.stderr).not.toContain("fails-first-kept-going");
+        expect(res.stderr).toContain("provision 'fails-first' failed (non-blocking): exit 1");
+        expect(res.stderr).toContain(
+          "provision '#3' failed (non-blocking): local Supabase unavailable",
+        );
+        expect(res.stderr).not.toContain("'good' failed");
+        expect(res.stdout).toBe(
+          "Cloud setup could not provide these in this session (setup failed; treat them as absent, do not retry the install):\n" +
+            "fails-first: exit 1\n#3: local Supabase unavailable: 3 GB free\n",
+        );
+      },
+      localLimit(90_000),
+    );
 
-    it("prints nothing to stdout when every recipe succeeds", () => {
-      writeFile(".bkit/.unavailable", "good: old\n");
-      const res = runHook("<!-- bkit:end -->\n" + block("good", "echo good-ran"));
-      expect(res.status).toBe(0);
-      expect(res.stderr).toContain("good-ran");
-      expect(res.stdout).toBe("");
-      expect(fs.existsSync(path.join(tmpDir, ".bkit/.unavailable"))).toBe(false);
-    }, 90_000);
+    it(
+      "prints nothing to stdout when every recipe succeeds",
+      () => {
+        writeFile(".bkit/.unavailable", "good: old\n");
+        const res = runHook("<!-- bkit:end -->\n" + block("good", "echo good-ran"));
+        expect(res.status).toBe(0);
+        expect(res.stderr).toContain("good-ran");
+        expect(res.stdout).toBe("");
+        expect(fs.existsSync(path.join(tmpDir, ".bkit/.unavailable"))).toBe(false);
+      },
+      localLimit(90_000),
+    );
 
     it("logs and carries on when the installed bkit has no provision verb", () => {
       const res = runHook("<!-- bkit:end -->\n" + block("good", "true"), "#!/bin/bash\nexit 2\n");

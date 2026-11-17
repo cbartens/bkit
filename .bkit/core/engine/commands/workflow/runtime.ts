@@ -295,10 +295,7 @@ export const runtimeCommand: CommandSpec = {
       run: (ctx) => {
         const workflow = str(ctx.flags.workflow);
         const events: ReadonlyArray<Record<string, unknown>> = readStatusEvents(statusFile(ctx));
-        const rows = events
-          .filter((r) => r.type === "runtime-resolved")
-          .filter((r) => workflow === undefined || r.workflow === workflow);
-        const row = rows[rows.length - 1];
+        const row = latestRuntimeRow(events, workflow);
         if (!row) {
           ctx.log(
             `no runtime-resolved row${workflow ? ` for ${workflow}` : ""} — Step 1 never recorded the runtime`,
@@ -333,3 +330,14 @@ export const runtimeCommand: CommandSpec = {
     },
   },
 };
+
+/** The latest `runtime-resolved` row, limited to `workflow` when given; undefined with none. */
+export function latestRuntimeRow(
+  events: ReadonlyArray<Record<string, unknown>>,
+  workflow?: string,
+): Record<string, unknown> | undefined {
+  const rows = events
+    .filter((r) => r.type === "runtime-resolved")
+    .filter((r) => workflow === undefined || r.workflow === workflow);
+  return rows[rows.length - 1];
+}

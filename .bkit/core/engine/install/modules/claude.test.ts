@@ -61,9 +61,23 @@ describe("enrichClaudeSettingsAllows — recording contract and prune (T8, T15)"
   });
 
   // --- T8: the determined rows ---
-  it("returns the derived set on a steady-state no-op run", () => {
+  it("returns the recorded set on a steady-state no-op run", () => {
     writeSettings(derived());
+    writeVersion(derived());
     expect(run().ret).toEqual(derived());
+  });
+
+  it("records only the grants it adds, never one the settings file already had", () => {
+    const [handAdded, ...rest] = derived();
+    writeSettings([handAdded]);
+    expect(run().ret).toEqual(rest);
+  });
+
+  it("keeps recording a grant it added earlier and still derives", () => {
+    const [earlier, ...rest] = derived();
+    writeSettings([earlier]);
+    writeVersion([earlier]);
+    expect(run().ret).toEqual([earlier, ...rest]);
   });
 
   it("removes only grants it recorded writing that the derived set no longer wants", () => {

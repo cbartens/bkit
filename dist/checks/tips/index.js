@@ -94,7 +94,7 @@ export function collectTips(cwd, catalogue = SETUP_TIPS) {
         if (isTipSilenced(tip, ignored))
             suppressed.push({ id: tip.id, scope: "." });
         else
-            tips.push(tip);
+            tips.push(tip.resolve ? { ...tip, ...tip.resolve(base) } : tip);
     }
     const star = !ignored.has(STAR_TIP_ID) && !ignored.has(STAR_TIP_OLD_ID);
     return { tips, suppressed, star };

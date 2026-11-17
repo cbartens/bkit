@@ -85,7 +85,9 @@ function trimKeptContent(s) {
 }
 /** Retain indentation only when the replacement leaves content on its line. */
 function attachPrefix(prefix, body, head, tail) {
-    const hardBreak = / {2,}$/.test(prefix) && /\S[^\r\n]*$/.test(head);
+    // Only the current line of `head` matters; scanning the whole document prefix is quadratic.
+    const lastLine = head.slice(Math.max(head.lastIndexOf("\n"), head.lastIndexOf("\r")) + 1);
+    const hardBreak = / {2,}$/.test(prefix) && /\S/.test(lastLine);
     return !hardBreak && /^[ \t]*(?:\r?\n|$)/.test(body + tail) ? body : prefix + body;
 }
 // ---------------------------------------------------------------------------

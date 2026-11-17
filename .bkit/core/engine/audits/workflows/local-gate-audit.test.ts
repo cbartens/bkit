@@ -138,7 +138,7 @@ const GATE_CALLERS: ReadonlyArray<readonly [string, string]> = [
   [".bkit/core/prompts/bkit-build-plan-tasks.md", "--fallback=bkit:gate:static`"],
   [".bkit/core/prompts/bkit-build-plan-gaps-remediate.md", "--fallback=bkit:gate:static-unit`"],
   [".bkit/core/prompts/bkit-debug-failure-remediate.md", "--fallback=bkit:gate:static-unit`"],
-  [".bkit/core/prompts/bkit-build-plan-verify.md", "--fallback=bkit:gate:static-unit`"],
+  [".bkit/core/prompts/bkit-debug-failure-soak.md", "--fallback=bkit:gate:static-unit`"],
   [".bkit/core/prompts/bkit-ship-conflict-resolve.md", "pnpm bkit:gate:install-static-unit-build"],
   // bkit-build.md / bkit-debug.md are NOT listed: they run the gate through
   // `bkit tests run --gate=<candidate>...`, which picks the deepest declared
@@ -165,7 +165,11 @@ describe("bkit-local-gate-audit (#437)", () => {
     expect(body.lastIndexOf("roadmap mirror", pushAt)).toBeGreaterThanOrEqual(0);
     const retained = body.slice(closeAt + close.block.length, pushAt);
     expect(retained).toMatch(/`commentFile`[^\n]*`CLOSE_COMMENT_FILE`/);
-    expect(retained).toMatch(/`tracker`[^\n]*`CLOSE_TRACKER`/);
+    expect(close.block).not.toContain("--post");
+    expect(body).toMatch(
+      /issues comment[^\n]*--step-title="Create PR"[^\n]*--body-file="\{CLOSE_COMMENT_FILE\}"/,
+    );
+    expect(body).toMatch(/Hold this report's `commentFile`[^\n]*`tracker`[^\n]*`CLOSE_TRACKER`/);
     expect(retained).toMatch(/`finalReturn`[^\n]*`FINAL_RETURN`/);
     const release = commandRoutes(body.slice(pushAt), /\blocks release\b/);
     expect(release).toHaveLength(1);
@@ -246,6 +250,13 @@ describe("bkit-local-gate-audit (#437)", () => {
       stopsAt: "unit",
       sites: 1,
     },
+    {
+      workflow: "bkit-build.md",
+      step: "build-holistic-gate ",
+      gates: BKIT_GROUP_GATES,
+      stopsAt: "unit",
+      sites: 1,
+    },
     { workflow: "bkit-debug.md", step: "", gates: BKIT_DEBUG_GATES, stopsAt: "live", sites: 1 },
   ] as const;
 
@@ -266,11 +277,11 @@ describe("bkit-local-gate-audit (#437)", () => {
 
   it("every branches push call site routes exit 81 to a re-run of its block", () => {
     const pushProbes = [
-      { workflow: "bkit-design.md", sites: 1 },
-      { workflow: "bkit-plan.md", sites: 1 },
+      { workflow: "bkit-design.md", sites: 0 },
+      { workflow: "bkit-plan.md", sites: 0 },
       { workflow: "bkit-build.md", sites: 2 },
       { workflow: "bkit-debug.md", sites: 5 },
-      { workflow: "bkit-ship.md", sites: 5 },
+      { workflow: "bkit-ship.md", sites: 6 },
     ];
     for (const { workflow, sites } of pushProbes) {
       const body = fs.readFileSync(path.join(WORKFLOWS_DIR, workflow), "utf-8");
@@ -426,5 +437,172 @@ describe("bkit-local-gate-audit (#437)", () => {
       "lint-staged",
     ]);
     expect(unresolvedGateCalls(declared, subcommands)).toEqual([]);
+  });
+});
+
+/** The command a Context line hands its agent under `name`; empty when it names none. */
+const contextCommand = (line: string, name: string): string =>
+  new RegExp(`\`${name}\`: \`([^\`]+)\``).exec(line)?.[1] ?? "";
+
+describe("diff and test base", () => {
+  it("build workflow names origin/dev only on the migration scan", () => {
+    const build = fs.readFileSync(path.join(WORKFLOWS_DIR, "bkit-build.md"), "utf-8");
+    const verify = fs.readFileSync(path.join(PROMPTS_DIR, "bkit-build-plan-verify.md"), "utf-8");
+    // Only the migration scan names origin/dev: it measures everything the push publishes.
+    const named = build.split("\n").filter((l) => l.includes("--base=origin/dev"));
+    expect(named.length).toBe(1);
+    expect(named[0]).toContain("branches scan-diff --base=origin/dev --paths=");
+    expect(verify).not.toContain("origin/dev");
+  });
+});
+
+describe("holistic gate scope", () => {
+  const FROM = "--since-pass-of=build-holistic-gate,build-holistic-gate-fix";
+  const BASE = "--changed-since=feature-base";
+  const build = () => fs.readFileSync(path.join(WORKFLOWS_DIR, "bkit-build.md"), "utf-8");
+  const prompt = (name: string) => fs.readFileSync(path.join(PROMPTS_DIR, `${name}.md`), "utf-8");
+  /** Step 10's text, from its heading to the next step's. */
+  const step10 = (body: string) => {
+    const start = body.indexOf("## 🧠 Step 10 — Plan Verify Holistic");
+    return body.slice(start, body.indexOf("## 🧠 Step 11", start));
+  };
+  /** The prompt's numbered step that names `text`. */
+  const promptStep = (body: string, text: string) =>
+    body.split(/\n(?=\d+\. )/).find((part) => part.includes(text)) ?? "";
+
+  it("Step 10 runs the holistic gate from the newest passing holistic run on every round", () => {
+    const text = step10(build());
+    const blocks = commandRoutes(text, /\btests run\b/).filter(({ block }) =>
+      block.includes("--step=build-holistic-gate "),
+    );
+    expect(blocks).toHaveLength(1);
+    const { block } = blocks[0]!;
+    expect(block).toContain("--gate=bkit:gate:static-unit");
+    expect(block).toContain(BASE);
+    expect(block).toContain(FROM);
+    expect(block).toContain("--attempt={HOLISTIC_ATTEMPT}");
+    // Every round runs it: after the verify is recorded, before any route leaves the step.
+    const at = text.indexOf(block);
+    expect(at).toBeGreaterThan(text.indexOf("--step=build-plan-verify-holistic "));
+    expect(text.slice(0, at)).not.toMatch(/→ Step 11|→ sub-step \d+/);
+    expect(at).toBeLessThan(text.indexOf("counters route --name=HOLISTIC_ATTEMPT"));
+  });
+
+  it("the Holistic gate command writes a build-holistic-gate fix row from the same passing runs", () => {
+    const line = build()
+      .split("\n")
+      .find((l) => /Context:.*`Holistic gate`/.test(l));
+    expect(line, "no Context line names a Holistic gate").toBeDefined();
+    const command = contextCommand(String(line), "Holistic gate");
+    expect(command).toContain('"{BKIT}" tests run --gate=bkit:gate:static-unit');
+    expect(command).toContain(BASE);
+    expect(command).toContain(FROM);
+    expect(command).toContain('--log="{OUTBOX}/');
+    expect(command).toContain('--file="{STATUS}" --workflow=build');
+    expect(command).toContain("--step=build-holistic-gate-fix --attempt={HOLISTIC_ATTEMPT}");
+  });
+
+  it("holistic verify runs no tests and takes no Test base", () => {
+    const verify = prompt("bkit-build-plan-verify");
+    expect(verify).not.toContain("tests changed");
+    expect(verify).not.toContain("Test base");
+    expect(verify).not.toContain("each failing test as one gap");
+    expect(step10(build())).not.toContain("Test base");
+  });
+
+  it("holistic remediate runs the Holistic gate command until it exits 0", () => {
+    const body = prompt("bkit-build-plan-gaps-remediate");
+    const step = promptStep(body, "Context names a group gate");
+    expect(step).toMatch(/Context names a group gate or a holistic gate[^\n]*until it exits 0/);
+    expect(body).toContain("DONE — Holistic gate: exit 0 ({log path})");
+    expect(body).toContain("BLOCKED — Holistic gate: {reason}");
+    // In holistic mode each failure in the gate's log is a gap of the round.
+    const read = promptStep(body, "Context `Mode` = `Holistic`");
+    expect(read).toMatch(/holistic gate log[^\n]*Each failure in [^\n]* is one gap/);
+  });
+
+  it("the holistic remediate gate re-runs on exit 81", () => {
+    const step = promptStep(prompt("bkit-build-plan-gaps-remediate"), "Context names a group gate");
+    const retry = step.split("\n").find((l) => /holistic gate.*exit(?:s)?\s+`?81\b/i.test(l));
+    expect(retry, "no holistic gate exit 81 line").toBeDefined();
+    expect(retry).toMatch(/run the same command again/);
+  });
+});
+
+describe("group gate scope", () => {
+  const SINCE = "--changed-since={GROUP_BASE}";
+  const DERIVE = "status route --step=build-group-start --group=";
+  const build = () => fs.readFileSync(path.join(WORKFLOWS_DIR, "bkit-build.md"), "utf-8");
+  /** The numbered sub-step that holds `index`: from its own line to `index`. */
+  const subStepBefore = (body: string, index: number): string => {
+    const starts = [...body.slice(0, index).matchAll(/\n\d+\. /g)];
+    return body.slice(starts.at(-1)!.index, index);
+  };
+  const gateBlock = (body: string) => {
+    const block = commandRoutes(body, /\btests run\b/).find(({ block: b }) =>
+      b.includes("--step=build-group-gate-"),
+    )!.block;
+    return { block, at: body.indexOf(block) };
+  };
+  const gateContext = (body: string) => {
+    const line = body.split("\n").find((l) => /Context:.*`Group gate`/.test(l))!;
+    return { line, at: body.indexOf(line) };
+  };
+
+  it("group gate runs the changed-files scope from GROUP_BASE", () => {
+    const { block } = gateBlock(build());
+    expect(block).toContain("--gate=bkit:gate:static-unit");
+    expect(block).toContain(SINCE);
+  });
+
+  it("the remediate group gate runs the changed-files scope from GROUP_BASE", () => {
+    const { line } = gateContext(build());
+    expect(line).toContain("tests run --gate=bkit:gate:static-unit");
+    expect(line).toContain(SINCE);
+  });
+
+  it("Step 8's group gate tests from the newest passing run of the gate or its fix run", () => {
+    const { block } = gateBlock(build());
+    expect(block).toContain(
+      "--since-pass-of=build-group-gate-{GROUP},build-group-gate-{GROUP}-fix",
+    );
+    // A group with no passing run yet still tests from its start commit.
+    expect(block).toContain(SINCE);
+    expect(block).toContain("--step=build-group-gate-{GROUP} ");
+  });
+
+  it("the remediate Group gate command writes a build-group-gate fix row from the same passing runs", () => {
+    const { line } = gateContext(build());
+    const command = contextCommand(line, "Group gate");
+    expect(command).toContain(
+      "--since-pass-of=build-group-gate-{GROUP},build-group-gate-{GROUP}-fix",
+    );
+    expect(command).toContain(SINCE);
+    expect(command).toContain('--file="{STATUS}" --workflow=build');
+    expect(command).toContain("--step=build-group-gate-{GROUP}-fix --attempt={VERIFY_ATTEMPT}");
+  });
+
+  it("both group-gate sites re-derive GROUP_BASE before the changed-since gate", () => {
+    const body = build();
+    const run = gateBlock(body);
+    const before = subStepBefore(body, run.at + run.block.length);
+    expect(before.indexOf(DERIVE), "the Step 8 gate sub-step").toBeGreaterThanOrEqual(0);
+    expect(before.indexOf(DERIVE)).toBeLessThan(before.indexOf(SINCE));
+    const context = gateContext(body);
+    const step = subStepBefore(body, context.at + context.line.length);
+    expect(step.indexOf(DERIVE), "the Step 9 Group gate Context's sub-step").toBeGreaterThanOrEqual(
+      0,
+    );
+    expect(step.indexOf(DERIVE)).toBeLessThan(step.indexOf(SINCE));
+  });
+});
+
+describe("debug soak gate scope", () => {
+  it("soak runs the changed-files gate", () => {
+    const body = fs.readFileSync(path.join(PROMPTS_DIR, "bkit-debug-failure-soak.md"), "utf-8");
+    expect(body).toContain("bkit tests changed --fallback=bkit:gate:static-unit");
+    expect(body).not.toContain("pnpm bkit:gate:static-unit");
+    const step = body.split(/\n(?=\d+\. )/).find((part) => part.includes("tests changed"))!;
+    expect(step).toMatch(/exit(?:s)?\s+`?81\b/i);
   });
 });

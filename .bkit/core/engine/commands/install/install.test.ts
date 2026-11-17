@@ -8,11 +8,10 @@ import {
   detectOpencodeProvider,
   detectOpencodeProviders,
   modulesToCliFlags,
-  validateCloudTrackerMatch,
+  validateCloudTrackerWired,
   refreshPreflightAfterWrites,
 } from "./install";
 import type { ModuleFlag } from "../../cli";
-import type { IssueTracker } from "../../install/manifest";
 
 // ---------------------------------------------------------------------------
 // Staging scratch area
@@ -88,53 +87,33 @@ describe("modulesToCliFlags — resolved module set → recovery-hint CLI flags"
   });
 });
 
-describe("validateCloudTrackerMatch — FINAL SCOPE decision 3/4 symmetric cloud/tracker constraint", () => {
+describe("validateCloudTrackerWired — every cloud variant needs a wired tracker", () => {
   it("passes when no cloud variant is set", () => {
-    expect(validateCloudTrackerMatch(null, true, "github")).toBeNull();
+    expect(validateCloudTrackerWired(null, true, "github")).toBeNull();
   });
 
   it("passes when the cloud module isn't in the install set, even with a variant", () => {
-    expect(validateCloudTrackerMatch("claude", false, "linear")).toBeNull();
+    expect(validateCloudTrackerWired("claude", false, "linear")).toBeNull();
   });
 
-  it("passes when cloud=claude and tracker=github (matching)", () => {
-    expect(validateCloudTrackerMatch("claude", true, "github")).toBeNull();
+  it("validateCloudTrackerWired passes %s with %s", () => {
+    for (const cloud of ["claude", "cursor", "opencode", "codex"] as const) {
+      for (const tracker of ["github", "linear", "jira"] as const) {
+        expect(validateCloudTrackerWired(cloud, true, tracker), `${cloud}/${tracker}`).toBeNull();
+      }
+    }
   });
 
-  it("passes when cloud=opencode and tracker=github (matching)", () => {
-    expect(validateCloudTrackerMatch("opencode", true, "github")).toBeNull();
+  it("validateCloudTrackerWired refuses tracker none naming --tracker=", () => {
+    for (const cloud of ["claude", "cursor", "opencode", "codex"] as const) {
+      const err = validateCloudTrackerWired(cloud, true, "none");
+      expect(err).not.toBeNull();
+      expect(err).toContain(`--auto=${cloud}`);
+      expect(err).toContain("needs a wired tracker");
+      expect(err).toContain("--tracker=<github|linear|jira>");
+      expect(err).not.toContain("requires tracker=");
+    }
   });
-
-  it("passes when cloud=cursor and tracker=linear (matching)", () => {
-    expect(validateCloudTrackerMatch("cursor", true, "linear")).toBeNull();
-  });
-
-  // Jira is local-only: every cloud lane refuses it.
-  it.each([
-    ["claude", "linear", "github"],
-    ["claude", "jira", "github"],
-    ["opencode", "linear", "github"],
-    ["opencode", "jira", "github"],
-    ["cursor", "github", "linear"],
-    ["cursor", "jira", "linear"],
-  ] as const)("errors when cloud=%s and tracker=%s (requires %s)", (cloud, tracker, required) => {
-    const err = validateCloudTrackerMatch(cloud, true, tracker);
-    expect(err).not.toBeNull();
-    expect(err).toContain(`--auto=${cloud} requires tracker=${required}`);
-  });
-
-  it("suggests setting the tracker (not switching) when the tracker is still 'none' (default)", () => {
-    const err = validateCloudTrackerMatch("cursor", true, "none" as IssueTracker);
-    expect(err).toContain("Set the tracker first");
-  });
-
-  it.each(["linear", "jira"] as const)(
-    "suggests re-running with the matching tracker when %s is already set",
-    (tracker) => {
-      const err = validateCloudTrackerMatch("claude", true, tracker);
-      expect(err).toContain("tracker switching is free");
-    },
-  );
 });
 
 describe("detectOpencodeProvider — provider resolution (manifest-first)", () => {

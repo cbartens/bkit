@@ -1,0 +1,164 @@
+{
+  "files": {
+    ".bkit/core/engine/audits/templates/husky-pre-push.integration.test.ts": {
+      "name": "Before-push execution checks",
+      "description": "Runs the shipped before-push script and checks its required gates."
+    },
+    ".bkit/core/engine/audits/templates/insert-ignore.test.ts": {
+      "name": "Table formatting helper checks",
+      "description": "Checks that the table helper preserves formatting without adding duplicate ignore markers."
+    },
+    ".bkit/core/engine/audits/templates/machine-lock.integration.test.ts": {
+      "name": "Machine lock behavior checks",
+      "description": "Runs the shared machine lock with real processes to check exclusive access and cleanup."
+    },
+    ".bkit/core/engine/audits/templates/mcp-toolsets.test.ts": {
+      "name": "GitHub tool access checks",
+      "description": "Checks that GitHub assistant connections include the tools needed for automated-check evidence."
+    },
+    ".bkit/core/engine/audits/templates/secrets-sync.integration.test.ts": {
+      "name": "Secret synchronization checks",
+      "description": "Checks the shipped tool for comparing and updating remote secret settings."
+    },
+    ".bkit/core/engine/audits/templates/settings-ask-rules.test.ts": {
+      "name": "Command approval settings checks",
+      "description": "Checks that shipped Claude settings avoid content-specific download approval rules."
+    },
+    ".bkit/core/engine/audits/templates/slop-type-suppression.integration.test.ts": {
+      "name": "Type-check bypass detection checks",
+      "description": "Runs the code-quality scanner to check detection of type-check bypasses and scoped exceptions."
+    },
+    ".bkit/core/engine/audits/templates/telemetry-gitattributes.integration.test.ts": {
+      "name": "Measurement merge settings checks",
+      "description": "Uses Git's attribute resolver to check the merge handling of measurement records."
+    },
+    ".bkit/core/engine/audits/templates/template-action-pins.test.ts": {
+      "name": "Automation version pin checks",
+      "description": "Checks that shipped automation templates pin external actions to specific revisions."
+    },
+    ".bkit/core/engine/audits/templates/template-ci-yml.test.ts": {
+      "name": "Project check workflow checks",
+      "description": "Checks that the filled project workflow is valid and its final status can be found by shipping commands."
+    },
+    ".bkit/core/engine/audits/templates/template-no-userpath.test.ts": {
+      "name": "Portable template path checks",
+      "description": "Checks that plan templates contain no developer-machine absolute paths."
+    },
+    ".bkit/core/engine/audits/templates/template-path-refs.test.ts": {
+      "name": "Template reference boundary checks",
+      "description": "Checks that workflows and prompts do not depend directly on copy-and-own template paths."
+    },
+    ".bkit/core/engine/audits/templates/template-shape.test.ts": {
+      "name": "Document template shape checks",
+      "description": "Checks that plan and audit templates define the required document structure."
+    },
+    ".bkit/core/engine/audits/templates/templates-content.test.ts": {
+      "name": "Seeded template content checks",
+      "description": "Checks the rendered contents of files seeded into consumer projects."
+    },
+    ".bkit/core/engine/audits/templates/templates.test.ts": {
+      "name": "Template ownership checks",
+      "description": "Checks managed markers and content requirements across shipped templates."
+    },
+    ".bkit/core/engine/audits/templates/tmp-prune.test.ts": {
+      "name": "Temporary file cleanup checks",
+      "description": "Checks the shipped temporary-directory cleanup script before projects adopt it."
+    },
+    ".bkit/core/engine/audits/templates/workflow-templates.integration.test.ts": {
+      "name": "Cloud and check workflow tests",
+      "description": "Checks the shipped cloud and project automation workflow templates."
+    },
+    ".bkit/core/engine/audits/workflows/auto-fid-guard.test.ts": {
+      "name": "Feature identifier safety checks",
+      "description": "Checks that automatic routing validates feature identifiers and rejects injected commands or paths."
+    },
+    ".bkit/core/engine/audits/workflows/block-locality-audit.test.ts": {
+      "name": "Self-contained shell block checks",
+      "description": "Checks that each documented shell block defines the variables it uses."
+    },
+    ".bkit/core/engine/audits/workflows/catalog-parity.test.ts": {
+      "name": "Workflow catalog equality checks",
+      "description": "Checks that workflow and agent catalogs agree with their source files."
+    },
+    ".bkit/core/engine/audits/workflows/ci-dispatch-gate-alignment.test.ts": {
+      "name": "Remote check gate alignment",
+      "description": "Checks that workflows use the required remote-check dispatch and shipping revalidation gates."
+    },
+    ".bkit/core/engine/audits/workflows/close-squash.integration.test.ts": {
+      "name": "Workflow closing execution checks",
+      "description": "Runs design and plan closing steps against a real temporary repository and remote."
+    },
+    ".bkit/core/engine/audits/workflows/comply-gate-wiring.test.ts": {
+      "name": "Closing compliance checks",
+      "description": "Checks that workflow closing gates invoke the required compliance checks."
+    },
+    ".bkit/core/engine/audits/workflows/counter-prose-audit.test.ts": {
+      "name": "Attempt counter instruction checks",
+      "description": "Checks that workflow instructions derive attempt counts through the supported record commands."
+    },
+    ".bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts": {
+      "name": "Debug evidence execution checks",
+      "description": "Runs debug evidence collection with the built command-line tool, Git history and project checks."
+    },
+    ".bkit/core/engine/audits/workflows/generated-marker.test.ts": {
+      "name": "Generated comment boundary checks",
+      "description": "Checks the markers that separate generated tracker comments from later workflow inputs."
+    },
+    ".bkit/core/engine/audits/workflows/local-gate-audit.test.ts": {
+      "name": "Project gate instruction checks",
+      "description": "Checks that instructions call declared project gate scripts instead of duplicating their commands."
+    },
+    ".bkit/core/engine/audits/workflows/model-presets-parity.test.ts": {
+      "name": "Model preset documentation checks",
+      "description": "Checks that repeated model summaries agree with the model table read by the installer."
+    },
+    ".bkit/core/engine/audits/workflows/models-table-parity.test.ts": {
+      "name": "Agent model table checks",
+      "description": "Checks that the model table agrees with the agent prompt declarations."
+    },
+    ".bkit/core/engine/audits/workflows/owner-wait-rows.test.ts": {
+      "name": "Owner waiting record checks",
+      "description": "Checks that workflow pauses for the owner write the required waiting records."
+    },
+    ".bkit/core/engine/audits/workflows/prompt-notation.test.ts": {
+      "name": "Prompt notation checks",
+      "description": "Checks the notation used in shipped agent instructions."
+    },
+    ".bkit/core/engine/audits/workflows/question-option-format.test.ts": {
+      "name": "Owner question layout checks",
+      "description": "Checks that questions present their answer options in one consistent format."
+    },
+    ".bkit/core/engine/audits/workflows/runtime-prose-audit.test.ts": {
+      "name": "Runtime instruction presence checks",
+      "description": "Checks that workflow text includes the required runtime capability guidance."
+    },
+    ".bkit/core/engine/audits/workflows/ship-invariants.test.ts": {
+      "name": "Shipping contract checks",
+      "description": "Checks shipping instructions for the required push, staging and step-record contracts."
+    },
+    ".bkit/core/engine/audits/workflows/ship-verdict.integration.test.ts": {
+      "name": "Shipping outcome execution checks",
+      "description": "Runs shipping outcome handling with real shell commands and the built roadmap reader."
+    },
+    ".bkit/core/engine/audits/workflows/skip-ci-subject-audit.test.ts": {
+      "name": "Commit check marker checks",
+      "description": "Checks that instructions apply automated-check suppression markers only in the required commit form."
+    },
+    ".bkit/core/engine/audits/workflows/slash-arg-expansion.test.ts": {
+      "name": "Command argument substitution checks",
+      "description": "Checks that rendered assistant commands preserve safe argument substitution."
+    },
+    ".bkit/core/engine/audits/workflows/telemetry-workflow-writers.test.ts": {
+      "name": "Workflow measurement wiring checks",
+      "description": "Checks that workflow instructions call the required measurement writers."
+    },
+    ".bkit/core/engine/audits/workflows/text-omit-audit.test.ts": {
+      "name": "Command output contract checks",
+      "description": "Checks that workflows do not read fields omitted from a command's default text output."
+    },
+    ".bkit/core/engine/audits/workflows/untrusted-fence.test.ts": {
+      "name": "External evidence boundary checks",
+      "description": "Checks that fetched external text carries one complete untrusted-input boundary."
+    }
+  }
+}

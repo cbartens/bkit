@@ -2,7 +2,14 @@
 // copy-and-own template, run for real: real bash, real perl holder, real flock. Each test points
 // XDG_CACHE_HOME at its own folder, so a real run on this machine is never touched or waited on.
 
-import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import {
+  type ChildProcess,
+  type ChildProcessByStdio as ProcessByStdio,
+  type SpawnOptions,
+  spawn,
+  spawnSync,
+} from "node:child_process";
+import type { Readable } from "node:stream";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -10,12 +17,17 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { tierTimeouts } from "../../../../../vitest.timeout-budget";
+import { stopGroup } from "../../../../../vitest.process-group";
+import { localLimit, tierTimeouts } from "../../../../../vitest.timeout-budget";
 
 const OLD_SCRIPT = path.resolve("tests/fixtures/machine-lock/stack-lock-6.0.0.sh");
+const OLD_LOCK_SCRIPT = path.resolve("tests/fixtures/machine-lock/machine-lock-6.1.1.sh");
 const BUDGET = tierTimeouts(true);
 
 const SCRIPT = path.resolve(".bkit/templates/scripts/ci/bkit-machine-lock.sh");
+/** The hold-limit supervisor a run holding its own tests lock starts from beside the script. */
+const AWAKE = path.resolve(".bkit/templates/scripts/ci/bkit-test-awake.mjs");
+const OLD_AWAKE = path.resolve("tests/fixtures/machine-lock/bkit-test-awake-6.1.1.mjs");
 const CHECKOUT = spawnSync("git", ["-C", path.dirname(SCRIPT), "rev-parse", "--show-toplevel"], {
   encoding: "utf-8",
 }).stdout.trim();
@@ -30,21 +42,40 @@ interface Result {
 let tmp: string;
 let cache: string;
 let children: ChildProcess[];
+/** A child whose stdout and stderr are pipes. */
+type Piped = ProcessByStdio<null, Readable, Readable>;
 
 beforeEach(() => {
   tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-stack-lock-")));
   cache = path.join(tmp, "cache");
   children = [];
 });
-afterEach(() => {
-  for (const child of children) child.kill("SIGKILL");
-  fs.rmSync(tmp, { recursive: true, force: true });
+afterEach(async () => {
+  await Promise.all(children.map(stopGroup));
+  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 });
 
-/** The test's own lock folder; CI, an inherited owner and a stack name are cleared so the lock really runs. */
+/**
+ * Starts a child in its own process group and records it for `afterEach`. A lock holder runs a
+ * perl process in the background that writes into the test's cache folder after its caller dies,
+ * so killing only the child leaves it writing while the folder is removed.
+ */
+function track(command: string, args: string[], opts: SpawnOptions): Piped {
+  const child = spawn(command, args, { ...opts, detached: true }) as Piped;
+  children.push(child);
+  return child;
+}
+
+/**
+ * The test's own lock folder; CI, an inherited owner, a stack name and the runtime markers are
+ * cleared so the lock really runs, as a local run, unless the caller sets them.
+ */
 function envFor(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, XDG_CACHE_HOME: cache };
   delete env.CI;
+  delete env.BKIT_RUNTIME;
+  delete env.CLAUDE_CODE_REMOTE;
+  delete env.LOCAL_STACK_LOCK_STATUS_FILE;
   for (const key of Object.keys(env)) {
     if (key.startsWith("LOCAL_STACK_LOCK_OWNER") || key.startsWith("LOCAL_STACK_LOCK_PID")) {
       delete env[key];
@@ -52,7 +83,28 @@ function envFor(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   }
   delete env.BKIT_TEST_SLOTS;
   delete env.BKIT_LOCAL_STACK;
+  if (extra.PATH === undefined) env.PATH = coreProbeBin(4) + path.delimiter + env.PATH;
   return { ...env, ...extra };
+}
+
+/** A folder holding a fake `getconf` that reports `cores`; with null, every core probe fails. */
+function coreProbeBin(cores: number | null): string {
+  const bin = path.join(tmp, "core-probe-" + String(cores));
+  if (fs.existsSync(bin)) return bin;
+  fs.mkdirSync(bin);
+  const body =
+    cores === null
+      ? "#!/bin/sh\nexit 1\n"
+      : `#!/bin/sh\n[ "$1" = _NPROCESSORS_ONLN ] || exit 1\nprintf "${cores}\\n"\n`;
+  for (const name of cores === null ? ["getconf", "nproc", "sysctl"] : ["getconf"]) {
+    fs.writeFileSync(path.join(bin, name), body, { mode: 0o755 });
+  }
+  return bin;
+}
+
+/** The test's env with the machine reporting `cores`; `BKIT_TEST_SLOTS` stays unset unless passed. */
+function coresEnv(cores: number | null, extra: Record<string, string> = {}): NodeJS.ProcessEnv {
+  return envFor({ PATH: coreProbeBin(cores) + path.delimiter + process.env.PATH, ...extra });
 }
 
 /** Runs a bash snippet with `script` sourced. */
@@ -80,12 +132,11 @@ function hold(
   script = SCRIPT,
   cwd = process.cwd(),
 ) {
-  const child = spawn(
+  const child = track(
     "bash",
     ["-c", `. "${script}"; take_local_stack_lock "${who}" || exit 1; echo locked; sleep ${holdS}`],
     { env, cwd, stdio: ["ignore", "pipe", "pipe"] },
   );
-  children.push(child);
   const done = new Promise<void>((resolve) => child.on("exit", () => resolve()));
   const lockFile = run("local_stack_lock_file", env, script, cwd);
   const locked = waitForHolder(lockFile.stdout.trim() + ".holder", who, child);
@@ -122,7 +173,7 @@ function holdNamed(
   holdS = 30,
   cwd = process.cwd(),
 ) {
-  const child = spawn(
+  const child = track(
     "bash",
     [
       "-c",
@@ -137,7 +188,6 @@ function holdNamed(
     ],
     { env, cwd, stdio: ["ignore", "pipe", "pipe"] },
   );
-  children.push(child);
   const done = new Promise<void>((resolve) => child.on("exit", () => resolve()));
   const locked = waitForHolder(
     path.join(cache, "bkit", "machine-lock", name + ".lock.holder"),
@@ -152,6 +202,7 @@ function checkout(name: string): { root: string; script: string } {
   const script = path.join(root, "scripts", "ci", "bkit-machine-lock.sh");
   fs.mkdirSync(path.dirname(script), { recursive: true });
   fs.copyFileSync(SCRIPT, script);
+  fs.copyFileSync(AWAKE, path.join(path.dirname(script), "bkit-test-awake.mjs"));
   git(tmp, ["init", "-q", "-b", "dev", root]);
   return { root, script };
 }
@@ -159,12 +210,11 @@ function checkout(name: string): { root: string; script: string } {
 /** Observable subprocess output also works when a holder uses a numbered slot. */
 function running(snippet: string, env: NodeJS.ProcessEnv, script = SCRIPT, cwd = process.cwd()) {
   const started = Date.now();
-  const child = spawn("bash", ["-c", `. "${script}"; ${snippet}`], {
+  const child = track("bash", ["-c", `. "${script}"; ${snippet}`], {
     env,
     cwd,
     stdio: ["ignore", "pipe", "pipe"],
   });
-  children.push(child);
   const output = { stdout: "", stderr: "" };
   child.stdout.on("data", (data: Buffer) => (output.stdout += data.toString()));
   child.stderr.on("data", (data: Buffer) => (output.stderr += data.toString()));
@@ -188,6 +238,22 @@ async function waitForOutput(process: ReturnType<typeof running>, text: string):
 
 function slotHolder(who: string, env: NodeJS.ProcessEnv) {
   return running(`take_local_stack_lock "${who}" tests || exit 1; echo acquired; sleep 30`, env);
+}
+
+function replyProbeDiagnostic(result: ReturnType<typeof spawnSync>): string {
+  return JSON.stringify({
+    status: result.status,
+    signal: result.signal,
+    error: result.error && "code" in result.error ? result.error.code : undefined,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  });
+}
+
+function stopReplyProbe(pidFile: string): void {
+  if (fs.existsSync(pidFile)) {
+    spawnSync("kill", ["-TERM", fs.readFileSync(pidFile, "utf-8").trim()]);
+  }
 }
 
 describe("machine lock slots, order and wait budgets", () => {
@@ -271,6 +337,90 @@ describe("machine lock slots, order and wait budgets", () => {
     );
     expect(results.map((result) => result.status)).toEqual([0, 0, 0]);
     expect(results.map((result) => result.stdout)).toEqual(["9", "4", "1"]);
+  });
+
+  it("with slots unset on 10 cores, two runs hold tests at once and a third waits naming both", async () => {
+    const env = coresEnv(10, { LOCAL_STACK_LOCK_WAIT_S: "2" });
+    const first = slotHolder("first core slot", env);
+    await waitForOutput(first, "acquired");
+    const second = slotHolder("second core slot", env);
+    await waitForOutput(second, "acquired");
+    const third = commandRun(["third core slot", "--lock", "tests", "--", "echo", "entered"], env);
+    expect(third.status).toBe(75);
+    expect(third.stdout).not.toContain("entered");
+    expect(third.stderr).toContain("first core slot");
+    expect(third.stderr).toContain("second core slot");
+  });
+
+  it("with slots unset on 7 cores, a second run waits behind the first", async () => {
+    const env = coresEnv(7, { LOCAL_STACK_LOCK_WAIT_S: "1" });
+    const first = slotHolder("only core slot", env);
+    await waitForOutput(first, "acquired");
+    const second = commandRun(["second", "--lock", "tests", "--", "echo", "entered"], env);
+    expect(second.status).toBe(75);
+    expect(second.stdout).not.toContain("entered");
+    expect(second.stderr).toContain("only core slot");
+  });
+
+  it("with slots unset, BKIT_TEST_WORKERS follows the core-count slots", () => {
+    const workers = (cores: number) =>
+      commandRun(
+        ["workers", "--lock", "tests", "--", "bash", "-c", 'printf "%s" "$BKIT_TEST_WORKERS"'],
+        coresEnv(cores),
+      );
+    const results = [10, 8, 7].map(workers);
+    expect(results.map((result) => result.status)).toEqual([0, 0, 0]);
+    expect(results.map((result) => result.stdout)).toEqual(["4", "3", "6"]);
+  });
+
+  it("a set BKIT_TEST_SLOTS overrides the core-count default both ways", async () => {
+    const one = coresEnv(10, { BKIT_TEST_SLOTS: "1", LOCAL_STACK_LOCK_WAIT_S: "1" });
+    const holder = slotHolder("override one", one);
+    await waitForOutput(holder, "acquired");
+    const blocked = commandRun(["next", "--lock", "tests", "--", "echo", "entered"], one);
+    expect(blocked.status).toBe(75);
+    expect(blocked.stdout).not.toContain("entered");
+    holder.child.kill("SIGKILL");
+    await holder.done;
+    const three = coresEnv(4, { BKIT_TEST_SLOTS: "3", LOCAL_STACK_LOCK_WAIT_S: "1" });
+    const extra = [slotHolder("three a", three), slotHolder("three b", three)];
+    for (const h of extra) await waitForOutput(h, "acquired");
+    const third = slotHolder("three c", three);
+    await waitForOutput(third, "acquired");
+    const fourth = commandRun(["fourth", "--lock", "tests", "--", "echo", "entered"], three);
+    expect(fourth.status).toBe(75);
+    expect(fourth.stderr).toContain("three c");
+  });
+
+  it("an invalid slots value falls back to the core-count default and names it", async () => {
+    const twice =
+      "take_local_stack_lock invalid tests || exit 1; release_local_stack_lock tests; take_local_stack_lock again tests || exit 1; release_local_stack_lock tests";
+    const ten = run(twice, coresEnv(10, { BKIT_TEST_SLOTS: "garbage" }));
+    expect(ten.status).toBe(0);
+    expect(ten.stderr.match(/BKIT_TEST_SLOTS/g)?.length).toBe(1);
+    expect(ten.stderr).toContain("[machine-lock] invalid BKIT_TEST_SLOTS; using 2 slot(s)");
+    const four = run(twice, coresEnv(4, { BKIT_TEST_SLOTS: "0" }));
+    expect(four.status).toBe(0);
+    expect(four.stderr.match(/BKIT_TEST_SLOTS/g)?.length).toBe(1);
+    expect(four.stderr).toContain("[machine-lock] invalid BKIT_TEST_SLOTS; using 1 slot(s)");
+    const env = coresEnv(10, { BKIT_TEST_SLOTS: "-1", LOCAL_STACK_LOCK_WAIT_S: "2" });
+    const first = slotHolder("fallback first", env);
+    await waitForOutput(first, "acquired");
+    const second = slotHolder("fallback second", env);
+    await waitForOutput(second, "acquired");
+    const third = commandRun(["third", "--lock", "tests", "--", "echo", "entered"], env);
+    expect(third.status).toBe(75);
+    expect(third.stdout).not.toContain("entered");
+  });
+
+  it("with no working core probe, slots unset gives one slot", async () => {
+    const env = coresEnv(null, { LOCAL_STACK_LOCK_WAIT_S: "1" });
+    const first = slotHolder("no probe holder", env);
+    await waitForOutput(first, "acquired");
+    const second = commandRun(["second", "--lock", "tests", "--", "echo", "entered"], env);
+    expect(second.status).toBe(75);
+    expect(second.stdout).not.toContain("entered");
+    expect(second.stderr).toContain("no probe holder");
   });
 
   it("a killed tests-lock holder frees its slot within a second and the waiter starts", async () => {
@@ -450,7 +600,7 @@ describe("bkit-machine-lock.sh", { timeout: BUDGET.testTimeout }, () => {
   it("terminating a run wrapper stops its gate before another run acquires the tests lock", async () => {
     const env = envFor({ BKIT_TEST_SLOTS: "1", LOCAL_STACK_LOCK_WAIT_S: "0" });
     const pidFile = path.join(tmp, "gate.pid");
-    const wrapper = spawn(
+    const wrapper = track(
       "bash",
       [
         SCRIPT,
@@ -467,7 +617,6 @@ describe("bkit-machine-lock.sh", { timeout: BUDGET.testTimeout }, () => {
       ],
       { env, stdio: "ignore" },
     );
-    children.push(wrapper);
     await expect.poll(() => fs.existsSync(pidFile), { timeout: BUDGET.hookTimeout }).toBe(true);
     const gatePid = Number(fs.readFileSync(pidFile, "utf-8").trim());
     expect(gatePid).toBeGreaterThan(0);
@@ -629,6 +778,13 @@ describe("bkit-machine-lock.sh", { timeout: BUDGET.testTimeout }, () => {
     );
     expect(r.stdout, r.stderr).toContain("nested-ok");
     expect(r.stderr).not.toContain("waiting");
+    // The parent's wait-mode take made the queue folder; the child reused the parent's lock and
+    // left no ticket in it.
+    const queue = run("local_stack_lock_file", envFor())
+      .stdout.trim()
+      .replace(/\.lock$/, ".queue");
+    expect(fs.existsSync(queue), "the stack lock's queue folder " + queue).toBe(true);
+    expect(fs.readdirSync(queue)).toEqual([]);
   });
 
   it("a stack named by BKIT_LOCAL_STACK never waits on the shared one", async () => {
@@ -696,6 +852,68 @@ describe("bkit-machine-lock.sh", { timeout: BUDGET.testTimeout }, () => {
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("stopped before it answered");
     expect(r.ms).toBeLessThan(10_000);
+  });
+
+  it.each([
+    {
+      name: "preserves fragmented successful FIFO replies across timed reads",
+      reply: 'print $out "o"; select(undef, undef, undef, 1.2); print $out "k\\n";',
+      status: 0,
+      stdout: "acquired\nreleased\n",
+      stderr: "",
+    },
+    {
+      name: "stops and reaps an acquired holder after a malformed FIFO reply",
+      reply: 'print $out "invalid\\n";',
+      status: 1,
+      stdout: "",
+      stderr: "[machine-lock] ❌ could not take the lock for tests: invalid\n",
+    },
+  ])("$name", ({ reply, status, stdout, stderr }) => {
+    const broken = path.join(tmp, "reply-lock.sh");
+    const pidFile = path.join(tmp, "reply-holder.pid");
+    const text = fs.readFileSync(SCRIPT, "utf-8");
+    const original = 'print $out "ok\\n";';
+    expect(text).toContain(original);
+    fs.writeFileSync(
+      broken,
+      text.replace(
+        original,
+        () =>
+          'open(my $probe, ">", $ENV{BKIT_LOCK_PROBE_PID}) or die $!; ' +
+          'print $probe "$$\\n"; close $probe; ' +
+          reply,
+      ),
+    );
+    const env = envFor({ BKIT_LOCK_PROBE_PID: pidFile });
+    const result = spawnSync(
+      "bash",
+      [
+        "-c",
+        `. "${broken}"; take_local_stack_lock probe tests || exit 1; echo acquired; release_local_stack_lock tests; echo released`,
+      ],
+      { env, encoding: "utf-8", timeout: 5_000 },
+    );
+    const diagnostic = replyProbeDiagnostic(result);
+    try {
+      expect(result.status, diagnostic).toBe(status);
+      expect(result.signal, diagnostic).toBeNull();
+      expect(result.error, diagnostic).toBeUndefined();
+      expect(fs.existsSync(pidFile), diagnostic).toBe(true);
+      const pid = fs.readFileSync(pidFile, "utf-8").trim();
+      expect(pid, diagnostic).toMatch(/^[1-9]\d*$/);
+      expect(() => process.kill(Number(pid), 0), diagnostic).toThrow("ESRCH");
+      expect(result.stdout, diagnostic).toBe(stdout);
+      expect(result.stderr, diagnostic).toBe(stderr);
+      const next = run(
+        "try_local_stack_lock next tests && echo reacquired; release_local_stack_lock tests",
+        env,
+      );
+      expect(next.status, next.stderr).toBe(0);
+      expect(next.stdout, next.stderr).toContain("reacquired");
+    } finally {
+      stopReplyProbe(pidFile);
+    }
   });
 
   it.each(["true", "1"])("CI=%s is a no-op that creates no lock file", (ci) => {
@@ -896,6 +1114,46 @@ describe("bkit-machine-lock.sh", { timeout: BUDGET.testTimeout }, () => {
     expect(result.stderr).toMatch(/not found|missing|not executable/);
   });
 
+  it("run exits 73 naming bkit-test-awake.mjs when it is not beside the script, frees the lock and writes outcome refused", () => {
+    const lone = path.join(tmp, "lone");
+    fs.mkdirSync(lone);
+    const script = path.join(lone, "bkit-machine-lock.sh");
+    fs.copyFileSync(SCRIPT, script);
+    const status = path.join(tmp, "lone-status");
+    const env = envFor();
+    const result = commandRun(
+      ["lone gate", "--lock", "tests", "--", "bash", "-c", "echo should-not-run"],
+      { ...env, LOCAL_STACK_LOCK_STATUS_FILE: status },
+      script,
+    );
+    expect(result.status, result.stderr).toBe(73);
+    expect(result.stdout).not.toContain("should-not-run");
+    expect(result.stderr).toContain(path.join(lone, "bkit-test-awake.mjs"));
+    expect(statusOf(status)).toEqual(["lock=tests", "outcome=refused", "holder=lone gate"]);
+    expectTestsLockFree(env);
+  });
+
+  it("run exits 73 when the bkit-test-awake.mjs beside the script has no --hold-s, frees the lock and writes outcome refused", () => {
+    const old = path.join(tmp, "old-awake");
+    fs.mkdirSync(old);
+    const script = path.join(old, "bkit-machine-lock.sh");
+    fs.copyFileSync(SCRIPT, script);
+    fs.copyFileSync(OLD_AWAKE, path.join(old, "bkit-test-awake.mjs"));
+    const status = path.join(tmp, "old-awake-status");
+    const env = envFor();
+    const result = commandRun(
+      ["old awake gate", "--lock", "tests", "--", "bash", "-c", "echo should-not-run"],
+      { ...env, LOCAL_STACK_LOCK_STATUS_FILE: status },
+      script,
+    );
+    expect(result.status, result.stderr).toBe(73);
+    expect(result.stdout).not.toContain("should-not-run");
+    expect(result.stderr).toContain(path.join(old, "bkit-test-awake.mjs"));
+    expect(result.stderr).toContain(".bkit/templates/scripts/ci/bkit-test-awake.mjs");
+    expect(statusOf(status)).toEqual(["lock=tests", "outcome=refused", "holder=old awake gate"]);
+    expectTestsLockFree(env);
+  });
+
   it("a runner started by a tests-lock holder still waits on a held unnamed stack lock, under this script and under an older copy", async () => {
     const env = envFor({ LOCAL_STACK_LOCK_WAIT_S: "0", BKIT_LOCAL_STACK: "shared-stack" });
     const stack = hold("separate stack holder", 30, env);
@@ -943,5 +1201,1277 @@ describe("bkit-machine-lock.sh", { timeout: BUDGET.testTimeout }, () => {
     expect(fromPackage.status, fromPackage.stderr).toBe(0);
     expect(fromPackage.stdout).toContain("test:integration");
     expect(fromPackage.stdout).not.toContain("--lock");
+  });
+});
+
+// ---- run reports a give-up or a refusal in LOCAL_STACK_LOCK_STATUS_FILE ----
+
+/** The lines of a status file, after checking it ends in one LF and holds no CR. */
+function statusOf(file: string): string[] {
+  const text = fs.readFileSync(file, "utf-8");
+  expect(text.endsWith("\n")).toBe(true);
+  expect(text).not.toContain("\r");
+  return text.slice(0, -1).split("\n");
+}
+
+describe("machine lock status file", { timeout: BUDGET.testTimeout }, () => {
+  it("run on a give-up writes lock, outcome and holder to the status file and exits 75", async () => {
+    const status = path.join(tmp, "status");
+    const env = envFor({ LOCAL_STACK_LOCK_WAIT_S: "0" });
+    const holder = holdNamed("status holder", "tests", env);
+    await holder.locked;
+    const waiting = commandRun(["status waiter", "--lock", "tests", "--", "echo", "entered"], {
+      ...env,
+      LOCAL_STACK_LOCK_STATUS_FILE: status,
+    });
+    expect(waiting.status, waiting.stderr).toBe(75);
+    expect(waiting.stdout).not.toContain("entered");
+    expect(fs.existsSync(status), "no status file written").toBe(true);
+    const lines = statusOf(status);
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toBe("lock=tests");
+    expect(lines[1]).toBe("outcome=gave-up");
+    expect(lines[2]!.startsWith(`holder=status holder — ${CHECKOUT} (pid `), lines[2]).toBe(true);
+    expect(fs.readdirSync(tmp).filter((name) => name.startsWith("status."))).toEqual([]);
+  });
+
+  it("run on a refusal writes outcome refused to the status file and exits 73", () => {
+    const status = path.join(tmp, "status");
+    const notDirectory = path.join(tmp, "cache-is-a-file");
+    fs.writeFileSync(notDirectory, "this blocks mkdir");
+    const refused = commandRun(["refused gate", "--lock", "tests", "--", "echo", "entered"], {
+      ...envFor({ XDG_CACHE_HOME: notDirectory }),
+      LOCAL_STACK_LOCK_STATUS_FILE: status,
+    });
+    expect(refused.status, refused.stderr).toBe(73);
+    expect(refused.stdout).not.toContain("entered");
+    expect(fs.existsSync(status), "no status file written").toBe(true);
+    const lines = statusOf(status);
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toBe("lock=tests");
+    expect(lines[1]).toBe("outcome=refused");
+    expect(lines[2]!.startsWith("holder=")).toBe(true);
+    // A command that takes the lock and exits 75 itself leaves no status file.
+    const own = path.join(tmp, "own-status");
+    const ran = commandRun(["own exit", "--lock", "tests", "--", "bash", "-c", "exit 75"], {
+      ...envFor(),
+      LOCAL_STACK_LOCK_STATUS_FILE: own,
+    });
+    expect(ran.status, ran.stderr).toBe(75);
+    expect(fs.existsSync(own)).toBe(false);
+  });
+
+  it("a nested run never writes the outer status file", async () => {
+    const status = path.join(tmp, "status");
+    const env = envFor({ LOCAL_STACK_LOCK_WAIT_S: "0" });
+    const other = holdNamed("other holder", "other", env);
+    await other.locked;
+    const outer = commandRun(
+      [
+        "outer gate",
+        "--lock",
+        "tests",
+        "--",
+        "bash",
+        "-c",
+        'printf "inner sees %s\\n" "${LOCAL_STACK_LOCK_STATUS_FILE-nothing}"; bash "$1" run inner --lock other -- echo entered',
+        "outer",
+        SCRIPT,
+      ],
+      { ...env, LOCAL_STACK_LOCK_STATUS_FILE: status },
+    );
+    expect(outer.status, outer.stderr).toBe(75);
+    expect(outer.stdout).toContain("inner sees nothing");
+    expect(outer.stdout).not.toContain("entered");
+    expect(outer.stderr).toContain("other holder");
+    expect(fs.existsSync(status)).toBe(false);
+  });
+});
+
+// ---- the slot default is the core-count rule for local runs only; `slots` prints it ----
+
+/** The BKIT_TEST_WORKERS a tests-lock run exports under `env`. */
+function workersUnder(env: NodeJS.ProcessEnv, script = SCRIPT, cwd = process.cwd()): string {
+  const result = commandRun(
+    ["workers", "--lock", "tests", "--", "bash", "-c", 'printf "%s" "$BKIT_TEST_WORKERS"'],
+    env,
+    script,
+    cwd,
+  );
+  expect(result.status, result.stderr).toBe(0);
+  return result.stdout;
+}
+
+describe("machine lock runtime slots", { timeout: BUDGET.testTimeout }, () => {
+  it("CLAUDE_CODE_REMOTE=true on 10 cores with slots unset gives one slot and nine workers", async () => {
+    for (const flag of ["true", "TRUE", "True", "1", "yes", "YES"]) {
+      expect(workersUnder(coresEnv(10, { CLAUDE_CODE_REMOTE: flag })), flag).toBe("9");
+    }
+    for (const flag of ["", "false", "0", "no"]) {
+      expect(workersUnder(coresEnv(10, { CLAUDE_CODE_REMOTE: flag })), flag).toBe("4");
+    }
+    const env = coresEnv(10, { CLAUDE_CODE_REMOTE: "true", LOCAL_STACK_LOCK_WAIT_S: "1" });
+    const first = slotHolder("cloud slot", env);
+    await waitForOutput(first, "acquired");
+    const second = commandRun(["second", "--lock", "tests", "--", "echo", "entered"], env);
+    expect(second.status).toBe(75);
+    expect(second.stdout).not.toContain("entered");
+    expect(second.stderr).toContain("cloud slot");
+  });
+
+  it("the Cursor marker in the main checkout gives one slot from a linked worktree", () => {
+    const main = checkout("cursor-main");
+    git(main.root, ["add", "-A"]);
+    git(main.root, ["commit", "-q", "-m", "init"]);
+    const linked = path.join(tmp, "cursor-linked");
+    git(main.root, ["worktree", "add", "-q", linked]);
+    const script = path.join(linked, "scripts", "ci", "bkit-machine-lock.sh");
+    expect(workersUnder(coresEnv(10), script, linked)).toBe("4");
+    fs.mkdirSync(path.join(main.root, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(main.root, ".bkit", ".runtime-cursor"), "");
+    expect(workersUnder(coresEnv(10), script, linked)).toBe("9");
+    expect(workersUnder(coresEnv(10), script, main.root)).toBe("9");
+    expect(workersUnder(coresEnv(10, { BKIT_RUNTIME: "LOCAL" }), script, linked)).toBe("4");
+  });
+
+  it("BKIT_RUNTIME=LOCAL beats CLAUDE_CODE_REMOTE, and an invalid BKIT_RUNTIME gives one slot", () => {
+    expect(workersUnder(coresEnv(10, { BKIT_RUNTIME: "LOCAL", CLAUDE_CODE_REMOTE: "true" }))).toBe(
+      "4",
+    );
+    expect(workersUnder(coresEnv(10, { BKIT_RUNTIME: "not-a-runtime" }))).toBe("9");
+    expect(workersUnder(coresEnv(10, { BKIT_RUNTIME: "local" }))).toBe("9");
+    expect(workersUnder(coresEnv(10, { BKIT_RUNTIME: "CLOUD_CLAUDE" }))).toBe("9");
+    expect(workersUnder(coresEnv(10, { BKIT_RUNTIME: "" }))).toBe("4");
+  });
+
+  it("BKIT_TEST_SLOTS=2 overrides the cloud default", async () => {
+    const env = coresEnv(10, {
+      CLAUDE_CODE_REMOTE: "true",
+      BKIT_TEST_SLOTS: "2",
+      LOCAL_STACK_LOCK_WAIT_S: "1",
+    });
+    expect(workersUnder(env)).toBe("4");
+    const first = slotHolder("cloud first", env);
+    await waitForOutput(first, "acquired");
+    const second = slotHolder("cloud second", env);
+    await waitForOutput(second, "acquired");
+    const third = commandRun(["third", "--lock", "tests", "--", "echo", "entered"], env);
+    expect(third.status).toBe(75);
+    expect(third.stderr).toContain("cloud first");
+    expect(third.stderr).toContain("cloud second");
+  });
+
+  it("the slots subcommand prints slots and workers for the same cores and env as run", () => {
+    const cases: [NodeJS.ProcessEnv, number][] = [
+      [coresEnv(10), 2],
+      [coresEnv(8), 2],
+      [coresEnv(7), 1],
+      [coresEnv(null), 1],
+      [coresEnv(10, { CLAUDE_CODE_REMOTE: "true" }), 1],
+      [coresEnv(10, { BKIT_TEST_SLOTS: "3" }), 3],
+      [coresEnv(10, { BKIT_TEST_SLOTS: "garbage" }), 2],
+    ];
+    for (const [env, slots] of cases) {
+      const printed = spawnSync("bash", [SCRIPT, "slots"], { env, encoding: "utf-8" });
+      expect(printed.status, printed.stderr).toBe(0);
+      expect(printed.stdout).toBe(`slots=${slots} workers=${workersUnder(env)}\n`);
+    }
+  });
+});
+
+// ---- waiters are served in the order they started waiting ----
+
+const TICKET_NAME = /^\d+\.\d{6}-(\d+)$/;
+const STACK = "qstack";
+
+/** The queue folder beside a lock: a named lock, or the unnamed stack lock of STACK. */
+function queueOf(name?: string): string {
+  return name
+    ? path.join(cache, "bkit", "machine-lock", name + ".queue")
+    : path.join(cache, "bkit", "local-stack-lock", STACK + ".queue");
+}
+
+function ticketsIn(queue: string): string[] {
+  if (!fs.existsSync(queue)) return [];
+  return fs
+    .readdirSync(queue)
+    .filter((entry) => TICKET_NAME.test(entry))
+    .sort();
+}
+
+/** The pid in the name of the live ticket whose first line starts with `who — `. */
+function ticketPid(queue: string, who: string): number {
+  for (const name of ticketsIn(queue)) {
+    let line = "";
+    try {
+      line = fs.readFileSync(path.join(queue, name), "utf-8");
+    } catch {
+      continue;
+    }
+    if (line.startsWith(who + " — ")) return Number(TICKET_NAME.exec(name)![1]);
+  }
+  throw new Error("no ticket for " + who + " in " + queue);
+}
+
+async function waitForTicket(queue: string, who: string): Promise<number> {
+  const until = Date.now() + BUDGET.hookTimeout;
+  while (Date.now() < until) {
+    try {
+      return ticketPid(queue, who);
+    } catch {
+      await delay(20);
+    }
+  }
+  return ticketPid(queue, who);
+}
+
+/** The held place (`<ticket name>.held`) a waiter that gave up left behind. */
+function heldPlaceFor(queue: string, who: string): string {
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(queue).filter((entry) => entry.endsWith(".held"));
+  } catch {
+    names = [];
+  }
+  for (const name of names) {
+    const file = path.join(queue, name);
+    try {
+      if (fs.readFileSync(file, "utf-8").startsWith(who + " — ")) return file;
+    } catch {
+      continue;
+    }
+  }
+  throw new Error("no held place for " + who + " in " + queue);
+}
+
+async function waitForHeldPlace(queue: string, who: string): Promise<string> {
+  const until = Date.now() + BUDGET.hookTimeout;
+  while (Date.now() < until) {
+    try {
+      return heldPlaceFor(queue, who);
+    } catch {
+      await delay(20);
+    }
+  }
+  return heldPlaceFor(queue, who);
+}
+
+function readLines(file: string): string[] {
+  return fs.existsSync(file)
+    ? fs
+        .readFileSync(file, "utf-8")
+        .split("\n")
+        .filter((line) => line !== "")
+    : [];
+}
+
+/** Plants `<ms>.jump` in the queue, carrying the first line of the live ticket (or held place) of `who`. */
+function plantJump(queue: string, who: string, at = Date.now()): string {
+  let source: string | undefined;
+  for (const name of ticketsIn(queue)) {
+    const file = path.join(queue, name);
+    try {
+      if (fs.readFileSync(file, "utf-8").startsWith(who + " — ")) source = file;
+    } catch {
+      continue;
+    }
+  }
+  source ??= heldPlaceFor(queue, who);
+  const line = fs.readFileSync(source, "utf-8").split("\n")[0]!;
+  const marker = path.join(queue, at + ".jump");
+  fs.writeFileSync(marker, line + "\n");
+  return marker;
+}
+
+/** A run wrapper: `bash <script> run <who> [--lock name] -- <command>`, output captured. */
+function wrapped(
+  who: string,
+  env: NodeJS.ProcessEnv,
+  command: string,
+  opts: { lock?: string; script?: string } = {},
+) {
+  const started = Date.now();
+  const args = [opts.script ?? SCRIPT, "run", who, ...(opts.lock ? ["--lock", opts.lock] : [])];
+  const child = track("bash", [...args, "--", "bash", "-c", command], {
+    env,
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const output = { stdout: "", stderr: "" };
+  child.stdout.on("data", (data: Buffer) => (output.stdout += data.toString()));
+  child.stderr.on("data", (data: Buffer) => (output.stderr += data.toString()));
+  const done = new Promise<Result>((resolve) => {
+    child.on("close", (status) => resolve({ status, ...output, ms: Date.now() - started }));
+  });
+  return { child, output, done };
+}
+
+/** Holds a lock (named, or the unnamed stack lock) until `release()` is called. */
+async function queueHolder(env: NodeJS.ProcessEnv, name?: string, who = "holder") {
+  const releaseFile = path.join(tmp, "release-" + who);
+  const arg = name ? " " + name : "";
+  const proc = running(
+    `take_local_stack_lock ${who}${arg} || exit 1; echo acquired; while [ ! -f "${releaseFile}" ]; do sleep 0.05; done; release_local_stack_lock${arg}`,
+    env,
+  );
+  await waitForOutput(proc, "acquired");
+  return { proc, release: () => fs.writeFileSync(releaseFile, "release") };
+}
+
+/** Starts a waiter that appends its name to `order`, and returns once its ticket is in the queue. */
+async function queuedWaiter(
+  who: string,
+  env: NodeJS.ProcessEnv,
+  order: string,
+  name?: string,
+  command = `echo ${who} >> "${order}"`,
+) {
+  const waiter = wrapped(who, env, command, { lock: name });
+  await waitForTicket(queueOf(name), who);
+  return waiter;
+}
+
+async function expectAllExit(waiters: { done: Promise<Result> }[]): Promise<void> {
+  for (const result of await Promise.all(waiters.map((w) => w.done))) {
+    expect(result.status, result.stderr).toBe(0);
+  }
+}
+
+async function fiveInArrivalOrder(name: string | undefined, env: NodeJS.ProcessEnv) {
+  const order = path.join(tmp, "order");
+  const holder = await queueHolder(env, name);
+  const waiters = [];
+  for (const who of ["w1", "w2", "w3", "w4", "w5"]) {
+    waiters.push(await queuedWaiter(who, env, order, name));
+  }
+  holder.release();
+  await expectAllExit(waiters);
+  return readLines(order);
+}
+
+describe("machine lock waiting order", { timeout: BUDGET.testTimeout }, () => {
+  const waitEnv = (extra: Record<string, string> = {}) =>
+    envFor({ LOCAL_STACK_LOCK_WAIT_S: "60", BKIT_LOCAL_STACK: STACK, ...extra });
+
+  it("tests-lock waiters run their commands in arrival order", async () => {
+    expect(await fiveInArrivalOrder("tests", waitEnv())).toEqual(["w1", "w2", "w3", "w4", "w5"]);
+  });
+
+  it("stack-lock waiters run their commands in arrival order", async () => {
+    expect(await fiveInArrivalOrder(undefined, waitEnv())).toEqual(["w1", "w2", "w3", "w4", "w5"]);
+  });
+
+  it("a run that releases the lock and asks again queues behind runs already waiting", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const releaseFile = path.join(tmp, "release-again");
+    const again = running(
+      `take_local_stack_lock again tests || exit 1; echo acquired; echo again-1 >> "${order}"; while [ ! -f "${releaseFile}" ]; do sleep 0.05; done; release_local_stack_lock tests; take_local_stack_lock again tests || exit 1; echo again-2 >> "${order}"; release_local_stack_lock tests`,
+      env,
+    );
+    await waitForOutput(again, "acquired");
+    const waiters = [];
+    for (const who of ["w1", "w2", "w3", "w4", "w5"]) {
+      waiters.push(await queuedWaiter(who, env, order, "tests"));
+    }
+    fs.writeFileSync(releaseFile, "release");
+    await expectAllExit(waiters);
+    expect((await again.done).status).toBe(0);
+    expect(readLines(order)).toEqual(["again-1", "w1", "w2", "w3", "w4", "w5", "again-2"]);
+  });
+
+  it("with two slots, waiters take freed slots in arrival order", async () => {
+    const env = waitEnv({ BKIT_TEST_SLOTS: "2" });
+    const order = path.join(tmp, "order");
+    const slotA = await queueHolder(env, "tests", "slot-a");
+    const slotB = await queueHolder(env, "tests", "slot-b");
+    const gate = (who: string) =>
+      `echo ${who} >> "${order}"; while [ ! -f "${tmp}/done-${who}" ]; do sleep 0.05; done`;
+    const waiters = [];
+    for (const who of ["w1", "w2", "w3", "w4"]) {
+      waiters.push(await queuedWaiter(who, env, order, "tests", gate(who)));
+    }
+    slotA.release();
+    await expect.poll(() => readLines(order), { timeout: BUDGET.hookTimeout }).toEqual(["w1"]);
+    await delay(500);
+    expect(readLines(order)).toEqual(["w1"]);
+    slotB.release();
+    await expect
+      .poll(() => readLines(order), { timeout: BUDGET.hookTimeout })
+      .toEqual(["w1", "w2"]);
+    await delay(500);
+    expect(readLines(order)).toEqual(["w1", "w2"]);
+    fs.writeFileSync(path.join(tmp, "done-w1"), "");
+    await expect
+      .poll(() => readLines(order), { timeout: BUDGET.hookTimeout })
+      .toEqual(["w1", "w2", "w3"]);
+    fs.writeFileSync(path.join(tmp, "done-w2"), "");
+    fs.writeFileSync(path.join(tmp, "done-w3"), "");
+    fs.writeFileSync(path.join(tmp, "done-w4"), "");
+    await expectAllExit(waiters);
+    expect(readLines(order)).toEqual(["w1", "w2", "w3", "w4"]);
+  });
+
+  it("queued waiters keep their order while a copy without the queue also waits, and no two commands overlap", async () => {
+    const env = waitEnv();
+    const events = path.join(tmp, "events");
+    const span = (who: string) =>
+      `echo "start ${who}" >> "${events}"; sleep 0.2; echo "end ${who}" >> "${events}"`;
+    const holder = await queueHolder(env, "tests");
+    const waiters = [];
+    for (const who of ["w1", "w2"]) {
+      waiters.push(await queuedWaiter(who, env, events, "tests", span(who)));
+    }
+    const old = wrapped("old-copy", env, span("old-copy"), {
+      lock: "tests",
+      script: OLD_LOCK_SCRIPT,
+    });
+    await waitForOutput(old, "waiting");
+    for (const who of ["w3", "w4", "w5"]) {
+      waiters.push(await queuedWaiter(who, env, events, "tests", span(who)));
+    }
+    holder.release();
+    await expectAllExit([...waiters, old]);
+    const lines = readLines(events);
+    expect(lines).toHaveLength(12);
+    for (let i = 0; i < lines.length; i += 2) {
+      const who = lines[i]!.replace("start ", "");
+      expect(lines[i]).toBe("start " + who);
+      expect(lines[i + 1]).toBe("end " + who);
+    }
+    expect(lines.filter((line) => /^start w\d$/.test(line))).toEqual(
+      ["w1", "w2", "w3", "w4", "w5"].map((who) => "start " + who),
+    );
+    expect(lines).toContain("start old-copy");
+  });
+
+  it("a waiter that gives up leaves the line and the runs behind it keep their order", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const w1 = await queuedWaiter("w1", env, order, "tests");
+    const w2 = await queuedWaiter("w2", { ...env, LOCAL_STACK_LOCK_WAIT_S: "2" }, order, "tests");
+    const w3 = await queuedWaiter("w3", env, order, "tests");
+    const w4 = await queuedWaiter("w4", env, order, "tests");
+    const gaveUp = await w2.done;
+    expect(gaveUp.status).toBe(75);
+    expect(() => ticketPid(queueOf("tests"), "w2")).toThrow(/no ticket for/);
+    holder.release();
+    await expectAllExit([w1, w3, w4]);
+    expect(readLines(order)).toEqual(["w1", "w3", "w4"]);
+  });
+
+  it("a waiter whose caller is killed leaves the line and the runs behind it keep their order", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const w1 = await queuedWaiter("w1", env, order, "tests");
+    const w2 = await queuedWaiter("w2", env, order, "tests");
+    const w3 = await queuedWaiter("w3", env, order, "tests");
+    w2.child.kill("SIGKILL");
+    await expect
+      .poll(() => ticketsIn(queueOf("tests")).length, { timeout: BUDGET.hookTimeout })
+      .toBe(2);
+    expect(() => ticketPid(queueOf("tests"), "w2")).toThrow(/no ticket for/);
+    holder.release();
+    await expectAllExit([w1, w3]);
+    expect(readLines(order)).toEqual(["w1", "w3"]);
+  });
+
+  it("a waiter whose helper gets SIGTERM leaves the line at once and the runs behind it keep their order", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const w1 = await queuedWaiter("w1", env, order, "tests");
+    const w2 = await queuedWaiter("w2", env, order, "tests");
+    const w3 = await queuedWaiter("w3", env, order, "tests");
+    process.kill(ticketPid(queueOf("tests"), "w2"), "SIGTERM");
+    await expect
+      .poll(() => ticketsIn(queueOf("tests")).length, { timeout: 1000, interval: 10 })
+      .toBe(2);
+    expect(() => ticketPid(queueOf("tests"), "w2")).toThrow(/no ticket for/);
+    holder.release();
+    await expectAllExit([w1, w3]);
+    await w2.done;
+    expect(readLines(order)).toEqual(["w1", "w3"]);
+  });
+
+  it("a killed waiter's leftover ticket is skipped and removed, and the runs behind it keep their order", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const w1 = await queuedWaiter("w1", env, order, "tests");
+    const w2 = await queuedWaiter("w2", env, order, "tests");
+    const w3 = await queuedWaiter("w3", env, order, "tests");
+    process.kill(ticketPid(queueOf("tests"), "w2"), "SIGKILL");
+    holder.release();
+    await expectAllExit([w1, w3]);
+    await w2.done;
+    expect(readLines(order)).toEqual(["w1", "w3"]);
+    await expect
+      .poll(() => ticketsIn(queueOf("tests")), { timeout: BUDGET.hookTimeout })
+      .toEqual([]);
+  });
+
+  it("run exits 73 naming the queue folder when it cannot be created", () => {
+    const queue = queueOf("tests");
+    fs.mkdirSync(path.dirname(queue), { recursive: true });
+    fs.writeFileSync(queue, "a file cannot hold a queue folder");
+    const result = commandRun(
+      ["queue blocked", "--lock", "tests", "--", "bash", "-c", "echo should-not-run"],
+      envFor(),
+    );
+    expect(result.status, result.stderr).toBe(73);
+    expect(result.stdout).not.toContain("should-not-run");
+    expect(result.stderr).toContain(queue);
+  });
+
+  it("run exits 73 naming the queue folder when no ticket can be written", () => {
+    const queue = queueOf("tests");
+    fs.mkdirSync(queue, { recursive: true });
+    fs.chmodSync(queue, 0o555);
+    try {
+      const result = commandRun(
+        ["queue read-only", "--lock", "tests", "--", "bash", "-c", "echo should-not-run"],
+        envFor(),
+      );
+      expect(result.status, result.stderr).toBe(73);
+      expect(result.stdout).not.toContain("should-not-run");
+      expect(result.stderr).toContain(queue);
+    } finally {
+      fs.chmodSync(queue, 0o755);
+    }
+  });
+
+  it("a try while a run waits first in line reports busy even when the lock is free", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const w1 = await queuedWaiter("w1", env, order, "tests");
+    const helper = ticketPid(queueOf("tests"), "w1");
+    process.kill(helper, "SIGSTOP");
+    try {
+      holder.release();
+      await holder.proc.done;
+      const holderFile = path.join(cache, "bkit", "machine-lock", "tests.lock.holder");
+      await expect
+        .poll(() => fs.existsSync(holderFile), { timeout: BUDGET.hookTimeout })
+        .toBe(false);
+      const tried = run("try_local_stack_lock prober tests", env);
+      expect(tried.status).toBe(1);
+      expect(tried.stderr).toContain("1 waiting in line");
+      expect(fs.existsSync(holderFile)).toBe(false);
+    } finally {
+      process.kill(helper, "SIGCONT");
+    }
+    await expectAllExit([w1]);
+    expect(readLines(order)).toEqual(["w1"]);
+  });
+
+  it("the waiting note says where the run is in line", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const w1 = await queuedWaiter("w1", env, order, "tests");
+    const w2 = await queuedWaiter("w2", env, order, "tests");
+    await waitForOutput(w1, "1st in line");
+    await waitForOutput(w2, "2nd in line");
+    holder.release();
+    await expectAllExit([w1, w2]);
+    expect(readLines(order)).toEqual(["w1", "w2"]);
+  });
+
+  it("a stray file in the queue folder neither blocks the line nor gets deleted", async () => {
+    const env = waitEnv();
+    const queue = queueOf("tests");
+    fs.mkdirSync(queue, { recursive: true });
+    fs.writeFileSync(path.join(queue, ".5.tmp"), "half-written ticket");
+    fs.writeFileSync(path.join(queue, "notes.txt"), "not a ticket");
+    expect(await fiveInArrivalOrder("tests", env)).toEqual(["w1", "w2", "w3", "w4", "w5"]);
+    expect(fs.existsSync(path.join(queue, ".5.tmp"))).toBe(true);
+    expect(fs.existsSync(path.join(queue, "notes.txt"))).toBe(true);
+  });
+
+  it("a stopped first-in-line waiter holds the line while the lock is free", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const w1 = await queuedWaiter("w1", env, order, "tests");
+    const w2 = await queuedWaiter("w2", env, order, "tests");
+    const helper = ticketPid(queueOf("tests"), "w1");
+    process.kill(helper, "SIGSTOP");
+    try {
+      holder.release();
+      await holder.proc.done;
+      await delay(800);
+      expect(readLines(order)).toEqual([]);
+    } finally {
+      process.kill(helper, "SIGCONT");
+    }
+    await expectAllExit([w1, w2]);
+    expect(readLines(order)).toEqual(["w1", "w2"]);
+  });
+
+  it("a waiter that gives up and asks again within 120 s keeps its place in line", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const queue = queueOf("tests");
+    const holder = await queueHolder(env, "tests");
+    const first = await queuedWaiter("x", { ...env, LOCAL_STACK_LOCK_WAIT_S: "2" }, order, "tests");
+    const y = await queuedWaiter("y", env, order, "tests");
+    expect((await first.done).status).toBe(75);
+    await waitForHeldPlace(queue, "x");
+    const again = await queuedWaiter("x", env, order, "tests");
+    holder.release();
+    await expectAllExit([y, again]);
+    expect(readLines(order)).toEqual(["x", "y"]);
+  });
+
+  it("a held place older than 120 s is deleted and the re-ask joins the end of the line", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const queue = queueOf("tests");
+    const holder = await queueHolder(env, "tests");
+    const first = await queuedWaiter("x", { ...env, LOCAL_STACK_LOCK_WAIT_S: "2" }, order, "tests");
+    const y = await queuedWaiter("y", env, order, "tests");
+    expect((await first.done).status).toBe(75);
+    const held = await waitForHeldPlace(queue, "x");
+    const old = new Date(Date.now() - 300_000);
+    fs.utimesSync(held, old, old);
+    await expect.poll(() => fs.existsSync(held), { timeout: BUDGET.hookTimeout }).toBe(false);
+    expect(() => heldPlaceFor(queue, "x")).toThrow(/no held place for/);
+    const again = await queuedWaiter("x", env, order, "tests");
+    holder.release();
+    await expectAllExit([y, again]);
+    expect(readLines(order)).toEqual(["y", "x"]);
+  });
+
+  it("a jump marker moves its waiting run to the front of the line", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const waiters = [];
+    for (const who of ["w1", "w2", "w3", "w4"]) {
+      waiters.push(await queuedWaiter(who, env, order, "tests"));
+    }
+    plantJump(queueOf("tests"), "w4");
+    holder.release();
+    await expectAllExit(waiters);
+    expect(readLines(order)).toEqual(["w4", "w1", "w2", "w3"]);
+  });
+
+  it("the newest jump marker goes first", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const waiters = [];
+    for (const who of ["w1", "w2", "w3"]) {
+      waiters.push(await queuedWaiter(who, env, order, "tests"));
+    }
+    plantJump(queueOf("tests"), "w2", Date.now() - 5000);
+    plantJump(queueOf("tests"), "w3", Date.now());
+    holder.release();
+    await expectAllExit(waiters);
+    expect(readLines(order)).toEqual(["w3", "w2", "w1"]);
+  });
+
+  it("a jump marker that matches no waiting run is deleted", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const queue = queueOf("tests");
+    const holder = await queueHolder(env, "tests");
+    const w1 = await queuedWaiter("w1", env, order, "tests");
+    const marker = path.join(queue, Date.now() + ".jump");
+    fs.writeFileSync(marker, "ghost — /nowhere/ghost\n");
+    await expect.poll(() => fs.existsSync(marker), { timeout: BUDGET.hookTimeout }).toBe(false);
+    holder.release();
+    await expectAllExit([w1]);
+    expect(readLines(order)).toEqual(["w1"]);
+  });
+
+  it("a jumped run that gives up and asks again within 120 s keeps the front", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const queue = queueOf("tests");
+    const holder = await queueHolder(env, "tests");
+    const z = await queuedWaiter("z", env, order, "tests");
+    const first = await queuedWaiter("x", { ...env, LOCAL_STACK_LOCK_WAIT_S: "2" }, order, "tests");
+    const y = await queuedWaiter("y", env, order, "tests");
+    plantJump(queue, "x");
+    expect((await first.done).status).toBe(75);
+    await waitForHeldPlace(queue, "x");
+    const again = await queuedWaiter("x", env, order, "tests");
+    holder.release();
+    await expectAllExit([z, y, again]);
+    expect(readLines(order)).toEqual(["x", "z", "y"]);
+  });
+
+  it(
+    "concurrent first takes on a fresh cache exit 0 with no cannot-create refusal",
+    async () => {
+      const rounds = 50;
+      const takes = 16;
+      const results: { round: number; i: number; status: string; err: string }[] = [];
+      for (let round = 0; round < rounds; round++) {
+        const env = envFor({
+          LOCAL_STACK_LOCK_WAIT_S: "60",
+          XDG_CACHE_HOME: path.join(tmp, "race-cache-" + round),
+        });
+        // One shell forks every taker back to back, so they reach the queue folder together.
+        const burst = spawnSync(
+          "bash",
+          [
+            "-c",
+            `for i in $(seq ${takes}); do ( bash "${SCRIPT}" run race$i --lock tests -- true 2>"$XDG_CACHE_HOME.err$i"; echo $? >"$XDG_CACHE_HOME.st$i" ) & done; wait`,
+          ],
+          { env, cwd: process.cwd(), encoding: "utf8" },
+        );
+        expect(burst.error).toBeUndefined();
+        for (let i = 1; i <= takes; i++) {
+          const base = path.join(tmp, "race-cache-" + round);
+          const status = fs.readFileSync(`${base}.st${i}`, "utf8").trim();
+          const err = fs.readFileSync(`${base}.err${i}`, "utf8").trim();
+          // The "in line" waiting note is normal; only a non-zero exit or a queue-folder refusal counts.
+          results.push({ round, i, status, err });
+        }
+      }
+      const refused = results
+        .filter((r) => /^exit=(?!0\n)|cannot create|File exists/.test(`exit=${r.status}\n${r.err}`))
+        .map((r) => `round ${r.round} take ${r.i} exit ${r.status}: ${r.err}`);
+      expect(refused).toEqual([]);
+    },
+    localLimit(600_000),
+  );
+
+  it("a waiter whose caller ignores SIGHUP keeps its place when its helper gets SIGHUP", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const child = track(
+      "bash",
+      [
+        "-c",
+        `trap '' HUP; exec bash "${SCRIPT}" run w1 --lock tests -- bash -c 'echo w1 >> "${order}"'`,
+      ],
+      { env, cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let stderr = "";
+    child.stderr.on("data", (data: Buffer) => (stderr += data.toString()));
+    const done = new Promise<number | null>((resolve) =>
+      child.on("close", (status) => resolve(status)),
+    );
+    await waitForTicket(queueOf("tests"), "w1");
+    process.kill(ticketPid(queueOf("tests"), "w1"), "SIGHUP");
+    await delay(500);
+    expect(ticketsIn(queueOf("tests")).length).toBe(1);
+    holder.release();
+    expect(await done, stderr).toBe(0);
+    expect(stderr).not.toContain("stopped before it answered");
+    expect(readLines(order)).toEqual(["w1"]);
+  });
+
+  it("a one-slot waiter at the head does not block a two-slot waiter while slot 2 is free", async () => {
+    const two = waitEnv({ BKIT_TEST_SLOTS: "2" });
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(two, "tests", "slot-one-holder");
+    expect(fs.existsSync(path.join(cache, "bkit", "machine-lock", "tests.lock.holder"))).toBe(true);
+    const narrow = await queuedWaiter("narrow", waitEnv({ BKIT_TEST_SLOTS: "1" }), order, "tests");
+    const wide = wrapped(
+      "wide",
+      { ...two, LOCAL_STACK_LOCK_WAIT_S: "5" },
+      `echo wide >> "${order}"`,
+      {
+        lock: "tests",
+      },
+    );
+    const wideResult = await wide.done;
+    expect(wideResult.status, wideResult.stderr).toBe(0);
+    expect(readLines(order)).toEqual(["wide"]);
+    holder.release();
+    await expectAllExit([narrow]);
+    expect(readLines(order)).toEqual(["wide", "narrow"]);
+  });
+
+  it("two-slot waiters take a free slot in arrival order", async () => {
+    const two = waitEnv({ BKIT_TEST_SLOTS: "2" });
+    const order = path.join(tmp, "order");
+    const slotA = await queueHolder(two, "tests", "slot-a");
+    const slotB = await queueHolder(two, "tests", "slot-b");
+    const gate = (who: string) =>
+      `echo ${who} >> "${order}"; while [ ! -f "${tmp}/done-${who}" ]; do sleep 0.05; done`;
+    const narrow = await queuedWaiter(
+      "narrow",
+      waitEnv({ BKIT_TEST_SLOTS: "1" }),
+      order,
+      "tests",
+      gate("narrow"),
+    );
+    const w1 = await queuedWaiter("w1", two, order, "tests", gate("w1"));
+    const w2 = await queuedWaiter("w2", two, order, "tests", gate("w2"));
+    slotB.release();
+    await expect.poll(() => readLines(order), { timeout: BUDGET.hookTimeout }).toEqual(["w1"]);
+    await delay(500);
+    expect(readLines(order)).toEqual(["w1"]);
+    slotA.release();
+    await expect
+      .poll(() => readLines(order), { timeout: BUDGET.hookTimeout })
+      .toEqual(["w1", "narrow"]);
+    await delay(500);
+    expect(readLines(order)).toEqual(["w1", "narrow"]);
+    fs.writeFileSync(path.join(tmp, "done-w1"), "");
+    await expect
+      .poll(() => readLines(order), { timeout: BUDGET.hookTimeout })
+      .toEqual(["w1", "narrow", "w2"]);
+    fs.writeFileSync(path.join(tmp, "done-narrow"), "");
+    fs.writeFileSync(path.join(tmp, "done-w2"), "");
+    await expectAllExit([narrow, w1, w2]);
+  });
+
+  it("a ticket with no slot count blocks every slot behind it", async () => {
+    const two = waitEnv({ BKIT_TEST_SLOTS: "2" });
+    const order = path.join(tmp, "order");
+    const queue = queueOf("tests");
+    const holder = await queueHolder(two, "tests", "slot-one-holder");
+    fs.mkdirSync(queue, { recursive: true });
+    // A live ticket in the shape an older copy writes: one line, flock-held, first in line.
+    const old = running(
+      `exec /usr/bin/perl -e 'use Fcntl qw(:flock); $| = 1; my $q = shift; open(my $f, ">", "$q/.old.tmp") or die; flock($f, LOCK_EX) or die; $f->autoflush(1); print $f "old copy — /old/checkout\\n"; rename("$q/.old.tmp", "$q/0.000001-$$") or die; print "planted\\n"; sleep 60' "${queue}"`,
+      two,
+    );
+    await waitForOutput(old, "planted");
+    const wide = wrapped("wide", two, `echo wide >> "${order}"`, { lock: "tests" });
+    await waitForTicket(queue, "wide");
+    await delay(800);
+    expect(readLines(order)).toEqual([]);
+    old.child.kill("SIGKILL");
+    await expect.poll(() => readLines(order), { timeout: BUDGET.hookTimeout }).toEqual(["wide"]);
+    const result = await wide.done;
+    expect(result.status, result.stderr).toBe(0);
+    expect(ticketsIn(queue)).toEqual([]);
+    holder.release();
+  });
+
+  it("the queue subcommand lists live tickets and held places as who and checkout lines", async () => {
+    const env = waitEnv();
+    const queue = queueOf("tests");
+    const listQueue = () => spawnSync("bash", [SCRIPT, "queue"], { env, encoding: "utf-8" });
+    const empty = listQueue();
+    expect(empty.status, empty.stderr).toBe(0);
+    expect(empty.stdout).toBe("");
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const w1 = await queuedWaiter("w1", env, order, "tests");
+    const x = await queuedWaiter("x", { ...env, LOCAL_STACK_LOCK_WAIT_S: "2" }, order, "tests");
+    const w2 = await queuedWaiter("w2", env, order, "tests");
+    expect((await x.done).status).toBe(75);
+    await waitForHeldPlace(queue, "x");
+    plantJump(queue, "w2");
+    const listed = listQueue();
+    expect(listed.status, listed.stderr).toBe(0);
+    expect(listed.stdout).toBe(
+      [`w2 — ${CHECKOUT}`, `w1 — ${CHECKOUT}`, `x — ${CHECKOUT}`].join("\n") + "\n",
+    );
+    holder.release();
+    await expectAllExit([w1, w2]);
+    expect(readLines(order)).toEqual(["w2", "w1"]);
+  });
+
+  it("the jump subcommand moves a ticket to the front and exits non-zero for an unknown who", async () => {
+    const env = waitEnv();
+    const queue = queueOf("tests");
+    const jump = (...args: string[]) =>
+      spawnSync("bash", [SCRIPT, "jump", ...args], { env, encoding: "utf-8" });
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const waiters = [];
+    for (const who of ["w1", "w2", "w3"]) {
+      waiters.push(await queuedWaiter(who, env, order, "tests"));
+    }
+    const unknown = jump("nobody");
+    expect(unknown.status).not.toBe(0);
+    expect(unknown.status).not.toBe(2);
+    expect(unknown.stdout).toBe("");
+    const wrongCheckout = jump("w3", "/not/this/checkout");
+    expect(wrongCheckout.status).not.toBe(0);
+    expect(fs.readdirSync(queue).filter((name) => name.endsWith(".jump"))).toEqual([]);
+    const jumped = jump("w3", CHECKOUT);
+    expect(jumped.status, jumped.stderr).toBe(0);
+    expect(jumped.stdout).toBe(`w3 — ${CHECKOUT}\n`);
+    expect(fs.readdirSync(queue).filter((name) => /^\d+\.jump$/.test(name))).toHaveLength(1);
+    holder.release();
+    await expectAllExit(waiters);
+    expect(readLines(order)).toEqual(["w3", "w1", "w2"]);
+  });
+});
+
+// ---- run stops a command that holds its lock past LOCAL_STACK_LOCK_HOLD_S ----
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ESRCH") return false;
+    throw error;
+  }
+}
+
+function readPid(file: string): number {
+  return Number(fs.readFileSync(file, "utf-8").trim());
+}
+
+/** The test's env with a hold limit of `holdS` seconds and a 1 s grace period. */
+function holdEnv(holdS: string, extra: Record<string, string> = {}): NodeJS.ProcessEnv {
+  return envFor({ LOCAL_STACK_LOCK_HOLD_S: holdS, LOCAL_STACK_LOCK_HOLD_GRACE_S: "1", ...extra });
+}
+
+/** Proves the tests lock is free: a run with no wait budget starts and finishes. */
+function expectTestsLockFree(env: NodeJS.ProcessEnv): void {
+  const probe = commandRun(["probe", "--lock", "tests", "--", "echo", "probe-ran"], {
+    ...env,
+    LOCAL_STACK_LOCK_WAIT_S: "0",
+  });
+  expect(probe.status, probe.stderr).toBe(0);
+  expect(probe.stdout).toContain("probe-ran");
+}
+
+/** A PATH whose first `ps` rejects lstart and exits 1, as a BusyBox ps does. */
+function pathWithFailingPs(): string {
+  const fakeBin = path.join(tmp, "fake-ps-bin");
+  fs.mkdirSync(fakeBin, { recursive: true });
+  fs.writeFileSync(
+    path.join(fakeBin, "ps"),
+    '#!/bin/sh\necho "ps: unrecognized option: lstart" >&2\nexit 1\n',
+    { mode: 0o755 },
+  );
+  return [fakeBin, process.env.PATH].join(":");
+}
+
+/** A PATH whose first `ps` answers after 0.7 s, as a loaded machine's does. */
+function pathWithSlowPs(): string {
+  const slowBin = path.join(tmp, "slow-ps-bin");
+  fs.mkdirSync(slowBin, { recursive: true });
+  fs.writeFileSync(path.join(slowBin, "ps"), '#!/bin/sh\nsleep 0.7\nexec /bin/ps "$@"\n', {
+    mode: 0o755,
+  });
+  return [slowBin, coreProbeBin(4), process.env.PATH].join(":");
+}
+
+/** The hold-limit arguments (limit, grace) of the supervisor a run with `env` starts, read by its command. */
+function watcherLimits(env: NodeJS.ProcessEnv): Result & { limits: string | undefined } {
+  const r = commandRun(
+    ["limit probe", "--lock", "tests", "--", "bash", "-c", 'ps -o args= -p "$PPID"'],
+    env,
+  );
+  return {
+    ...r,
+    limits: / --hold-s (\d+) --grace-s (\d+) /.exec(r.stdout)?.slice(1, 3).join(" "),
+  };
+}
+
+describe("machine lock hold limit", { timeout: BUDGET.testTimeout }, () => {
+  it("run stops a command that outlives LOCAL_STACK_LOCK_HOLD_S, exits 124, and names the holder, time held and limit", () => {
+    const env = holdEnv("1");
+    const pidFile = path.join(tmp, "cmd.pid");
+    const r = commandRun(
+      [
+        "hung gate",
+        "--lock",
+        "tests",
+        "--",
+        "bash",
+        "-c",
+        `echo $$ > "${pidFile}"; exec sleep 120`,
+      ],
+      env,
+    );
+    expect(r.status, r.stderr).toBe(124);
+    expect(r.ms).toBeLessThan(20_000);
+    expect(r.stderr).toContain(`hung gate — ${CHECKOUT} (pid `);
+    expect(r.stderr).toMatch(
+      /reached the LOCAL_STACK_LOCK_HOLD_S limit of 1s on the tests lock \(held [1-9]\d*s\)/,
+    );
+    expect(r.stderr).not.toContain("ps with lstart is not available");
+    expect(pidAlive(readPid(pidFile))).toBe(false);
+    expectTestsLockFree(env);
+  });
+
+  it("a run stopped at the hold limit writes outcome held-too-long, naming itself, to the status file", () => {
+    const status = path.join(tmp, "status");
+    const r = commandRun(["held gate", "--lock", "tests", "--", "sleep", "120"], {
+      ...holdEnv("1"),
+      LOCAL_STACK_LOCK_STATUS_FILE: status,
+    });
+    expect(r.status, r.stderr).toBe(124);
+    expect(fs.existsSync(status), "no status file written").toBe(true);
+    const lines = statusOf(status);
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toBe("lock=tests");
+    expect(lines[1]).toBe("outcome=held-too-long");
+    expect(lines[2]!.startsWith(`holder=held gate — ${CHECKOUT} (pid `), lines[2]).toBe(true);
+    expect(fs.readdirSync(tmp).filter((name) => name.startsWith("status."))).toEqual([]);
+  });
+
+  it("only the tests lock has a hold limit: a named or unnamed lock outlives LOCAL_STACK_LOCK_HOLD_S", () => {
+    const env = holdEnv("1");
+    const named = commandRun(["long other", "--lock", "other", "--", "sleep", "2"], env);
+    expect(named.status, named.stderr).toBe(0);
+    expect(named.stderr).not.toContain("LOCAL_STACK_LOCK_HOLD_S");
+    const unnamed = commandRun(["long stack", "--", "sleep", "2"], env);
+    expect(unnamed.status, unnamed.stderr).toBe(0);
+    expect(unnamed.stderr).not.toContain("LOCAL_STACK_LOCK_HOLD_S");
+  });
+
+  it("without a ps that prints lstart, one note says the limit stops only the command, and the command is still stopped", () => {
+    const pidFile = path.join(tmp, "no-ps.pid");
+    const env = holdEnv("1", { PATH: pathWithFailingPs() });
+    const r = commandRun(
+      [
+        "no-ps gate",
+        "--lock",
+        "tests",
+        "--",
+        "bash",
+        "-c",
+        `echo $$ > "${pidFile}"; exec sleep 120`,
+      ],
+      env,
+    );
+    expect(r.status, r.stderr).toBe(124);
+    expect(r.stderr.split("ps with lstart is not available").length - 1, r.stderr).toBe(1);
+    expect(r.stderr).toContain(
+      "can stop only the command itself, not the processes started under it",
+    );
+    expect(r.stderr).not.toContain("unrecognized option");
+    expect(pidAlive(readPid(pidFile))).toBe(false);
+    expectTestsLockFree(env);
+  });
+
+  it("a run waiting for the tests lock starts once the over-limit holder is stopped", async () => {
+    const env = holdEnv("2");
+    const holder = running(
+      `bash "${SCRIPT}" run "over-limit holder" --lock tests -- sleep 120`,
+      env,
+    );
+    await waitForHolder(
+      path.join(cache, "bkit", "machine-lock", "tests.lock.holder"),
+      "over-limit holder",
+      holder.child,
+    );
+    const waiter = commandRun(["late waiter", "--lock", "tests", "--", "echo", "waiter-ran"], {
+      ...env,
+      LOCAL_STACK_LOCK_HOLD_S: "",
+      LOCAL_STACK_LOCK_WAIT_S: "30",
+    });
+    expect(waiter.status, waiter.stderr).toBe(0);
+    expect(waiter.stdout).toContain("waiter-ran");
+    expect(waiter.ms).toBeLessThan(15_000);
+    expect((await holder.done).status).toBe(124);
+  });
+
+  it("a command that ignores TERM is killed after the grace period and the lock is freed", () => {
+    const env = holdEnv("1");
+    const pidFile = path.join(tmp, "stubborn.pid");
+    const r = commandRun(
+      [
+        "stubborn gate",
+        "--lock",
+        "tests",
+        "--",
+        "bash",
+        "-c",
+        `trap '' TERM; echo $$ > "${pidFile}"; while :; do sleep 0.2; done`,
+      ],
+      env,
+    );
+    expect(r.status, r.stderr).toBe(124);
+    expect(r.ms).toBeGreaterThanOrEqual(2_000);
+    expect(pidAlive(readPid(pidFile))).toBe(false);
+    expectTestsLockFree(env);
+  });
+
+  it("grandchildren of the command are stopped with it, and the wrapper's own caller is not signalled", () => {
+    const env = holdEnv("1");
+    const grandchild = path.join(tmp, "grandchild.pid");
+    const signalled = path.join(tmp, "caller-signalled");
+    const traps = ["TERM", "INT", "HUP"]
+      .map((sig) => `trap 'echo ${sig} >> "${signalled}"' ${sig}`)
+      .join("; ");
+    const caller = spawnSync(
+      "bash",
+      [
+        "-c",
+        `${traps}; bash "${SCRIPT}" run "tree gate" --lock tests -- bash -c 'sleep 300 & echo $! > "${grandchild}"; wait'; echo "caller-alive:$?"`,
+      ],
+      { env, encoding: "utf-8", timeout: BUDGET.testTimeout },
+    );
+    expect(caller.status, caller.stderr).toBe(0);
+    expect(caller.stdout).toContain("caller-alive:124");
+    expect(pidAlive(readPid(grandchild))).toBe(false);
+    expect(fs.existsSync(signalled), "the wrapper's caller was signalled").toBe(false);
+  });
+
+  it("a grandchild whose parent exited is stopped with the command at the hold limit", () => {
+    // The parent lives 3 s, so the supervisor (polling every second) records the grandchild first,
+    // and the 5 s limit fires after the parent has exited.
+    const env = holdEnv("5");
+    const grandchild = path.join(tmp, "orphan.pid");
+    const r = commandRun(
+      [
+        "orphan gate",
+        "--lock",
+        "tests",
+        "--",
+        "bash",
+        "-c",
+        `( sleep 300 & echo $! > "${grandchild}"; sleep 3 ) & sleep 120`,
+      ],
+      env,
+    );
+    expect(r.status, r.stderr).toBe(124);
+    const orphan = readPid(grandchild);
+    expect(orphan).toBeGreaterThan(1);
+    expect(pidAlive(orphan), "the re-parented grandchild survived the hold-limit stop").toBe(false);
+  });
+
+  it("a nested run reusing its parent's lock starts no hold timer of its own", () => {
+    const inner = `LOCAL_STACK_LOCK_HOLD_S=1 bash "${SCRIPT}" run inner --lock tests -- bash -c 'sleep 3; echo inner-done'`;
+    const r = commandRun(["outer", "--lock", "tests", "--", "bash", "-c", inner], holdEnv("60"));
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("inner-done");
+    expect(r.stderr).not.toContain("LOCAL_STACK_LOCK_HOLD_S limit");
+  });
+
+  it("an unset or invalid LOCAL_STACK_LOCK_HOLD_S uses 3600 s, and an invalid value says so once", () => {
+    const unset = watcherLimits(envFor());
+    expect(unset.status, unset.stderr).toBe(0);
+    expect(unset.limits, unset.stdout).toBe("3600 10");
+    expect(unset.stderr).not.toContain("LOCAL_STACK_LOCK_HOLD_S");
+    for (const bad of ["abc", "0", "-5", "1.5"]) {
+      const r = watcherLimits(envFor({ LOCAL_STACK_LOCK_HOLD_S: bad }));
+      expect(r.status, `${bad}: ${r.stderr}`).toBe(0);
+      expect(r.limits, `${bad}: ${r.stdout}`).toBe("3600 10");
+      expect(r.stderr.split("LOCAL_STACK_LOCK_HOLD_S").length - 1, `${bad}: ${r.stderr}`).toBe(1);
+      expect(r.stderr).toContain(`invalid LOCAL_STACK_LOCK_HOLD_S "${bad}"; using 3600`);
+    }
+  });
+
+  it("a command that finishes before the limit keeps its own exit status", () => {
+    const env = holdEnv("30");
+    const failing = commandRun(
+      ["quick gate", "--lock", "tests", "--", "bash", "-c", "exit 7"],
+      env,
+    );
+    expect(failing.status, failing.stderr).toBe(7);
+    expect(failing.ms).toBeLessThan(10_000);
+    const passing = commandRun(["quick gate", "--lock", "tests", "--", "echo", "fine"], env);
+    expect(passing.status, passing.stderr).toBe(0);
+    expect(passing.stdout).toBe("fine\n");
+    expect(passing.stderr).toBe("");
+    const nearLimit = commandRun(
+      ["near gate", "--lock", "tests", "--", "bash", "-c", "sleep 0.5; exit 3"],
+      holdEnv("3"),
+    );
+    expect(nearLimit.status, nearLimit.stderr).toBe(3);
+    expectTestsLockFree(env);
+  });
+
+  it("a command's own exit 124 before the supervisor's limit stays 124 and writes no status file, even once the wrapper's clock passed the limit", () => {
+    // The supervisor starts 3 s after the wrapper, so the command's own 124 comes 1 s into the
+    // supervisor's 3 s limit but 4 s after the wrapper took the lock.
+    const slowBin = path.join(tmp, "slow-node-bin");
+    fs.mkdirSync(slowBin, { recursive: true });
+    fs.writeFileSync(
+      path.join(slowBin, "node"),
+      `#!/bin/sh\nsleep 3\nexec "${process.execPath}" "$@"\n`,
+      { mode: 0o755 },
+    );
+    const status = path.join(tmp, "own-124-status");
+    const r = commandRun(
+      ["own timeout", "--lock", "tests", "--", "bash", "-c", "sleep 1; exit 124"],
+      {
+        ...holdEnv("3"),
+        PATH: [slowBin, process.env.PATH].join(":"),
+        LOCAL_STACK_LOCK_STATUS_FILE: status,
+      },
+    );
+    expect(r.status, r.stderr).toBe(124);
+    expect(r.stderr).not.toContain("LOCAL_STACK_LOCK_HOLD_S limit");
+    expect(fs.existsSync(status)).toBe(false);
+  });
+
+  it("with CI=true a run takes no lock and has no hold limit", () => {
+    const r = commandRun(
+      ["ci gate", "--lock", "tests", "--", "bash", "-c", "sleep 2; echo ci-done"],
+      holdEnv("1", { CI: "true" }),
+    );
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("ci-done");
+  });
+
+  it("a TERM to the wrapper is passed on to the command, and the wrapper exits 143 and frees the lock", async () => {
+    const env = holdEnv("60");
+    const pidFile = path.join(tmp, "fwd.pid");
+    const wrapper = running(
+      `exec bash "${SCRIPT}" run "term gate" --lock tests -- bash -c 'echo $$ > "${pidFile}"; exec sleep 600'`,
+      env,
+    );
+    await expect.poll(() => fs.existsSync(pidFile), { timeout: BUDGET.hookTimeout }).toBe(true);
+    wrapper.child.kill("SIGTERM");
+    // Checked before the wait below, which a command left running would hold open until it ends.
+    await expect
+      .poll(() => pidAlive(readPid(pidFile)), { timeout: BUDGET.hookTimeout / 3 })
+      .toBe(false);
+    const done = await wrapper.done;
+    expect(done.status, done.stderr).toBe(143);
+    expect(done.stderr).toContain("passed TERM on to term gate");
+    expect(pidAlive(readPid(pidFile))).toBe(false);
+    expectTestsLockFree(env);
+  });
+
+  it("a TERM that arrives while the supervisor lists processes for the first time still reaches the command", async () => {
+    const env = holdEnv("60", { PATH: pathWithSlowPs() });
+    const pidFile = path.join(tmp, "early.pid");
+    const wrapper = running(
+      `exec bash "${SCRIPT}" run "early gate" --lock tests -- bash -c 'echo $$ > "${pidFile}"; exec sleep 600'`,
+      env,
+    );
+    await expect
+      .poll(() => fs.existsSync(pidFile), { timeout: BUDGET.hookTimeout, interval: 20 })
+      .toBe(true);
+    wrapper.child.kill("SIGTERM");
+    // The command would otherwise outlive the wrapper and keep running with the lock freed.
+    await expect
+      .poll(() => pidAlive(readPid(pidFile)), { timeout: BUDGET.hookTimeout / 3 })
+      .toBe(false);
+    const done = await wrapper.done;
+    expect(done.status, done.stderr).toBe(143);
+    expectTestsLockFree(holdEnv("60"));
+  });
+
+  it("a TERM during the hold-limit grace period lets the stop finish and the exit stays 124", async () => {
+    const env = holdEnv("1", { LOCAL_STACK_LOCK_HOLD_GRACE_S: "5" });
+    const termed = path.join(tmp, "termed");
+    const wrapper = running(
+      `exec bash "${SCRIPT}" run "grace gate" --lock tests -- bash -c 'trap "echo > \\"${termed}\\"; sleep 1; exit 0" TERM; while :; do sleep 0.1; done'`,
+      env,
+    );
+    await expect.poll(() => fs.existsSync(termed), { timeout: BUDGET.hookTimeout }).toBe(true);
+    wrapper.child.kill("SIGTERM");
+    const done = await wrapper.done;
+    expect(done.status, done.stderr).toBe(124);
+    expect(done.stderr).toContain("LOCAL_STACK_LOCK_HOLD_S limit of 1s");
+    expect(done.stderr).not.toContain("passed TERM on");
+  });
+
+  it("a run holding its own lock passes its stdin to the command", () => {
+    const r = spawnSync("bash", [SCRIPT, "run", "stdin gate", "--lock", "tests", "--", "cat"], {
+      env: holdEnv("60"),
+      input: "from the caller\n",
+      encoding: "utf-8",
+      timeout: BUDGET.testTimeout,
+    });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toBe("from the caller\n");
   });
 });

@@ -1,0 +1,40 @@
+{
+  "files": {
+    "scripts/cleanup/bkit-disk-prune.mjs": {
+      "name": "Repository disk cleanup",
+      "description": "Removes disposable repository caches and build output to recover disk space."
+    },
+    "scripts/cleanup/bkit-tmp-prune.mjs": {
+      "name": "Old temporary files",
+      "description": "Deletes temporary files older than the chosen retention period."
+    },
+    "scripts/launchd/bkit-launchd-env.sh": {
+      "name": "Desktop app environment",
+      "description": "Makes selected environment settings available to applications started by macOS."
+    },
+    "scripts/linear/linear-to-github-import.ts": {
+      "name": "Issue transfer",
+      "description": "Copies one Linear project's work items into GitHub."
+    },
+    "scripts/prettier/bkit-insert-ignore.mjs": {
+      "name": "Markdown table preservation",
+      "description": "Protects Markdown tables from automatic reformatting and reports damaged tables."
+    },
+    "scripts/readme/readme-art.mjs": {
+      "name": "Product guide artwork",
+      "description": "Renders the light and dark illustrations used in the product documentation."
+    },
+    "scripts/secrets/bkit-secrets.config.mjs": {
+      "name": "Secret destinations",
+      "description": "Declares which secret settings belong in each external store."
+    },
+    "scripts/secrets/bkit-secrets.mjs": {
+      "name": "Secret synchronization",
+      "description": "Checks and synchronizes configured secret values across external stores."
+    },
+    "scripts/serena/bkit-serena-mcp.sh": {
+      "name": "Code navigation launcher",
+      "description": "Starts Serena with the repository environment for assistant code navigation."
+    }
+  }
+}

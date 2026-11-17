@@ -1,6 +1,6 @@
 # JSONL Entry Format
 
-<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.2.0 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** How to format a new row for any bkit JSONL ledger (`docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/knowledge.jsonl`, `docs/decisions.jsonl`, `.bkit/issues.jsonl`, `.bkit/friction.jsonl`, `.bkit/stats.jsonl`). The codec is `.bkit/core/engine/ledgers/telemetry.ts`. Which `kind` goes to which ledger, and when each workflow writes it, is in `.bkit/workflows.md` § Telemetry Ledgers.
@@ -59,7 +59,7 @@ for name in ["decisions", "knowledge"]:
 
 ## Write Idiom
 
-**Engine and workflow writers:** `bkit ledgers append --ledger=<decisions|deferrals|failures|knowledge|friction|stats> --rows=<file|->`. The rows are a JSON array without `schema` / `ts` / `bkit`.
+**Engine and workflow writers:** `bkit ledgers append --ledger=<decisions|deferrals|failures|knowledge|friction|stats> --rows=<file|->`. The rows are a JSON array without `schema` / `ts` / `bkit`. Add `--operation=<id>` to name the request: the same id with the same rows returns the original `receipt` (`offset`, `bytes`, each row's `key` and `ts`, `replayed: true`) and writes nothing, the same id with other rows is refused, and a new id on an existing `key` is a deliberate later update with its own lineage. A lost response is retried with the same id; an append that left a partial write exits non-zero as uncertain and truncates nothing. Every append, compact and union holds the ledger's `<file>.bkit-lock`; a lock that does not release is reported, never reclaimed.
 
 - **Fills:** `schema: 3`, a minted `ts` per row, `repo` when absent, and `bkit.version` from `.bkit/version`. On `deferral` / `failure` / `knowledge` / `decision` rows, it also fills `firstTs` and `updates` from the entry's earlier rows (§ Compaction), replacing any supplied values.
 - **Checks** every row before writing any: validation, and the author against § Ledgers & Writers. One refused row → exit 8, and nothing is written.
@@ -95,7 +95,7 @@ Each `kind` goes to one file. Its writers:
 | `friction` | `.bkit/friction.jsonl` | orchestrator workflows (design / plan / build / debug / ship / auto) on observed friction; utility orchestrator (a direct chat outside any workflow that meets friction); the engine itself, as the active workflow, on a bkit command's undeclared non-zero exit (`category: "tool-failure"`, `scope: "bkit-repo"`, in the active run's own book root; `BKIT_ENGINE_JOURNAL=off` disables it), and from `status row --type=owner-pause` on each owner pause (`category: "human-confirm"`, same book root and kill switch) |
 | `deferral` | `docs/deferrals.jsonl` | `@bkit-design-generate`, `@bkit-plan-generate`, `@bkit-plan-update`, `@bkit-debug-abort-handover`, `@bkit-ship-deferred-sweep` (adjudication only), `@bkit-utility-update-deferrals` (close / triage / locator), build orchestrator (`LOW` challenge finding → `low-severity`, through `bkit challenge merge`), ship orchestrator (assumed accept nobody confirmed → `needs-decision`, through `bkit decisions pending --defer`), utility orchestrator (a direct chat outside any workflow, the owner deciding in it) |
 | `failure` | `docs/failures.jsonl` | any agent on a discovered bug; `@bkit-debug-abort-handover`; `@bkit-audit-generate` (`MEDIUM`+ findings; rerun closes rows it no longer finds); `@bkit-utility-update-failures` (close / triage / locator) |
-| `knowledge` | `docs/knowledge.jsonl` | `@bkit-build-plan-tests`, `@bkit-build-plan-tasks`, `@bkit-build-plan-gaps-remediate`, `@bkit-debug-failure-remediate` (after verified fix), `@bkit-utility-update-knowledge` (supersede / correct), utility orchestrator (a direct chat outside any workflow, the owner deciding in it) |
+| `knowledge` | `docs/knowledge.jsonl` | any agent on a discovered gotcha; `@bkit-build-plan-tests`, `@bkit-build-plan-tasks`, `@bkit-build-plan-gaps-remediate`, `@bkit-debug-failure-remediate` (after verified fix), `@bkit-utility-update-knowledge` (supersede / correct) |
 | `decision` | `docs/decisions.jsonl` | `@bkit-debug-failure-remediate` (forced arch), `@bkit-plan-generate`, `@bkit-plan-update` (decision changed by review), `@bkit-utility-update-decisions` (supersede / correct), build orchestrator (Decision Pause accept), design orchestrator (owner's answer to an open question after close), plan orchestrator (open question answered after close), ship orchestrator (assumed accept confirmed by the owner, through `bkit decisions apply --by=owner`), utility orchestrator (a direct chat outside any workflow, the owner deciding in it); orchestrators ONLY after explicit human approval |
 | `feature` | `.bkit/issues.jsonl` | design / plan / build / debug orchestrators at their phase close; ship Step 6 into the worktree ledger (rides the PR); `ABANDONED` only by a human, or an agent on explicit human instruction |
 
@@ -118,7 +118,7 @@ Every row opens with the same top section, in this order:
 | `key` | `string?` | Keyed kinds only (`friction` / `deferral` / `failure` / `knowledge` / `decision` / `feature` / `chat` / `run`). See § Key & References. |
 | `repo` | `string` | Origin repo slug, e.g. `cbartens/bkit`; its fingerprint on `chat` / `run` rows (§ Per-Kind Fields). |
 | `bkit` | `{version}` | `version` = bkit version that emitted the row (`null` on `chat` / `run` when none found). `chat` adds its bkit-use fields. |
-| `by` | `{workflow?, step, subagent?, model?}` | Who wrote it — § Who Wrote It. `workflow`: `design` / `plan` / `build` / `debug` / `ship` / `auto` / `audit`; `utility` for a direct chat outside any workflow; `chat-stats` on `chat` (the harvest script's scan); the run's workflow on `run`. |
+| `by` | `{workflow?, step, subagent?, model?, modelSource?, configuredModel?, host?}` | Who wrote it — § Who Wrote It. `workflow`: `design` / `plan` / `build` / `debug` / `ship` / `auto` / `audit`; `utility` for a direct chat outside any workflow; `chat-stats` on `chat` (the harvest script's scan); the run's workflow on `run`. |
 | `references` | `string[]?` | Pointers that place the row: feature ids, tracker ids, PRs, commit SHAs, paths, a sibling `ts`. See § Key & References. |
 
 Values in every kind:
@@ -165,7 +165,7 @@ These blocks have the same name and the same shape on `outcome` and `run`:
 | Row written by | `by.workflow` | `by.step` | `by.subagent` | `by.model` |
 | --- | --- | --- | --- | --- |
 | **The orchestrator** (a workflow itself) | `ship` | `ship-close-workflow` | (absent) | (absent) |
-| **A subagent** it invoked | `build` | the step that invoked it, e.g. `build-plan-gaps-remediate` | `bkit-build-plan-gaps-remediate` | that prompt's own `model:` |
+| **A subagent** it invoked | `build` | the step that invoked it, e.g. `build-plan-gaps-remediate` | `bkit-build-plan-gaps-remediate` | the model that ran it: the one the host reported when the append names its invocation, else that prompt's own `model:` |
 | **A direct chat** outside any workflow | `utility` | `manual` | (absent) | (absent) |
 
 Subagent: set these on every row you append, from your prompt file:
@@ -176,6 +176,8 @@ Subagent: set these on every row you append, from your prompt file:
 - **`by.workflow`** = the invoking workflow.
 
 Orchestrator: omit `by.subagent` and `by.model`.
+
+An append that names its invocation fills `by` from it. `by.model` is then the model the host reported, and it is absent when `by.modelSource` = `unavailable` (`observed` when the host reported one). `by.configuredModel` holds the prompt's pinned `model:`, and `by.host` names the host.
 
 ## Key & References
 
@@ -193,7 +195,7 @@ Orchestrator: omit `by.subagent` and `by.model`.
 
 - A pointer is a feature id / `{FID}`, a tracker id (`ISSUE-217`), a PR, a commit SHA, a file path, or a row's `key` in the same or another ledger.
 - Keep each item as the source wrote it. A trailing qualifier (`ISSUE-142 §A2`) is meaning, not noise.
-- There is no separate identity field: `key` is the identity, and `references` holds pointers only.
+- No separate identity field exists: `key` is the identity, and `references` holds pointers only.
 - Omit the field when there is nothing to point at.
 - Pointers between ledgers never need rewriting: a correction is a same-`key` append. When a correction affects rows in other ledgers that point at it, the ledger updater (`@bkit-utility-update-decisions`, `-knowledge`, `-deferrals`, `-failures`) reports those rows under `Cross-Ledger Impact`. Each row's own ledger writer appends any change.
 
@@ -262,7 +264,7 @@ On the kinds with both (`friction` / `deferral` / `failure` / `knowledge` / `dec
 
 1. `remediation` names specific files and a bounded edit, not a new architecture.
 2. The surface is inside files the cycle already touched.
-3. There is no external blocker: no missing decision, credential, upstream fix or confirmation.
+3. No external blocker exists: no missing decision, credential, upstream fix or confirmation.
 4. The row is `scope-declared` with no pre-existing declaration: the row is the only place the work was called out of scope.
 
 Test 4 carries the weight. A genuine deferral was declared out of scope before the work started. An unjustified one was declared at the moment of avoidance. The ledger holds both timestamps.
@@ -388,6 +390,21 @@ An identity match means the same thing, not an automatic skip:
 - **Nothing changed** → skip.
 - **Something changed** → append (§ Updating a Row).
 
+## `ci-handoff` and correction rows
+
+These are rows in a run's `status.jsonl`; the status fold ignores types it does not know, so they never change a step's state. A runless (standalone) invocation has no status log: it keeps its correction events in `<outbox>/invocation-context/<id>.corrections.jsonl` next to the receipt, and its two-retry budget is per invocation.
+
+<!-- prettier-ignore -->
+| `type` | Written by | Fields |
+| --- | --- | --- |
+| `ci-handoff` | `bkit runs handoff`, `bkit runs dispatch --invocation` | the target (`provider`, `repo`, `pr`, `head`, `branch`), the cumulative observation (`result`, `attempts`, `errors`) and an optional re-trigger checkpoint `intended`, `commit-created`, `push-completed` or `receipt-completed` (the receipt) |
+| `correction-rejected` | `bkit ledgers append --correction-of` | the rejected `operation`, the `scope` and the engine's rejection code |
+| `correction-candidate` | `bkit counters correction` | the candidate `operation` that spent one retry in the `scope`, and its `requestHash` |
+| `correction-succeeded` | `bkit ledgers append --correction-of` | the verified `operation` and the `scope` it closed |
+
+- **Phase and totals** are derived by the engine from these rows; a caller never supplies an attempt count.
+- **Other targets:** a `ci-handoff` row for another repo, PR, head or branch is counted as stale and never resumes the gate.
+
 ## `engine-action` rows
 
 This is not a ledger but a row in a run's `status.jsonl` (`.bkit/workflows.md` § `status.jsonl`). An engine action unsafe to repeat — a tracker comment, a marker commit, a CI re-trigger, a PR open — appends one once it is done, and checks for it first, so a re-run of the same block does not act twice. Actions safe to repeat (a label already set) record nothing.
@@ -416,7 +433,7 @@ This is not a ledger but a row in a run's `status.jsonl` (`.bkit/workflows.md` �
 
 ## Examples
 
-The rows are indented here for readability. On disk, each row is a single physical line (§ Write Idiom). There is one example per ledger. Each shows the kind's fields, with the optional ones included where they apply to its workflow (§ Per-Kind Fields). The `build` block appears in the `run` example.
+The rows are indented here for readability. On disk, each row is a single physical line (§ Write Idiom). One example per ledger follows. Each shows the kind's fields, with the optional ones included where they apply to its workflow (§ Per-Kind Fields). The `build` block appears in the `run` example.
 
 `.bkit/stats.jsonl` (`compliance` / `outcome` / `counter`); `harvest/stats.jsonl` (`chat` / `run`):
 

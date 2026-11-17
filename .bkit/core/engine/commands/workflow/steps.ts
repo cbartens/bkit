@@ -10,6 +10,7 @@
 // headers, derive the attempt, check what the gate checks, write the row, commit,
 // and print the step's tracker comment.
 
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -26,7 +27,7 @@ import {
 } from "../../ledgers/status.js";
 import { clampLogPath, readRecords } from "../../ledgers/clamp-log.js";
 import { appendFrictionRow, frictionRow, journalEnabled } from "../../ledgers/journal.js";
-import { resolveRepoSlug } from "../../ledgers/telemetry.js";
+import { queryLedger, resolveRepoSlug } from "../../ledgers/telemetry.js";
 import { getPromptsRoot } from "../../shared/package-roots.js";
 import { readTextFile } from "../../shared/json.js";
 import {
@@ -46,9 +47,25 @@ import { activeRunStart, savedPointLimit } from "./counters.js";
 import type { AskPoint } from "../../shared/settings.js";
 import { isResumable, runProgress, WORKFLOW_STEPS } from "./step-table.js";
 import { planFiles } from "./run-facts.js";
-import { mergeFindings, parseFindings } from "./challenge.js";
+import { skipProblem } from "./open-decision.js";
+import {
+  mergeFindings,
+  parseFindings,
+  renderFindingsLog,
+  structuredFindings,
+  type Finding,
+} from "./challenge.js";
 import { fidProblem, normaliseFid, readIssueTracker } from "./fids.js";
-import { buildComment } from "./issues.js";
+import {
+  auditEntries,
+  auditFindingsLine,
+  auditLedgerRows,
+  auditTotals,
+  buildComment,
+  parseAuditResult,
+  type AuditResult,
+  type HeldRow,
+} from "./issues.js";
 import {
   EXIT_FOREIGN_PATH,
   activeRecord,
@@ -82,7 +99,16 @@ import {
   type TrackerOutcome,
 } from "./tracker.js";
 import { parsePlanBlocks } from "./plan-blocks.js";
-import { PLAN_TASKS_STEP, readTestFirst, touchedTests } from "./tests.js";
+import {
+  blockedTests,
+  PLAN_TASKS_STEP,
+  readTestFirst,
+  runPlanPath,
+  sameTestName,
+  touchedTests,
+  baselineDiff,
+} from "./tests.js";
+import { addTakeoverTasks, type TakeoverEntry } from "./tasks.js";
 import { addAllButCopied } from "./worktrees.js";
 
 /**
@@ -134,6 +160,8 @@ export const EXIT_SOURCE_TOUCHED = 15;
 export const PLAN_TESTS_STEP = "build-plan-tests";
 /** The step whose subagent closes the group's verification gaps: a code step, like plan-execute. */
 export const PLAN_REMEDIATE_STEP = "build-plan-gaps-remediate";
+/** The step whose subagent closes the whole-feature verification gaps, across every group. */
+export const PLAN_REMEDIATE_HOLISTIC_STEP = "build-plan-gaps-remediate-holistic";
 
 /** Where `finish` puts the derived attempt in `--artifact` / `--message` / `--clamp-log`. */
 export const ATTEMPT_TOKEN = "<attempt>";
@@ -215,6 +243,8 @@ export function readHeader(
     const m = /^([A-Z][A-Za-z ]*):\s*(.*)$/.exec(line.trim());
     if (m && !(m[1]! in fields)) fields[m[1]!] = m[2]!.trim();
   }
+  const stale = fingerprintProblem(file, lines, end, fields);
+  if (stale !== null) return { ok: false, code: EXIT_INVALID, problem: stale };
   const pending = Object.entries(fields).filter(([, v]) => /\bPENDING\b/.test(v));
   if (pending.length > 0) {
     return {
@@ -261,6 +291,32 @@ export function readHeader(
     }
   }
   return { ok: true, verdict, fields };
+}
+
+/** Header field that fingerprints a generated artifact's header and body. */
+const FINGERPRINT = "Fingerprint";
+
+/** sha256 of an artifact's header (without its Fingerprint line) and everything below it. */
+export function artifactFingerprint(lines: readonly string[], end: number): string {
+  const head = lines.slice(0, end).filter((l) => !l.startsWith(`${FINGERPRINT}:`));
+  const body = lines.slice(end + 1);
+  return createHash("sha256")
+    .update(`${head.join("\n")}\n${VERDICT_END}\n${body.join("\n")}`)
+    .digest("hex");
+}
+
+/** Why a generated artifact no longer matches what the engine rendered, or null (hand-written ones carry no fingerprint). */
+function fingerprintProblem(
+  file: string,
+  lines: readonly string[],
+  end: number,
+  fields: Record<string, string>,
+): string | null {
+  const given = fields[FINGERPRINT];
+  if (given === undefined) return null;
+  return artifactFingerprint(lines, end) === given
+    ? null
+    : `${file}: stale; its header or body changed after the engine rendered it (Fingerprint mismatch) — regenerate it from the result file`;
 }
 
 /** Lines left as a stub placeholder: a bare `PENDING`, or a field whose whole value is `PENDING`. */
@@ -362,6 +418,8 @@ export const ROW_FIELDS: Record<string, readonly RowField[]> = {
   "build/build-group-gate": ["attempt", "scope"],
   "build/build-plan-gaps-remediate": ["attempt", "strategy"],
   "build/build-plan-verify-holistic": ["attempt"],
+  "build/build-holistic-gate": ["attempt", "scope"],
+  "build/build-plan-gaps-remediate-holistic": ["attempt", "strategy"],
   "build/build-challenge": ["attempt"],
   "build/build-decision": ["attempt"],
   "build/build-run-tests": ["attempt", "scope"],
@@ -378,8 +436,6 @@ export const ROW_FIELDS: Record<string, readonly RowField[]> = {
   "debug/debug-summary": ["attempt"],
   "ship/ship-summary": ["attempt"],
   "ship/ship-merge-pr": ["attempt"],
-  "ship/ship-failure-diagnose": ["attempt"],
-  "ship/ship-failure-remediate": ["attempt", "strategy"],
 };
 
 /** The required fields missing (absent or empty) from a row. */
@@ -433,11 +489,7 @@ function progressPoint(workflow: string, step: string, soak: boolean): AskPoint 
     if (["debug-run-tests", "debug-failure-diagnose", "debug-failure-remediate"].includes(step))
       return "debug.fix";
   }
-  if (
-    workflow === "ship" &&
-    ["ship-merge-pr", "ship-failure-diagnose", "ship-failure-remediate"].includes(step)
-  )
-    return "ship.merge";
+  if (workflow === "ship" && ["ship-merge-pr"].includes(step)) return "ship.merge";
   return undefined;
 }
 
@@ -595,6 +647,16 @@ function restoreIndex(snap: IndexSnapshot): string | null {
   fs.rmSync(snap.file, { force: true });
   fs.rmSync(lock, { force: true });
   return null;
+}
+
+/** The `--field` extras; `changedTests` is written by the planned-test lock alone. */
+function fieldExtras(specs: string[]): Record<string, unknown> {
+  if (specs.some((x) => x.startsWith("changedTests=")))
+    throw new CommandError(
+      EXIT.USAGE,
+      "--field cannot set changedTests; only the planned-test lock in `steps finish` writes it",
+    );
+  return Object.fromEntries(specs.map(extraField));
 }
 
 /**
@@ -1037,6 +1099,22 @@ const fill = (s: string, attempt: number | undefined) =>
 
 const list = (v: FlagValue) => (v as string[] | undefined) ?? [];
 
+/**
+ * A build decision row may say `route=continue` only when `bkit decisions skip` would pass
+ * its decision file (the step's first artifact): the same `skipProblem` rule, read here.
+ */
+function continueCheck(cwd: string, decisionFile: string | undefined): Check {
+  const check = "route=continue";
+  if (decisionFile === undefined)
+    return { check, ok: false, detail: "no decision file: pass it as the first --artifact" };
+  const read = readTextFile(path.resolve(cwd, decisionFile));
+  if (!read.ok) return { check, ok: false, detail: `${decisionFile} is missing or unreadable` };
+  const problem = skipProblem(read.text);
+  return problem === null
+    ? { check, ok: true, detail: `${decisionFile} passes decisions skip` }
+    : { check, ok: false, detail: `${decisionFile}: ${problem}` };
+}
+
 async function finish(ctx: RunContext): Promise<number> {
   const f = ctx.flags;
   const file = statusFile(ctx);
@@ -1059,7 +1137,7 @@ async function finish(ctx: RunContext): Promise<number> {
   } else {
     attempt = nonNegativeInt(f.attempt, "attempt");
   }
-  const extras: Record<string, unknown> = Object.fromEntries(list(f.field).map(extraField));
+  const extras: Record<string, unknown> = fieldExtras(list(f.field));
   for (const spec of list(f.countField)) {
     const eq = spec.indexOf("=");
     if (eq <= 0)
@@ -1191,7 +1269,9 @@ async function finish(ctx: RunContext): Promise<number> {
         extras.source === "ci" &&
         extras.ciGeneration === active.ciGeneration &&
         verdict === "FAIL" &&
-        failures === undefined &&
+        (typeof round.failures === "number"
+          ? failures === round.failures
+          : failures === undefined) &&
         extras.scope === round.scope &&
         artifacts.includes(String(round.artifact));
       if (!matching)
@@ -1237,6 +1317,8 @@ async function finish(ctx: RunContext): Promise<number> {
   });
   if (missing.length)
     pre.push({ check: "status row", ok: false, detail: `row would miss ${missing.join(", ")}` });
+  if (workflow === "build" && step === "build-decision" && extras.route === "continue")
+    pre.push(continueCheck(ctx.cwd, artifacts[0]));
   if (pre.some((c) => !c.ok)) {
     for (const c of pre.filter((x) => !x.ok)) ctx.log(`${c.check}: ${c.detail}`);
     ctx.emit({ pass: false, checks: pre });
@@ -1249,18 +1331,150 @@ async function finish(ctx: RunContext): Promise<number> {
 
   // A code step never edits a planned test case: each one's own lines must still be the
   // lines the group's tests step recorded at its red. Every other edit to the file is
-  // ordinary code-step work the verifier reads in the diff.
+  // ordinary code-step work the verifier reads in the diff. The holistic fix spans every group.
   if (
     workflow === "build" &&
-    (step === PLAN_TASKS_STEP || step === PLAN_REMEDIATE_STEP) &&
-    group !== undefined
+    (step === PLAN_TASKS_STEP ||
+      step === PLAN_REMEDIATE_STEP ||
+      step === PLAN_REMEDIATE_HOLISTIC_STEP)
   ) {
     const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
-    const tests = touchedTests(top, file, workflow, group);
+    const planArg = str(f.plan);
+    const planFile =
+      planArg === undefined
+        ? runPlanPath(path.resolve(ctx.cwd, file))
+        : path.resolve(ctx.cwd, planArg);
+    const plan = fs.existsSync(planFile) ? fs.readFileSync(planFile, "utf-8") : undefined;
+    const changed = touchedTests(top, file, workflow, plan);
+    // A BLOCKED line of the step's log naming a changed test lets it through (recorded on the
+    // row), unless an earlier record of that test already carries the line's reason.
+    const logRead = artifacts[0] ? readTextFile(path.resolve(ctx.cwd, artifacts[0])) : undefined;
+    const blocked = logRead?.ok ? blockedTests(logRead.text) : [];
+    const changedTests: Array<Record<string, unknown>> = [];
+    const tests: Array<{ test: string; name: string }> = [];
+    /** Why each refused test is refused, in step with `tests`. */
+    const why: Array<{ fromChange: boolean; removed: boolean; reused: string | null }> = [];
+    /**
+     * Refused tests a later task contradicts: a BLOCKED line names the test, the change removes
+     * lines, and the owning task's box is ticked. One entry per test, from its latest owner
+     * (a chain of takeovers gives every owner the same baseline).
+     */
+    const latestOwner = new Map<string, TakeoverEntry>();
+    const ticked = new Set(
+      parsePlanBlocks(plan ?? "")
+        .tasks.filter((t) => t.done)
+        .map((t) => t.task),
+    );
+    for (const c of changed) {
+      const last = c.name.split(">").pop()!.trim();
+      const naming = blocked.filter(
+        (b) => b.test === c.test && (b.name === c.name || b.name === last),
+      );
+      const line = naming.find((b) => !c.reasons.includes(b.reason));
+      const diff = line === undefined ? null : baselineDiff(top, c.text, c.test, c.name);
+      // A test gone from the file (or renamed) against a recorded baseline removes its lines.
+      const removes = diff === null ? c.text !== null : !diff.additive;
+      if (line === undefined || removes) {
+        if (!tests.some((t) => t.test === c.test && t.name === c.name)) {
+          tests.push({ test: c.test, name: c.name });
+          why.push({
+            fromChange: c.fromChange,
+            removed: line !== undefined,
+            reused: line === undefined ? (naming[0]?.reason ?? null) : null,
+          });
+        }
+        const key = `${c.test}\0${c.name}`;
+        if (line !== undefined && ticked.has(c.task) && c.task > (latestOwner.get(key)?.from ?? 0))
+          latestOwner.set(key, {
+            test: c.test,
+            name: c.name,
+            from: c.task,
+            task: line.task,
+            reason: line.reason,
+          });
+      } else {
+        const after = git(top, ["hash-object", "-w", "--", c.test]);
+        changedTests.push({
+          task: c.task,
+          test: c.test,
+          testName: c.name,
+          block: c.block,
+          reason: line.reason,
+          blob: c.text,
+          ...(after === null ? {} : { after }),
+        });
+      }
+    }
+    if (tests.length === 0 && changedTests.length > 0) extras.changedTests = changedTests;
     if (tests.length > 0) {
       const touched = [...new Set(tests.map((t) => t.test))];
-      const named = tests.map((t) => `\`${t.test}\` "${t.name}"`).join(", ");
-      const problem = `${named} differ${tests.length === 1 ? "s" : ""} from what the group's tests step recorded at its red: a code step never edits a planned test case — put ${tests.length === 1 ? "that test" : "those tests"} back as the tests step left ${tests.length === 1 ? "it" : "them"} (other edits to the file stay), or log the task BLOCKED naming the test and what it gets wrong (nothing written)`;
+      const nameOf = (t: { test: string; name: string }) => `\`${t.test}\` "${t.name}"`;
+      const named = tests.map(nameOf).join(", ");
+      // The build hands each contradicted test to a takeover task before it re-asks.
+      const entries = [...latestOwner.values()];
+      // An entry needs a ticked owner, so the plan exists whenever there is one.
+      const takeovers = addTakeoverTasks(
+        ctx.cwd,
+        planFile,
+        path.resolve(ctx.cwd, file),
+        entries,
+        ctx.log,
+      );
+      const contradicts = entries.map((e, i) => ({
+        test: e.test,
+        name: e.name,
+        from: e.from,
+        task: e.task,
+        takeover: takeovers[i]!,
+      }));
+      const isContradicted = (t: { test: string; name: string }) =>
+        contradicts.some((x) => x.test === t.test && x.name === t.name);
+      const contradictedPart = () => {
+        if (contradicts.length === 0) return "";
+        const many = contradicts.length > 1;
+        const them = many ? "them" : "it";
+        const owners = contradicts.map((x) => `TASK ${x.from}`).join(", ");
+        const added = [...new Set(contradicts.map((x) => x.takeover))].join(", ");
+        return `${contradicts.map(nameOf).join(", ")} ${many ? "are" : "is"} owned by an earlier, ticked task (${owners}) and this change contradicts ${them}: the build added takeover TASK ${added}, which rewrites ${them} in its own tests step — put ${them} back as the tests step left ${them} (other edits to the file stay); a BLOCKED line does not keep ${them}, so the keep-the-edit choice does not apply to ${them}`;
+      };
+      const logLines = (list: typeof tests) =>
+        list.map((t) => `BLOCKED — TASK {N}: test \`${t.test}\` \`${t.name}\` — {why}`).join("; ");
+      const part = (fromChange: boolean) => {
+        const list = tests.filter(
+          (t, i) => why[i]!.fromChange === fromChange && !isContradicted(t),
+        );
+        if (list.length === 0) return "";
+        const many = list.length > 1;
+        const subject = `${list.map(nameOf).join(", ")} differ${many ? "" : "s"} from`;
+        const them = many ? "those tests" : "that test";
+        const it = many ? "them" : "it";
+        return fromChange
+          ? `${subject} the change a code step already recorded for ${many ? "them" : "it"} (changedTests): put ${them} back as that recorded change left ${it}, or keep the edit and log one line per test in the step's log: ${logLines(list)}`
+          : `${subject} what the group's tests step recorded at its red: a code step never edits a planned test case — put ${them} back as the tests step left ${it} (other edits to the file stay), or keep the edit and log one line per test in the step's log: ${logLines(list)}`;
+      };
+      const notes: string[] = [];
+      for (const [i, t] of tests.entries()) {
+        const w = why[i]!;
+        if (isContradicted(t)) continue;
+        if (w.removed)
+          notes.push(
+            `${nameOf(t)}: the engine refuses a BLOCKED-named change that removes a line of a planned test; it lets through only a change that adds lines, and verify reads every added line`,
+          );
+        if (w.reused !== null)
+          notes.push(
+            `${nameOf(t)}: the BLOCKED line's reason "${w.reused}" is already recorded for that test — log a new reason`,
+          );
+      }
+      const refused = [part(false), part(true)].filter(Boolean);
+      const refusedText =
+        refused.length > 0
+          ? `${refused.join(" | ")}${notes.length ? ` (${notes.join("; ")})` : ""} (Gap {N} in a gaps fix)`
+          : "";
+      const written =
+        contradicts.length > 0
+          ? "(no step row written; the plan and its build-takeover rows are)"
+          : "(nothing written)";
+      const problem = `${[contradictedPart(), refusedText].filter(Boolean).join(" | ")} ${written}`;
       ctx.log(problem);
       recordTestLockFriction(top, step, named);
       ctx.emit({
@@ -1269,6 +1483,7 @@ async function finish(ctx: RunContext): Promise<number> {
         problem,
         touched,
         tests,
+        contradicts,
       });
       return EXIT_TESTS_TOUCHED;
     }
@@ -1293,6 +1508,39 @@ async function finish(ctx: RunContext): Promise<number> {
       );
       ctx.emit({ pass: false, source });
       return EXIT_SOURCE_TOUCHED;
+    }
+    // An earlier task's planned test stays as its baseline left it, unless an open task of
+    // this group names it (its own test, or one it takes over).
+    const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
+    const planPath = path.resolve(ctx.cwd, planArg);
+    const planText = fs.existsSync(planPath) ? fs.readFileSync(planPath, "utf-8") : undefined;
+    const planTasks = parsePlanBlocks(planText ?? "").tasks;
+    const done = new Set(planTasks.filter((t) => t.done).map((t) => t.task));
+    const inGroup = new Set(planTasks.filter((t) => t.group === group).map((t) => t.task));
+    const mine = readTestFirst(planText ?? "", group).flatMap((s) =>
+      s.kind === "test" && !done.has(s.task) ? s.tests : [],
+    );
+    // Only a per-test lock binds here: an earlier group's test held by its whole file's blob
+    // (no line carries its name, or the file was missing) cannot tell this group's own new
+    // tests in that file from an edit to it.
+    const tests = touchedTests(top, file, workflow, planText)
+      .filter((c) => !c.wholeFile || inGroup.has(c.task))
+      .filter((c) => !mine.some((m) => m.test === c.test && sameTestName(m.name, c.name)))
+      .map((c) => ({ test: c.test, name: c.name }));
+    if (tests.length > 0) {
+      const touched = [...new Set(tests.map((t) => t.test))];
+      const named = tests.map((t) => `\`${t.test}\` "${t.name}"`).join(", ");
+      const problem = `${named} ${tests.length > 1 ? "are" : "is"} an earlier task's planned test that no open task of group ${group} names: the tests step never changes it — put it back as the earlier task's red left it (other edits to the file stay); to change what it asserts, the plan names it on this group's task TEST FIRST (a takeover) (nothing written)`;
+      ctx.log(problem);
+      recordTestLockFriction(top, step, named);
+      ctx.emit({
+        pass: false,
+        reask: agents.length ? { agent: agents[0], artifact: artifacts[0] } : null,
+        problem,
+        touched,
+        tests,
+      });
+      return EXIT_TESTS_TOUCHED;
     }
   }
 
@@ -1415,7 +1663,15 @@ async function finish(ctx: RunContext): Promise<number> {
       attempt,
       "comment",
     );
-    tracker = await postForVerb(ctx, comment, { fid: fidOfStatusFile(file), file, key });
+    tracker = await postForVerb(ctx, comment, {
+      fid: fidOfStatusFile(file),
+      file,
+      key,
+      purpose:
+        step.endsWith("-decision") || verdict === "FAIL" || verdict === "HANDOVER"
+          ? "attention"
+          : "routine",
+    });
   }
 
   const written = writeStepRow(
@@ -1464,11 +1720,223 @@ async function finish(ctx: RunContext): Promise<number> {
     checks,
     comment,
     // Written after the step's commit, so the commit never carries it.
-    commentFile: commentFileOf(ctx.cwd, comment),
+    commentFile: commentFileOf(ctx.cwd, comment, ctx),
     ...(tracker === undefined ? {} : { tracker }),
   });
   if (written.code !== EXIT.OK) return written.code;
   return pass ? EXIT.OK : EXIT.NO;
+}
+
+// ---------------------------------------------------------------------------
+// stub --result-file — an artifact rendered from one structured result
+// ---------------------------------------------------------------------------
+
+/**
+ * Header fields the engine computes from the findings; every other declared field is a
+ * judgment the result must supply (the evidence-dependent ones: Tasks, Redesign, Strategy ...).
+ */
+const DERIVED_FIELDS: Record<string, (findings: Finding[]) => string> = {
+  Failures: (f) => String(f.length),
+  // `true` when any gap is fixable (the plan-verify header contract), `false` for none.
+  Fixable: (f) => String(f.some((x) => x.fixable)),
+};
+
+/** The agent whose header is the audit summary (Status / Report / Findings), not a Verdict header. */
+const AUDIT_AGENT = "bkit-audit-generate";
+
+export interface Rendered {
+  text: string;
+  fingerprint: string;
+  extra: Record<string, unknown>;
+}
+
+const withFingerprint = (head: string[], body: string): Rendered["text"] => {
+  const unsigned = `${head.join("\n")}\n${VERDICT_END}\n\n${body}`;
+  const lines = unsigned.split("\n");
+  const fingerprint = artifactFingerprint(lines, head.length);
+  return `${head.join("\n")}\n${FINGERPRINT}: ${fingerprint}\n${VERDICT_END}\n\n${body}`;
+};
+
+const fingerprintOf = (text: string): string =>
+  artifactFingerprint(text.split("\n"), text.split("\n").indexOf(VERDICT_END));
+
+/**
+ * Every key the failures ledger (the working directory's `docs/failures.jsonl`, the file
+ * `ledgers append` and `ledgers query` use) already holds, with the finding each row records,
+ * so a derived audit key never lands on a different finding's row.
+ */
+function ledgerKeys(cwd: string): Map<string, HeldRow> {
+  const file = path.resolve(cwd, "docs", "failures.jsonl");
+  const held = new Map<string, HeldRow>();
+  if (!fs.existsSync(file)) return held;
+  for (const row of queryLedger(fs.readFileSync(file, "utf8")).rows) {
+    const r: Record<string, unknown> = { ...row };
+    if (typeof r["key"] !== "string") continue;
+    const locations = Array.isArray(r["references"])
+      ? r["references"].filter((x): x is string => typeof x === "string")
+      : [];
+    const text = typeof r["description"] === "string" ? r["description"] : "";
+    const fromText = /\((\S+:\d+)\);/.exec(text);
+    if (fromText?.[1] !== undefined) locations.push(fromText[1]);
+    held.set(r["key"], {
+      summary: typeof r["summary"] === "string" ? r["summary"] : "",
+      locations,
+    });
+  }
+  return held;
+}
+
+function renderAudit(cwd: string, result: AuditResult): Rendered {
+  const held = ledgerKeys(cwd);
+  const entries = auditEntries(result, held);
+  const totals = auditTotals(result.findings);
+  const head = [
+    `Status: ${result.status}`,
+    `Report: ${result.report ?? "None"}`,
+    `Findings: ${auditFindingsLine(totals)}`,
+    `Issue: ${result.issue ?? "None"}`,
+    `Parent: ${result.parent ?? "None"}`,
+  ];
+  const cell = (t: string) => t.replace(/\|/g, "\\|");
+  const list = (items: string[]) => (items.length ? items.map((i) => `- ${i}`).join("\n") : "None");
+  const body = [
+    `# Audit Summary: ${result.slug}`,
+    "",
+    "## Stopped",
+    "",
+    result.stopped ?? "None",
+    "",
+    "## Overview",
+    "",
+    result.overview ?? "None",
+    "",
+    "## Suggested Issues",
+    "",
+    ...(entries.length
+      ? [
+          "| ID | Severity | Title | Location | Prior key |",
+          "| --- | --- | --- | --- | --- |",
+          ...entries.map(
+            (e) =>
+              `| ${e.id} | ${e.severity} | ${cell(e.title)} | \`${e.location}\` | ${e.priorKey ?? "none"} |`,
+          ),
+        ]
+      : ["None"]),
+    "",
+    "## Not Checked",
+    "",
+    list(result.notChecked),
+    "",
+    "## Ledger",
+    "",
+    list(entries.map((e) => `\`${e.key}\` ${e.severity} OPEN`)),
+    "",
+  ].join("\n");
+  const text = withFingerprint(head, body);
+  return {
+    text,
+    fingerprint: fingerprintOf(text),
+    extra: {
+      ids: entries.map((e) => e.id),
+      totals,
+      ledgerRows: auditLedgerRows(result, held),
+    },
+  };
+}
+
+/**
+ * The artifact for `agent` rendered from a structured result `{findings, judgments, body,
+ * evidenceComplete}`: counts and booleans derived from the findings, judged fields passed
+ * through and checked, a Fingerprint over the header and body. Throws a CommandError
+ * (EXIT_INVALID) and writes nothing on any disagreement.
+ */
+export function renderResult(cwd: string, agent: string, raw: unknown): Rendered {
+  const bad = (why: string) => new CommandError(EXIT_INVALID, `result: ${why}`);
+  if (agent === AUDIT_AGENT) {
+    try {
+      return renderAudit(cwd, parseAuditResult(raw));
+    } catch (err) {
+      throw err instanceof CommandError ? bad(err.message) : err;
+    }
+  }
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+    throw bad("must be a JSON object");
+  const r = raw as Record<string, unknown>;
+  for (const k of Object.keys(r))
+    if (!["findings", "judgments", "body", "evidenceComplete"].includes(k))
+      throw bad(`unknown field "${k}"`);
+  let findings: Finding[];
+  try {
+    findings = structuredFindings(r["findings"] ?? [], cwd);
+  } catch (err) {
+    throw err instanceof CommandError ? bad(err.message) : err;
+  }
+  const judgments = r["judgments"] ?? {};
+  if (judgments === null || typeof judgments !== "object" || Array.isArray(judgments))
+    throw bad("judgments must be an object");
+  const judged = new Map<string, string>();
+  for (const [k, v] of Object.entries(judgments)) {
+    if (typeof v !== "string" && typeof v !== "number" && typeof v !== "boolean")
+      throw bad(`judgment ${k} must be text, a number or a boolean`);
+    // A judgment renders into one header line: a line break would forge header lines.
+    if (/[\r\n]/.test(String(v))) throw bad(`judgment ${k} must be a single line`);
+    judged.set(k, String(v));
+  }
+  const declared = promptHeader(agent);
+  const names = new Set(["Verdict", ...declared.fields.map((f) => f.name)]);
+  for (const k of judged.keys()) {
+    if (!names.has(k)) throw bad(`judgment ${k} is not a header field of ${agent}`);
+    if (k in DERIVED_FIELDS) throw bad(`${k} is derived from the findings and cannot be supplied`);
+  }
+  if (typeof r["evidenceComplete"] !== "boolean")
+    throw bad("evidenceComplete must be stated as true or false");
+  const evidenceComplete = r["evidenceComplete"];
+  const arithmetic =
+    findings.length > 0
+      ? "FAIL"
+      : !evidenceComplete
+        ? declared.verdicts.includes("CONCERNS")
+          ? "CONCERNS"
+          : "FAIL"
+        : "PASS";
+  const verdict = judged.get("Verdict") ?? arithmetic;
+  if (!declared.verdicts.includes(verdict))
+    throw bad(`Verdict ${verdict} is not ${declared.verdicts.join("|")}`);
+  if (verdict === "PASS" && arithmetic !== "PASS")
+    throw bad(
+      findings.length > 0
+        ? `Verdict PASS contradicts ${findings.length} finding(s)`
+        : "Verdict PASS contradicts incomplete evidence",
+    );
+  const head = [`Verdict: ${verdict}`];
+  for (const f of declared.fields) {
+    const value = DERIVED_FIELDS[f.name]?.(findings) ?? judged.get(f.name);
+    if (value === undefined) throw bad(`${f.name} is a judgment the result must supply`);
+    if (f.values && !f.values.includes(value))
+      throw bad(`${f.name} ${value} is not ${f.values.join("|")}`);
+    if (f.integer && !/^[0-9]+$/.test(value))
+      throw bad(`${f.name} ${value} is not a non-negative integer`);
+    head.push(`${f.name}: ${value}`);
+  }
+  const given = r["body"] ?? "";
+  if (typeof given !== "string") throw bad("body must be text");
+  if (verdict === "PASS" && given.trim() === "") throw bad("a PASS result needs a non-empty body");
+  if (given.split("\n").includes(VERDICT_END)) throw bad(`body holds a ${VERDICT_END} line`);
+  const log =
+    findings.length > 0 && !/^## Findings Log\b/m.test(given)
+      ? `\n${renderFindingsLog(findings)}\n`
+      : "";
+  const body = `${given.replace(/\n+$/, "")}\n${log}`;
+  const text = withFingerprint(head, body.replace(/^\n+/, ""));
+  return { text, fingerprint: fingerprintOf(text), extra: { findings: findings.length } };
+}
+
+function readResult(cwd: string, file: string): unknown {
+  const abs = path.resolve(cwd, file);
+  if (!fs.existsSync(abs)) throw new CommandError(EXIT_INVALID, `result: ${file} does not exist`);
+  const parsed = parseJson(fs.readFileSync(abs, "utf-8"));
+  if (!parsed.ok) throw new CommandError(EXIT_INVALID, `result: ${file} is not JSON`);
+  return parsed.value;
 }
 
 // ---------------------------------------------------------------------------
@@ -1611,7 +2079,7 @@ export const stepsCommand: CommandSpec = {
             group,
             strategy,
             artifacts,
-            extras: Object.fromEntries(list(f.field).map(extraField)),
+            extras: fieldExtras(list(f.field)),
             parentSha: str(f.parentSha),
             commit: commit as "auto" | "none",
             message: str(f.message),
@@ -1628,7 +2096,7 @@ export const stepsCommand: CommandSpec = {
     },
     finish: {
       summary:
-        "End a step: read the verdict header(s), derive the attempt, check the gate, write the row, commit, print the tracker comment.",
+        "End a step: read the verdict header(s), derive the attempt, check the gate, write the row, commit, print the tracker comment. Exit 11 on a build tests step that changed an earlier task's recorded test no open task of the group names, and on a code step that changed a planned test; for each BLOCKED test a ticked task owns, a code step first adds a takeover task to the plan and its build-takeover row, and prints them under contradicts.",
       use: "workflow",
       flags: [
         { ...FILE_FLAG, help: "path to status.jsonl (created if absent)" },
@@ -1701,7 +2169,7 @@ export const stepsCommand: CommandSpec = {
         {
           name: "plan",
           type: "string",
-          help: `${PLAN_TESTS_STEP}: the plan file whose TEST FIRST lines bound the step's commit (required there with --commit=auto)`,
+          help: `${PLAN_TESTS_STEP}: the plan file whose TEST FIRST lines bound the step's commit (required there with --commit=auto); the code steps: the plan whose TEST FIRST lines name the planned tests the lock checks (default: the plan beside the status file)`,
         },
         ...COMMIT_FLAGS.map((c) =>
           c.name === "message"
@@ -1771,6 +2239,8 @@ export const stepsCommand: CommandSpec = {
           "why the verdict read failed, or which planned tests the code step touched (exit 4 / 5 / 6 / 11 only)",
         touched:
           "planned test files of the group that differ from the blob its tests step recorded (exit 11 only)",
+        contradicts:
+          "[{test, name, from, task, takeover}] the refused tests a ticked task `from` owns that this change contradicts, each with the takeover task the engine added (exit 11 on a code step only)",
         source:
           "files the tests step's commit would change that are not the group's TEST FIRST files, or add although a CREATE line names them (exit 15 only)",
         later: "artifacts of a later attempt this run saved (exit 12 only)",
@@ -1795,7 +2265,7 @@ export const stepsCommand: CommandSpec = {
         [EXIT_OUTSIDE_DOCS]:
           "--docs-only and the step staged a file outside the artifact tree (nothing written)",
         [EXIT_TESTS_TOUCHED]:
-          "build plan-execute / plan-gaps-remediate: a planned test case of the group differs from the lines its tests step recorded in status.jsonl (`tests`: [{test, name}]; `touched`: their files) — re-ask `reask.agent` to put that test back or log the task BLOCKED; other edits to the file stay (nothing written; an agent-rework friction row is appended)",
+          "build plan-execute / plan-gaps-remediate: a planned test case (of any group) differs from the lines recorded in status.jsonl (`tests`: [{test, name}]; `touched`: their files) — re-ask `reask.agent` to put that test back, or to keep the edit and log ``BLOCKED — TASK {N}: test `{file}` `{name}` — {why}`` (Gap {N} in a gaps fix) in the step's log, which lets that change through and records it in the row's `changedTests`; other edits to the file stay (nothing written; an agent-rework friction row is appended). A BLOCKED test that removes lines of a ticked task's planned test is contradicted instead: no BLOCKED line keeps it, the engine adds a takeover task and its build-takeover row (once per test, however often the finish runs) and lists it in `contradicts`; the agent puts it back",
         [EXIT_LATER_ATTEMPT]:
           "this run saved an artifact of a later attempt (`later`) than the one finished (nothing written)",
         [EXIT_WORKFLOWS_CHANGED]:
@@ -1817,13 +2287,18 @@ export const stepsCommand: CommandSpec = {
           repeatable: true,
           help: "header field that must be present, e.g. Failures",
         },
+        {
+          name: "result-file",
+          type: "string",
+          help: "with --agent: also require the artifact to be the render of this result (a changed result is stale)",
+        },
       ],
       output: { verdict: "the Verdict value", fields: "every Key: value header field" },
       exitCodes: {
         [EXIT_EMPTY]: "artifact missing or empty",
         [EXIT_PENDING]: "a header field is still PENDING",
         [EXIT_INVALID]:
-          "no verdict:end line, Verdict outside the allowed set, or a required field missing — re-prompt the subagent",
+          "no verdict:end line, Verdict outside the allowed set, a required field missing, or a generated artifact whose Fingerprint no longer matches its header and body (stale) — re-prompt the subagent or regenerate it",
       },
       run: (ctx) => {
         const header = readHeader(
@@ -1834,6 +2309,27 @@ export const stepsCommand: CommandSpec = {
         if (!header.ok) {
           ctx.log(header.problem);
           return header.code;
+        }
+        if (ctx.flags.resultFile !== undefined) {
+          if (ctx.flags.agent === undefined)
+            throw new CommandError(EXIT.USAGE, "--result-file needs --agent");
+          try {
+            const rendered = renderResult(
+              ctx.cwd,
+              String(ctx.flags.agent),
+              readResult(ctx.cwd, String(ctx.flags.resultFile)),
+            );
+            if (header.fields[FINGERPRINT] !== rendered.fingerprint) {
+              ctx.log(
+                `${String(ctx.flags.file)}: stale; it is not the render of ${String(ctx.flags.resultFile)} (Fingerprint mismatch)`,
+              );
+              return EXIT_INVALID;
+            }
+          } catch (err) {
+            if (!(err instanceof CommandError) || err.code !== EXIT_INVALID) throw err;
+            ctx.log(err.message);
+            return EXIT_INVALID;
+          }
         }
         ctx.emit({ verdict: header.verdict, fields: header.fields });
         return EXIT.OK;
@@ -2018,17 +2514,96 @@ export const stepsCommand: CommandSpec = {
         "Seed a versioned artifact: copy the prior version, then put a PENDING verdict header on top.",
       use: "workflow",
       flags: [
-        { name: "from", type: "string", required: true, help: "the prior versioned artifact" },
+        { name: "from", type: "string", help: "the prior versioned artifact (copy mode)" },
         { name: "to", type: "string", required: true, help: "the artifact to create" },
+        {
+          name: "agent",
+          type: "string",
+          help: "with --result-file: the subagent whose header the result renders",
+        },
+        {
+          name: "result-file",
+          type: "string",
+          help: "render the artifact from this structured result JSON {findings, judgments, body, evidenceComplete} (audit: the audit result) instead of copying --from",
+        },
+        {
+          name: "invocation",
+          type: "string",
+          unresolved: true,
+          help: "with --result-file: the invocation id this step runs under; a result that names another invocation is stale and refused (exit 6, nothing written)",
+        },
         {
           name: "strip-header",
           type: "boolean",
           help: "drop the prior version's own header (everything down to its <!-- verdict:end -->)",
         },
       ],
-      output: { file: "the artifact written", stripped: "the prior header was dropped" },
-      exitCodes: { [EXIT_EMPTY]: "--from is missing or empty" },
+      output: {
+        file: "the artifact written (an audit summary whose --to already holds a report goes to <result-file>.summary.md)",
+        reportKept: "audit result: the existing report at --to, left untouched",
+        stripped: "the prior header was dropped (copy mode)",
+        fingerprint: "with --result-file: the Fingerprint header value",
+        ids: "audit result: the report-local finding IDs, in report order",
+        totals: "audit result: findings per severity",
+        ledgerRows:
+          "audit result: one failure ledger payload per finding, for `bkit ledgers append`",
+        findings: "other results: the finding count",
+      },
+      exitCodes: {
+        [EXIT_EMPTY]: "--from is missing or empty",
+        [EXIT_INVALID]:
+          "--result-file is unreadable or invalid, or a judgment contradicts the findings (nothing written)",
+      },
       run: (ctx) => {
+        if (ctx.flags.resultFile !== undefined) {
+          if (ctx.flags.from !== undefined)
+            throw new CommandError(EXIT.USAGE, "give --from or --result-file, not both");
+          if (ctx.flags.agent === undefined)
+            throw new CommandError(EXIT.USAGE, "--result-file needs --agent");
+          try {
+            const result = readResult(ctx.cwd, String(ctx.flags.resultFile));
+            const issued = str(ctx.flags.invocation);
+            const carried =
+              typeof result === "object" && result !== null && !Array.isArray(result)
+                ? (result as Record<string, unknown>).invocation
+                : undefined;
+            // A result written under another invocation is left over from an earlier round or run.
+            if (issued !== undefined && carried !== undefined && carried !== issued)
+              throw new CommandError(
+                EXIT_INVALID,
+                `result: ${String(ctx.flags.resultFile)} was written under invocation ${String(carried)}, not ${issued}; it is a stale result from an earlier round or run (nothing written)`,
+              );
+            const rendered = renderResult(ctx.cwd, String(ctx.flags.agent), result);
+            const requested = path.resolve(ctx.cwd, String(ctx.flags.to));
+            // An audit's --to is the finished report; the summary never replaces it.
+            const keepsReport =
+              ctx.flags.agent === AUDIT_AGENT &&
+              fs.existsSync(requested) &&
+              fs.statSync(requested).size > 0;
+            const resultFile = path.resolve(ctx.cwd, String(ctx.flags.resultFile));
+            const to = keepsReport
+              ? path.join(
+                  path.dirname(resultFile),
+                  `${path.basename(resultFile, path.extname(resultFile))}.summary.md`,
+                )
+              : requested;
+            fs.mkdirSync(path.dirname(to), { recursive: true });
+            fs.writeFileSync(to, rendered.text);
+            ctx.emit({
+              file: keepsReport ? path.relative(ctx.cwd, to) : String(ctx.flags.to),
+              ...(keepsReport ? { reportKept: String(ctx.flags.to) } : {}),
+              fingerprint: rendered.fingerprint,
+              ...rendered.extra,
+            });
+            return EXIT.OK;
+          } catch (err) {
+            if (!(err instanceof CommandError) || err.code !== EXIT_INVALID) throw err;
+            ctx.log(err.message);
+            return EXIT_INVALID;
+          }
+        }
+        if (ctx.flags.from === undefined)
+          throw new CommandError(EXIT.USAGE, "give --from (copy) or --result-file");
         const from = path.resolve(ctx.cwd, String(ctx.flags.from));
         if (!fs.existsSync(from) || fs.statSync(from).size === 0) {
           ctx.log(`${String(ctx.flags.from)} is missing or empty`);

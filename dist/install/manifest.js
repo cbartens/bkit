@@ -58,7 +58,7 @@ export function parseIssueTracker(value) {
  *
  * Single self-describing field (mirrors `bkit.tracker.default`).
  */
-export const CLOUD_MODES = ["claude", "cursor", "opencode", "none"];
+export const CLOUD_MODES = ["claude", "cursor", "opencode", "codex", "none"];
 /** Default when consumer manifest has no `bkit.cloud.agent` field (undecided). */
 export const DEFAULT_CLOUD_AGENTS = "none";
 /** Narrow an unknown string to `CloudAgents` or return `null` if invalid. */
@@ -368,6 +368,12 @@ export const OPENCODE_MANIFEST = [
     // bkit-readguard.js — same split as bkit-gateguard.js.
     {
         path: ".opencode/plugin/bkit-readguard.js",
+        format: "markered-text",
+        module: "opencode",
+    },
+    // bkit-guardrails.js — same split as bkit-gateguard.js. Refuses the shell deny tier.
+    {
+        path: ".opencode/plugin/bkit-guardrails.js",
         format: "markered-text",
         module: "opencode",
     },

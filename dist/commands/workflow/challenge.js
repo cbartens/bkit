@@ -24,10 +24,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { appendLine, statusTimestamp } from "../../ledgers/status.js";
 import { CommandError, DEV, EXIT, git, runGit } from "../lib.js";
-import { DIFF_BASE, EXIT_BASE, diffNumstat } from "./context.js";
-import { parseDecisionItems } from "./decisions.js";
+import { EXIT_BASE, diffNumstat } from "./context.js";
+import { defaultRange } from "./feature-base.js";
+import { parseDecisionItems } from "./open-decision.js";
 import { EXIT_ROW_REFUSED, EXIT_STAGE, appendLedgerRows } from "./ledgers.js";
-import { derivedTestMatrix, parsePlanBlocks } from "./plan-blocks.js";
+import { derivedTestMatrix, parsePlanBlocks, testTier } from "./plan-blocks.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { grantCount } from "./counters.js";
 import { checkPlanText, planCaps, readTestFirst } from "./tests.js";
@@ -211,12 +212,62 @@ const taskBlock = (n, f, round) => [
     ...f.tests.map((e) => `    - ${e}`),
     `<!-- bkit:task ${n} end -->`,
 ];
-/** The test tier `docs/testing.md` records for a test file's name. */
-const testTier = (file) => /\.integration\.test\./.test(file)
-    ? "Integration"
-    : /\.live\.test\./.test(file)
-        ? "@live (golden)"
-        : "Unit";
+/**
+ * Findings given as structured data (a step result file), checked by the rules
+ * {@link parseFindings} applies to a written report. Severity, fixable, location and
+ * done-when are the reviewer's judgments: a missing one is refused, never defaulted.
+ * Throws a CommandError (EXIT_OLD_FORMAT) naming the finding and field.
+ */
+export function structuredFindings(input, cwd) {
+    if (!Array.isArray(input))
+        throw new CommandError(EXIT_OLD_FORMAT, "findings must be an array");
+    return input.map((raw, i) => {
+        const refuse = (why) => new CommandError(EXIT_OLD_FORMAT, `finding ${i + 1} ${why}`);
+        if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+            throw refuse("is not an object");
+        const f = raw;
+        if (!SEVERITY_ORDER.includes(f["severity"]))
+            throw refuse("has no severity CRITICAL|HIGH|MEDIUM|LOW");
+        if (typeof f["fixable"] !== "boolean")
+            throw refuse("has no fixable true|false");
+        const location = normalizeLocation(typeof f["location"] === "string" ? f["location"] : "", cwd);
+        if (location === null)
+            throw refuse("has no location path:line");
+        if (typeof f["doneWhen"] !== "string" || f["doneWhen"].trim() === "")
+            throw refuse("has no doneWhen");
+        const tests = f["tests"] ?? [];
+        if (!Array.isArray(tests) || tests.some((t) => typeof t !== "string"))
+            throw refuse("has tests that are not an array of strings");
+        if (f["cls"] !== undefined && typeof f["cls"] !== "string")
+            throw refuse("has a non-text cls");
+        // Each value renders into one line of the task block: a line break would forge plan lines.
+        const lineBreak = /[\r\n]/;
+        for (const field of ["title", "cls", "doneWhen"]) {
+            const v = f[field];
+            if (typeof v === "string" && lineBreak.test(v))
+                throw refuse(`has a ${field} that must be a single line`);
+        }
+        const brokenTest = tests.findIndex((t) => lineBreak.test(t));
+        if (brokenTest !== -1)
+            throw refuse(`has tests entry ${brokenTest + 1} that must be a single line`);
+        const title = typeof f["title"] === "string" && f["title"] !== "" ? f["title"] : "";
+        return {
+            severity: f["severity"],
+            ...(typeof f["cls"] === "string" && f["cls"] !== "" ? { cls: f["cls"] } : {}),
+            fixable: f["fixable"],
+            location,
+            title: title || `Challenge finding at ${location}`,
+            doneWhen: f["doneWhen"],
+            tests: tests,
+        };
+    });
+}
+/** The `## Findings Log` section for `findings`, in the task-block form {@link parseFindings} reads. */
+export function renderFindingsLog(findings, round = 1) {
+    return ["## Findings Log", "", ...findings.flatMap((f, i) => [...taskBlock(i + 1, f, round), ""])]
+        .join("\n")
+        .replace(/\n+$/, "");
+}
 /**
  * One `Derived Test Matrix` row per test a finding task appends: the test's own name and
  * file from its `TEST FIRST` entry, its tier from the file's name, and the task number.
@@ -405,7 +456,7 @@ export const challengeCommand = {
                 {
                     name: "base",
                     type: "string",
-                    help: `merge base (default ${DIFF_BASE}, fetched first; a failed fetch is logged, not fatal)`,
+                    help: "merge base (default: the feature base, after fetching origin dev; a failed fetch is logged, not fatal)",
                 },
             ],
             output: {
@@ -418,15 +469,17 @@ export const challengeCommand = {
             },
             exitCodes: { [EXIT_BASE]: "--base does not name a commit" },
             run: (ctx) => {
-                const base = typeof ctx.flags.base === "string" ? ctx.flags.base : DIFF_BASE;
-                if (base === DIFF_BASE) {
+                const explicitBase = typeof ctx.flags.base === "string" ? ctx.flags.base : undefined;
+                if (explicitBase === undefined) {
                     const res = runGit(ctx.cwd, ["fetch", "origin", DEV]);
                     if (!res.ok)
                         ctx.log(`git fetch origin dev failed — measuring against the last fetch: ${res.stderr}`);
                 }
+                const fallback = explicitBase === undefined ? defaultRange(ctx.cwd, ctx.log) : null;
+                const base = explicitBase ?? fallback.base;
                 if (git(ctx.cwd, ["rev-parse", "-q", "--verify", `${base}^{commit}`]) === null)
                     throw new CommandError(EXIT_BASE, `--base ${base} does not name a commit (fetch origin)`);
-                const range = `${base}...HEAD`;
+                const range = fallback?.range ?? `${base}...HEAD`;
                 const { stat } = diffNumstat(ctx.cwd, range);
                 const gate = challengeGate(stat);
                 const file = path.resolve(ctx.cwd, String(ctx.flags.file));

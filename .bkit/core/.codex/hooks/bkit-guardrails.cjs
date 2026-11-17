@@ -36,9 +36,14 @@
 // {{BKIT_MANAGED_MARKER}}
 
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 
+// {{BKIT_PART gateguard-engine.js}}
+
 // {{BKIT_PART guardrails-shell.js}}
+
+// {{BKIT_PART guardrails-deny.js}}
 
 // {{BKIT_PART guardrails-tiers.js}}
 
@@ -57,32 +62,16 @@ function deny(reason) {
 
 /**
  * @param {string} cmd
- * @param {string[]} dirs where to look for the network allowlist (`hookDirs`)
+ * @param {{ cwd?: string, root?: string, dirs: string[] }} ctx the call's directories (`hookContext`)
  */
-function decideShell(cmd, dirs) {
+function decideShell(cmd, ctx, session) {
   const c = String(cmd || "").trim();
-  const v = classifyShell(c, dirs);
+  const v = classifyShell(c, "codex", ctx);
   if (!v) return allow();
-  switch (v.tier) {
-    case "deny":
-      return deny(`Blocked by bkit Codex guardrails: ${v.what}. ${v.fix}`);
-    case "ask":
-      // Advisory on this host (Codex cannot prompt).
-      return ask(
-        `bkit Codex guardrails: this destructive or privileged command (${v.what}) ran without confirmation, because Codex cannot prompt for one. It is on the PROHIBITED list in every bkit workflow.\nTell the user that you ran it.\nIf the user did not ask for this exact command, NEVER run it again.\n\`git clean\` and \`git checkout -- .\` destroy untracked files and uncommitted work, which no reflog can recover.\nCommand: ${c}`,
-      );
-    case "secret":
-      return ask(
-        `bkit Codex guardrails: this command read ${v.path}, an env, secrets or private-key file, without confirmation, because Codex cannot prompt for one.\nNEVER print secret values.\nPrefer direnv or documented non-secret examples.\nCommand: ${c}`,
-      );
-    case "fetch":
-      return ask(
-        `bkit Codex guardrails: outbound fetch to a host that is not on the network allowlist.\nConfirm the destination is intended before you rely on the result.\nCommand: ${c}`,
-      );
-    default:
-      // Shell-as-edit-channel: advisory on every host, never a block.
-      return ask(shellEditAdvisory(v.edits));
-  }
+  const advice = composeAdvice(v, "codex", ADVICE_BUDGETS.codex, { command: c, ctx, session });
+  acknowledgeSelected(advice.selected);
+  // Every tier but deny is advisory on this host (Codex cannot prompt).
+  return v.tier === "deny" ? deny(advice.text) : ask(advice.text);
 }
 
 /**
@@ -101,9 +90,9 @@ function bkitGuardrails(payload) {
   if (!SHELL_TOOL_NAMES.has(tool)) return null;
   const input = payload.tool_input || {};
   // Codex passes the command as a string, or as an argv array for some shells.
-  const cmd = Array.isArray(input.command) ? input.command.join(" ") : input.command;
+  const cmd = shellCommandText(input.command);
   if (typeof cmd !== "string") return null;
-  const decision = decideShell(cmd, hookDirs(payload));
+  const decision = decideShell(cmd, hookContext(payload), payload.session_id);
   return decision.verdict === "allow" ? null : decision;
 }
 

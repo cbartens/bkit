@@ -156,6 +156,16 @@ else if (a === "pr" && b === "merge") {
   fs.writeFileSync(stateFile, JSON.stringify(s));
 }
 else if (a === "run" && b === "list") console.log("[]");
+else if (a === "api" && b === "repos/example/example/commits/dev") {
+  const dev = cp.spawnSync("git", ["--git-dir=" + process.env.SHIM_BARE, "rev-parse", "refs/heads/dev"], { encoding: "utf-8" });
+  process.stdout.write(dev.stdout); process.exit(dev.status ?? 1);
+}
+else if (a === "api" && b.startsWith("repos/example/example/compare/")) {
+  const [base, head] = b.split("/compare/")[1].split("...");
+  const compared = cp.spawnSync("git", ["--git-dir=" + process.env.SHIM_BARE, "merge-base", "--is-ancestor", base, head]);
+  if (compared.status !== 0 && compared.status !== 1) process.exit(compared.status ?? 1);
+  console.log(compared.status === 0 ? (base === head ? "identical" : "ahead") : "diverged");
+}
 else if (a === "api") {
   const res = cp.spawnSync("${path.join(GH_FIXTURE, "bin", "gh")}", argv, { stdio: "inherit", env: { ...process.env, BKIT_FAKE_GH_FIXTURE_ROOT: process.env.SHIM_FIXTURES } });
   process.exit(res.status ?? 1);
@@ -296,7 +306,10 @@ describe("deferred landing of a held build (ship, matrix: held → landed)", () 
   function openPr() {
     const step2 = /^## .*Step 2 —/m;
     const probe = extractStepLine(step2, '"{BKIT}" prs probe --head=');
-    const push = extractStepLine(step2, '"{BKIT}" branches push --mode=plain --set-upstream');
+    const push = extractStepLine(
+      step2,
+      'BKIT_PR_CONFLICT_CHECK=false "{BKIT}" branches push --mode=plain --set-upstream',
+    );
     const open = extractStepLine(step2, '"{BKIT}" prs open ');
     expect(run(fill(probe)).status, "no PR exists, so the probe exits 1").toBe(1);
     const res = run(`OPEN_EXIT=0\n${fill(push)}\n${fill(open)}`);
@@ -329,6 +342,9 @@ describe("deferred landing of a held build (ship, matrix: held → landed)", () 
     expect(merged.status, `${merged.stdout}\n${merged.stderr}`).toBe(0);
 
     expect(ghApiUrls().some((u) => u.includes(`head_sha=${head}`))).toBe(true);
+    const dev = sh(repo, "rev-parse", "origin/dev");
+    expect(ghApiUrls()).toContain("repos/example/example/commits/dev");
+    expect(ghApiUrls()).toContain(`repos/example/example/compare/${dev}...${head}`);
     const mergeCall = ghCall("pr", "merge");
     expect(flagValue(mergeCall, "--match-head-commit")).toBe(head);
     expect(mergeCall).toContain("--squash");

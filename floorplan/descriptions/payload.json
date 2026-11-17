@@ -1,0 +1,124 @@
+{
+  "files": {
+    ".bkit/core/.agents/plugins/bkit/hooks/bkit-gateguard.cjs": {
+      "name": "Antigravity editing adviser",
+      "description": "Delivers the shared editing checklists and quality-gate reminders to Antigravity."
+    },
+    ".bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs": {
+      "name": "Antigravity command safety",
+      "description": "Checks destructive commands and secret-file access before Antigravity executes them."
+    },
+    ".bkit/core/.agents/plugins/bkit/hooks/bkit-readguard.cjs": {
+      "name": "Antigravity reading adviser",
+      "description": "Advises Antigravity when it rereads unchanged file content."
+    },
+    ".bkit/core/.agents/plugins/bkit/hooks/bkit-rules.cjs": {
+      "name": "Antigravity rules reminder",
+      "description": "Reminds Antigravity to read the project rules once at the start of tool use."
+    },
+    ".bkit/core/.claude/hooks/bkit-gateguard.cjs": {
+      "name": "Claude editing adviser",
+      "description": "Delivers the shared editing checklists and quality-gate reminders to Claude."
+    },
+    ".bkit/core/.claude/hooks/bkit-guardrails.cjs": {
+      "name": "Claude command safety",
+      "description": "Advises Claude about risky shell commands alongside its configured permissions."
+    },
+    ".bkit/core/.claude/hooks/bkit-preflight.sh": {
+      "name": "Claude session checks",
+      "description": "Checks Linear issue eligibility and delivers project-rule guidance before Claude background work."
+    },
+    ".bkit/core/.claude/hooks/bkit-readguard.cjs": {
+      "name": "Claude reading adviser",
+      "description": "Advises Claude when it rereads unchanged file content."
+    },
+    ".bkit/core/.codex/hooks/bkit-gateguard.cjs": {
+      "name": "Codex editing adviser",
+      "description": "Delivers the shared editing checklists and quality-gate reminders to Codex."
+    },
+    ".bkit/core/.codex/hooks/bkit-guardrails.cjs": {
+      "name": "Codex command safety",
+      "description": "Checks destructive shell commands before Codex executes them."
+    },
+    ".bkit/core/.codex/hooks/bkit-readguard.cjs": {
+      "name": "Codex reading adviser",
+      "description": "Advises Codex when it rereads unchanged file content."
+    },
+    ".bkit/core/.codex/hooks/bkit-rules.cjs": {
+      "name": "Codex rules reminder",
+      "description": "Reminds Codex to read the project rules once at the start of tool use."
+    },
+    ".bkit/core/.cursor/hooks/bkit-gateguard.cjs": {
+      "name": "Cursor editing adviser",
+      "description": "Delivers the shared editing checklists and quality-gate reminders to Cursor."
+    },
+    ".bkit/core/.cursor/hooks/bkit-guardrails.cjs": {
+      "name": "Cursor command safety",
+      "description": "Checks destructive commands and secret-file access before Cursor executes them."
+    },
+    ".bkit/core/.cursor/hooks/bkit-preflight.sh": {
+      "name": "Cursor session checks",
+      "description": "Checks Linear issue eligibility and delivers project-rule guidance before Cursor background work."
+    },
+    ".bkit/core/.cursor/hooks/bkit-readguard.cjs": {
+      "name": "Cursor reading adviser",
+      "description": "Advises Cursor when it rereads unchanged file content."
+    },
+    ".bkit/core/.opencode/plugin/bkit-gateguard.js": {
+      "name": "OpenCode editing adviser",
+      "description": "Delivers the shared editing checklists and quality-gate reminders to OpenCode."
+    },
+    ".bkit/core/.opencode/plugin/bkit-readguard.js": {
+      "name": "OpenCode reading adviser",
+      "description": "Advises OpenCode when it rereads unchanged file content."
+    },
+    ".bkit/core/.opencode/plugin/bkit-rules.js": {
+      "name": "OpenCode rules reminder",
+      "description": "Reminds OpenCode to read the project rules once at the start of tool use."
+    },
+    ".bkit/core/hooks/antigravity-hook.js": {
+      "name": "Antigravity event adapter",
+      "description": "Normalizes Antigravity's tool events for the shared safety and editing checks."
+    },
+    ".bkit/core/hooks/gateguard-edit-payload.js": {
+      "name": "Shared edit event adapter",
+      "description": "Extracts edited file paths from Claude Code and Cursor tool events."
+    },
+    ".bkit/core/hooks/gateguard-engine.js": {
+      "name": "Shared editing advice",
+      "description": "Chooses editing checklists and reminders for protected files and quality-check settings."
+    },
+    ".bkit/core/hooks/guardrails-read.js": {
+      "name": "Secret file read detection",
+      "description": "Recognizes secret-file reads for Cursor and Antigravity's access checks."
+    },
+    ".bkit/core/hooks/guardrails-shell.js": {
+      "name": "Shared command detection",
+      "description": "Recognizes shell commands that need destructive-action or secret-exposure checks."
+    },
+    ".bkit/core/hooks/guardrails-tiers.js": {
+      "name": "Shared command safety levels",
+      "description": "Classifies shell actions into the safety levels used by Cursor, Codex and Antigravity."
+    },
+    ".bkit/core/hooks/preflight-linear.sh": {
+      "name": "Linear session eligibility",
+      "description": "Checks the Linear issue state before background or cloud sessions begin work."
+    },
+    ".bkit/core/hooks/preflight-rules.sh": {
+      "name": "Session-start rules reminder",
+      "description": "Reminds assistants to read the project rules when a session begins."
+    },
+    ".bkit/core/hooks/readguard-engine.js": {
+      "name": "Shared repeated-read advice",
+      "description": "Tracks file ranges already read and advises assistants when they request unchanged content again."
+    },
+    ".bkit/core/hooks/readguard-payload.js": {
+      "name": "Shared reading event adapter",
+      "description": "Normalizes file and shell read events into the shared reading adviser's format."
+    },
+    ".bkit/core/hooks/session-rules-advisory.js": {
+      "name": "First-action rules reminder",
+      "description": "Delivers one rules-reading reminder when an assistant's session has no start event."
+    }
+  }
+}

@@ -28,9 +28,14 @@
 // {{BKIT_MANAGED_MARKER}}
 
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 
+// {{BKIT_PART gateguard-engine.js}}
+
 // {{BKIT_PART guardrails-shell.js}}
+
+// {{BKIT_PART guardrails-deny.js}}
 
 // {{BKIT_PART guardrails-tiers.js}}
 
@@ -58,34 +63,36 @@ function deny(userMessage, agentMessage) {
 
 /**
  * @param {string} cmd
- * @param {string[]} dirs where to look for the network allowlist (`hookDirs`)
+ * @param {{ cwd?: string, root?: string, dirs: string[] }} ctx the call's directories (`hookContext`)
  */
-function decideShell(cmd, dirs) {
+function decideShell(cmd, ctx, session) {
   const c = cmd.trim();
-  const v = classifyShell(c, dirs);
+  const v = classifyShell(c, "cursor", ctx);
   if (!v) return allow();
+  const advice = composeAdvice(v, "cursor", ADVICE_BUDGETS.cursor, { command: c, ctx, session });
+  acknowledgeSelected(advice.selected);
   switch (v.tier) {
     case "deny":
-      return deny(`Blocked: ${v.what} is denied by bkit Cursor guardrails.`, v.fix);
+      return deny(`Blocked: ${v.what} is denied by bkit Cursor guardrails.`, advice.text);
     case "ask":
       return ask(
         `bkit Cursor guardrails: confirm this destructive or privileged shell command (${v.what}).`,
-        `Command requires confirmation: ${c}`,
+        advice.text,
       );
     case "secret":
       return ask(
         "bkit Cursor guardrails: confirm a shell read of an env, secrets or private-key file.",
-        `Reading ${v.path} through the shell may expose secrets.\nPrefer direnv or documented non-secret examples.\nCommand: ${c}`,
+        advice.text,
       );
     case "fetch":
       return ask(
         "bkit Cursor guardrails: confirm an outbound curl or wget to a host that is not on the network allowlist.",
-        `Command requires confirmation: ${c}`,
+        advice.text,
       );
     default:
       // Shell-as-edit-channel: ADVISORY, never a block — allow plus an `agent_message`
       // naming the edited paths.
-      return { permission: "allow", agent_message: shellEditAdvisory(v.edits) };
+      return { permission: "allow", agent_message: advice.text };
   }
 }
 
@@ -117,7 +124,11 @@ function bkitGuardrails(payload) {
     payload.tool_name == null &&
     payload.tool_input == null
   ) {
-    return decideShell(payload.command, hookDirs(payload));
+    return decideShell(
+      payload.command,
+      hookContext(payload),
+      payload.session_id || payload.conversation_id,
+    );
   }
 
   // preToolUse Read/TabRead: { tool_name, tool_input: { path|file_path|target_file|... } }

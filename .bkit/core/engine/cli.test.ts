@@ -119,6 +119,21 @@ describe("parseArgs — module flags", () => {
     expect(result.cloudVariant).toBe("cursor");
   });
 
+  it("--auto=codex parses to the codex cloud variant", () => {
+    const result = parseArgs(["install", "--auto=codex"]);
+    expect([...result.modules].sort()).toEqual(["cloud", "core"]);
+    expect(result.cloudVariant).toBe("codex");
+    expect(result.moduleFlags.has("cloud")).toBe(true);
+  });
+
+  it("--auto=<bad> lists claude, cursor, opencode and codex", () => {
+    const msg = expectExit(() => parseArgs(["install", "--auto=banana"]));
+    expect(msg).toMatch(/Unknown cloud variant/);
+    for (const variant of ["claude", "cursor", "opencode", "codex"]) {
+      expect(msg).toContain(variant);
+    }
+  });
+
   it("bare --auto (install) → error (variant required)", () => {
     const msg = expectExit(() => parseArgs(["install", "--auto"]));
     expect(msg).toMatch(/--auto requires an explicit variant/);

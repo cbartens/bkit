@@ -12,6 +12,7 @@ import * as path from "node:path";
 import { format, type Plugin } from "prettier";
 import * as typescriptPlugin from "prettier/plugins/typescript";
 import { describe, expect, it } from "vitest";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 const ROOT = process.cwd();
 const ENGINE = path.join(ROOT, ".bkit", "core", "engine");
@@ -89,17 +90,21 @@ function engineSources(): string[] {
 }
 
 describe("JSON.parse inside a try statement belongs to shared/json.ts", () => {
-  it("no engine source parses JSON inside its own try", { timeout: 60_000 }, async () => {
-    const sources = engineSources();
-    expect(sources.length).toBeGreaterThan(50);
-    const findings: string[] = [];
-    for (const file of sources) {
-      for (const line of await jsonParseInTry(fs.readFileSync(file, "utf-8"), file)) {
-        findings.push(`${path.relative(ROOT, file)}:${line}`);
+  it(
+    "no engine source parses JSON inside its own try",
+    { timeout: localLimit(60_000) },
+    async () => {
+      const sources = engineSources();
+      expect(sources.length).toBeGreaterThan(50);
+      const findings: string[] = [];
+      for (const file of sources) {
+        for (const line of await jsonParseInTry(fs.readFileSync(file, "utf-8"), file)) {
+          findings.push(`${path.relative(ROOT, file)}:${line}`);
+        }
       }
-    }
-    expect(findings).toEqual([]);
-  });
+      expect(findings).toEqual([]);
+    },
+  );
 
   it("CONTROL — the owner's own parse is found, so the scan is not vacuous", async () => {
     const lines = await jsonParseInTry(fs.readFileSync(OWNER, "utf-8"), OWNER);

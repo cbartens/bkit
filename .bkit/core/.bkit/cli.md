@@ -48,6 +48,8 @@ CI check names come from `package.json` `bkit.testing.ciCapstone` (default `bkit
 
 No workflow file calls a script outside a `bkit` command; the slop plugin `bkit-slop-type-suppression.mjs` is a copy-and-own template (`scripts/slop/`). `bkit-cloud.yml` reads the debug limits from `package.json` with `jq` because its guards run before bkit is installed.
 
+**Bounded correction:** `bkit ledgers append --operation=<id>` is replay-safe; a guaranteed no-write rejection prints a structured error (effects = none, correctable = true) with a `scope`. The corrected candidate is `bkit ledgers append --correction-of=<rejected operation> --operation=<fresh id>`; `bkit counters correction` spends from the same two-retry budget per scope, and a replay of a counted operation spends nothing only for the same request: `--request-hash` carries the candidate's canonical hash (`ledgers append --correction-of` passes it itself), and the same id with other rows is refused. `bkit ledgers query` reads a ledger's canonical winners without writing, so an agent checks state instead of guessing it. `bkit runs handoff` records CI poll observations so a re-entered `bkit runs dispatch --invocation=<id>` resumes from persisted rows, with no counter supplied. `bkit counters correction` works inside a workflow run only.
+
 First install, upgrade and uninstall: `.bkit/install.md`. Upgrade prompt to paste into your AI: `.bkit/install.md` § Upgrade — already installed.
 
 <!-- cli:start -->
@@ -57,10 +59,10 @@ First install, upgrade and uninstall: `.bkit/install.md`. Upgrade prompt to past
 <!-- prettier-ignore -->
 | Command | Flags | What it does |
 | --- | --- | --- |
-| `bkit install` | `--claude` `--codex` `--antigravity` `--cursor` `--opencode=<provider>` `--auto=<claude\|cursor\|opencode>` `--tracker=<name>` `--auto-revert` | Install or re-sync the named modules plus the core files. |
+| `bkit install` | `--claude` `--codex` `--antigravity` `--cursor` `--opencode=<provider>` `--auto=<claude\|cursor\|opencode\|codex>` `--tracker=<name>` `--auto-revert` | Install or re-sync the named modules plus the core files. |
 | `bkit check` | — | Drift gate: exit 1 when a managed file needs re-rendering. The CI gate. |
 | `bkit upgrade` | `--to=<version>` `--latest` `--auto-apply` `--dry-run` | Re-render everything installed; --to / --latest bump @cbartens/bkit first. |
-| `bkit uninstall` | `--claude` `--codex` `--antigravity` `--cursor` `--opencode=<provider>` `--auto=<claude\|cursor\|opencode>` `--dry-run` `--force` `--nuke` `--yes` | Remove bkit-managed files and strip managed blocks; no flags = everything. |
+| `bkit uninstall` | `--claude` `--codex` `--antigravity` `--cursor` `--opencode=<provider>` `--auto=<claude\|cursor\|opencode\|codex>` `--dry-run` `--force` `--nuke` `--yes` | Remove bkit-managed files and strip managed blocks; no flags = everything. |
 | `bkit doctor` | — | Preflight and advisory replay; rewrites .bkit/advisories.md only. Exits 0. |
 | `bkit tips` | `--workflow=<name>` `--all` | What this repo has not set up yet, most useful first. Exits 0. |
 | `bkit status` | — | Current host and provider. Writes nothing. Exits 0. |
@@ -83,11 +85,11 @@ Sync, push, land and rebase branches; stamp and read a doc's base-commit anchor.
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
 | `parse` | workflow | **`--prompt-file`** `--workflow` | Read an explicitly named or existing branch from the session prompt. |
-| `sync` | workflow | `--head` `--merge` `--merge-docs` `--fid` `--file` `--sentinel` | Fetch origin/dev; report whether it is an ancestor of HEAD (Path A/B) and how far docs/ and the ledgers are behind; optionally merge it in. |
+| `sync` | workflow | `--feature-state` `--month` `--reconcile-feature` `--head` `--merge` `--target` `--merge-docs` `--fid` `--file` `--sentinel` | Fetch origin/dev; report whether it is an ancestor of HEAD (Path A/B) and how far docs/ and the ledgers are behind; optionally merge it in. |
 | `regenerate` | workflow | `--fid` `--attempt` `--file` | Run a declared bkit:generate on the feature branch and commit only the paths it changed (ship Step 10's fix round). |
-| `push` | workflow | **`--mode`** `--set-upstream` `--ahead-of` `--commit` `--label` `--file` `--workflow` `--require-ci` `--open-pr` `--fid` | Push the current branch with exactly one git push: plain for dev/main, --force-with-lease otherwise; 81 tests lock held. |
+| `push` | workflow | **`--mode`** `--set-upstream` `--ahead-of` `--commit` `--label` `--file` `--workflow` `--require-ci` `--open-pr` `--fid` | Push the current branch with exactly one git push: plain for dev/main, --force-with-lease otherwise; when the pre-push hook's lock status file says so, 81 tests lock held, 4 tests lock refused the run or stopped it at the hold limit. |
 | `fast-forward` | workflow | **`--onto`** | Fetch a remote branch and fast-forward the checkout onto it; refuse when diverged. |
-| `scan-diff` | by hand | **`--base`** `--paths` `--marker` `--code` `--disabled-tests` `--expect-none` | Exit 0 when the branch's diff from --base matches (paths, an added marker line, a source change, or a disabled test); 1 when not — --disabled-tests turns that round: 1 when a test was disabled or lost an assertion, 0 when none was. |
+| `scan-diff` | by hand | `--base` `--paths` `--marker` `--code` `--disabled-tests` `--expect-none` | Exit 0 when the branch's diff from --base matches (paths, an added marker line, a source change, or a disabled test); 1 when not — --disabled-tests turns that round: 1 when a test was disabled or lost an assertion, 0 when none was. |
 | `force-build` | workflow | **`--fid`** **`--file`** **`--workflow`** `--label` `--open-pr` `--title-set` | Force a full CI build: put [force build] on the open PR's title, then push an empty marker commit (once per run). |
 | `rebase` | workflow | `--log-file` `--sentinel` `--file` | Drive a rebase to completion, auto-resolving ledger (union), lockfile (regenerate), generated-register (take the target's copy, rebuild after), embedded generated-block (take the target's block, merge the rest, rebuild after) and install-record (merge entry by entry, the target's value where both changed) conflicts; refuse and abort on anything else. |
 | `sync-dev` | workflow | — | After a merge, fast-forward local dev to origin/dev without checking it out or pushing; frozen install when the main checkout is on dev and moved. |
@@ -140,7 +142,7 @@ Clamp context artifacts; scan ledgers; write the run's diff and a build group's 
 | `clamp-log` | workflow | `--log` `--fid` `--step` `--attempt` `--reset` | Read a step's clamp records (the status row's clamped array), or reset the log. |
 | `ledger-scan` | workflow | **`--terms`** **`--source`** **`--artifact`** `--log` `--fid` `--step` `--attempt` `--reset-log` | Write a ledger's lines matching query terms, strongest first, then clamp (ledger profile). |
 | `diff` | workflow | **`--artifact`** `--base` `--log` `--fid` `--step` `--attempt` `--reset-log` | Write the run's diff ({base}...HEAD, docs/plans/** excluded) as one artifact — whole, or a per-file budget past the guard — and print its numbers. |
-| `brief` | workflow | **`--plan`** `--group` `--next` **`--dir`** `--tests-only` `--file` `--note-file` | Write one group's brief (why and what, where it fits, its open task blocks, the earlier tasks they depend on, the Reuse Inventory rows and Architecture entries for their files, deviations) as build-brief-{group}-{n}.md, and print only its path and sizes; --tests-only writes the tests step's brief as build-brief-tests-{group}-{n}.md, with the Derived Test Matrix rows for the group's tests in place of the inventory and architecture entries. |
+| `brief` | workflow | **`--plan`** `--group` `--next` **`--dir`** `--tests-only` `--file` `--note-file` | Write one group's brief (why and what, where it fits, its open task blocks, the earlier tasks they depend on, the Reuse Inventory rows and Architecture entries for their files, deviations) as build-brief-{group}-{n}.md, and print only its path and sizes; --tests-only writes the tests step's brief as build-brief-tests-{group}-{n}.md, with the Derived Test Matrix rows for the group's tests in place of the inventory and architecture entries, and the tests the group takes over from earlier tasks under their own section. |
 | `list-blocks` | by hand | — | Enumerate the consumer's context-fetch blocks and narrate coverage per context. |
 | `provision` | by hand | — | Run each context-fetch:provision recipe below bkit:end on its own and list the failed ones in .bkit/.unavailable. |
 | `run-block` | workflow | **`--idx`** **`--script`** **`--fid`** **`--month`** `--attempt` `--file` `--ci-selection-file` | Run one customised block; write its output fenced (clamped first), its skip line, or nothing. |
@@ -158,8 +160,9 @@ Attempt counters derived from status.jsonl, and the ask points' limits.
 | `run` | workflow | **`--file`** **`--workflow`** | Which run of the workflow this invocation is (1-based; a resume keeps its number). |
 | `route` | workflow | **`--name`** `--value` `--of` `--rows` `--file` `--workflow` `--group` `--all-runs` `--max` `--point` `--continue` `--exceeded` | Compare a counter to its max: exit 0 continue, exit 1 exceeded; with --point, also whether to ask. |
 | `grant` | workflow | **`--name`** `--value` `--of` `--rows` `--file` `--workflow` `--group` `--all-runs` **`--point`** | Give one loop one more full allowance after the owner chose to continue at its used-up limit: exit 0 granted, exit 1 not (below the limit, ask off or headless). |
+| `correction` | workflow | **`--file`** **`--workflow`** **`--scope`** **`--operation`** `--request-hash` `--limit` | Spend one corrected retry of a rejected sub-step: exit 0 allowed (or a replay of a counted operation), exit 1 the scope's budget is used up. The budget is two per scope in the active run unless a stricter --limit names one. |
 | `max` | workflow | `--point` `--file` `--workflow` `--group` | The ask points' limits and ask settings: one by --point, or all. |
-| `progress` | workflow | **`--file`** **`--workflow`** **`--check`** **`--fix`** `--group` | Progress report for a fix loop in the active run: counts per round, code change, strategy, trend. |
+| `progress` | workflow | **`--file`** **`--workflow`** **`--check`** **`--fix`** `--group` `--since-clean` | Progress report for a fix loop in the active run: counts per round, code change, strategy, trend. |
 | `rows` | workflow | **`--file`** **`--workflow`** **`--type`** **`--position`** | Count rows of one audit type in the active run (since its workflow-started row). |
 
 ### `decisions`
@@ -169,8 +172,9 @@ Build decision files: write questions, apply recommendations, list assumed items
 <!-- prettier-ignore -->
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
-| `compose` | workflow | **`--out`** `--header` `--items` `--loop` `--file` `--group` `--attempt` `--max` | Write a decision file in the one question layout, with loop progress when asked. |
+| `compose` | workflow | **`--out`** `--header` `--items` `--loop` `--file` `--group` `--attempt` `--max` `--base-check` | Write a decision file in the one question layout, with loop progress when asked. |
 | `apply` | workflow | **`--file`** **`--by`** `--q` `--confirm` `--reject` `--reason` `--root` | Settle a decision file's items: --by=headless takes each recommendation; --by=owner confirms or rejects one assumed item. |
+| `skip` | workflow | **`--file`** | Whether a settled verify or holistic pause may route continue: exit 0 and route=continue when all five conditions hold, else exit 1 naming the first fact that fails. |
 | `pending` | workflow | **`--fid`** **`--month`** `--root` `--defer` | List the feature's assumed Accepts nobody confirmed; --defer writes one needs-decision deferral per item. |
 
 ### `disk`
@@ -208,7 +212,7 @@ Tracker payloads (issue text, label transitions, comments); --post / --write sen
 | `related` | workflow | **`--hits-file`** **`--out`** `--top` `--fid` `--issue` | Fetch each hit of the orchestrator's related-issue search and write the related-issues file. |
 | `blocked-by` | by hand | `--fid` `--issue` | The issues blocking the run's issue, with their states and the ones still open. |
 | `labels` | workflow | `--label` `--phase` `--failed` `--board` `--issue` `--owner-repo` `--write` `--fid` | Label arithmetic for a transition, the tracker state, and the board payload. |
-| `comment` | workflow | `--kind` `--audit-slug` `--step-number` `--step-title` `--workflow` `--workflow-heading` `--verdict` `--failures` `--scope` `--group` `--group-count` `--attempt` `--strategy` `--field` `--owner-repo` `--tree` `--pr-number` `--pr-url` `--run-id` `--artifact` `--ref` `--line` `--body-file` `--section` `--sub-step` `--error` `--error-file` `--stderr-file` `--post` `--fid` `--issue` `--file` | The exact body of a ###### bkit:generated step, failure, handover, or audit comment. |
+| `comment` | workflow | `--kind` `--purpose` `--audit-slug` `--result-file` `--step-number` `--step-title` `--workflow` `--workflow-heading` `--verdict` `--failures` `--scope` `--group` `--group-count` `--attempt` `--strategy` `--field` `--owner-repo` `--tree` `--pr-number` `--pr-url` `--run-id` `--artifact` `--ref` `--line` `--body-file` `--section` `--sub-step` `--error` `--error-file` `--stderr-file` `--post` `--session-dir` `--fid` `--issue` `--file` | The exact body of a ###### bkit:generated step, failure, handover, or audit comment; workflow steps only, never for ad-hoc comments. |
 
 ### `ledgers`
 
@@ -220,7 +224,8 @@ Stage and commit bookkeeping by allow-list; union ledgers; check a range is book
 | `commit` | workflow | `--root` **`--month`** **`--fid`** `--scope` **`--mode`** `--stage-tracked-updates` `--path` `--squash-of` `--only-if-dirty-tracked` `--message` | Stage (and commit) the bookkeeping allow-list for one feature. |
 | `union` | workflow | **`--src`** **`--dst`** | Append a worktree's new ledger rows into another checkout (never .bkit/issues.jsonl). |
 | `only-bookkeeping` | by hand | `--root` **`--month`** **`--fid`** **`--from`** **`--to`** | Exit 0 when every path changed in from..to is on the --scope=pr allow-list. |
-| `append` | by hand | `--root` **`--ledger`** **`--rows`** | Append validated rows to one ledger, minting each row's ts at append time. |
+| `append` | by hand | `--root` **`--ledger`** **`--rows`** `--invocation` `--operation` `--issue-operation` `--correction-of` | Append validated rows to one ledger, minting each row's ts at append time. |
+| `query` | by hand | `--root` **`--ledger`** `--key` `--status` `--limit` `--cursor` | Read one ledger's canonical winners (filtered after the fold), paged, with line diagnostics and coverage. Writes nothing. |
 | `triage` | workflow | `--root` **`--fid`** **`--plan`** | Bucket each deferral row the FID declared by the four Deferral Reason tests, and write the unjustified ones. |
 | `check` | by hand | `--root` **`--plan`** | Check that every decision / deferral key on a plan's `**Ledger rows:**` line is on disk. |
 | `compact` | by hand | `--root` `--ledger` `--dry-run` | Rewrite keyed ledgers to their fold winners, stamping each winner's firstTs + updates. |
@@ -232,7 +237,7 @@ Acquire and release the per-feature workflow lock.
 <!-- prettier-ignore -->
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
-| `acquire` | workflow | **`--kind`** **`--workflow`** **`--fid`** `--month` | Take the workflow lock, reclaiming a dead holder's. |
+| `acquire` | workflow | **`--kind`** **`--workflow`** **`--fid`** `--month` | Take the workflow lock, reclaiming a dead holder's; a live holder exits 8 and prints heldBy. |
 | `release` | workflow | **`--kind`** **`--workflow`** **`--fid`** `--month` `--token` | Remove a lock this caller owns (and the feature's shared-checkout record); another owner's lock is left in place. |
 
 ### `plans`
@@ -253,10 +258,10 @@ Open and probe pull requests, and audit the close transport.
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
 | `open` | workflow | **`--fid`** **`--title`** `--issue` `--base` `--head` `--plan` `--note` `--existing` `--file` `--workflow` | Open a PR whose body carries the bkit:issue / bkit:fid marker (exit 80: use MCP). |
-| `probe` | by hand | `--head` `--base` `--state` `--number` | The open (or open-then-merged) PR for a branch, or one PR by number. |
-| `merge` | workflow | **`--number`** `--subject` `--match-head` `--delete-branch` `--label` `--expect-merged` | Squash-merge a PR with an empty body (skipped when already MERGED) and read its state back. |
+| `probe` | by hand | `--head` `--base` `--state` `--number` `--ship-entry` `--owner-repo` `--facts-file` | The open (or open-then-merged) PR for a branch, or one PR by number. |
+| `merge` | workflow | `--ship-retry` `--facts-file` `--owner-repo` **`--number`** `--subject` `--match-head` `--delete-branch` `--label` `--expect-merged` | Squash-merge a PR with an empty body (skipped when already MERGED) and read its state back. |
 | `update-branch` | workflow | **`--number`** `--only-if-required` | Refresh a PR's head from its base server-side (exit 80: use update_pull_request_branch). |
-| `checks` | by hand | **`--number`** | A PR's check rollup, classified: green when present and none failed or pending (exit 80: use MCP). |
+| `checks` | by hand | **`--number`** | A PR's check rollup, classified: green when present and none failed, cancelled or pending (exit 80: use MCP). |
 | `verbose-ci` | workflow | **`--number`** **`--state`** | Add ` bkit [verbose ci]` to a PR title, or strip it (with an optional `bkit ` prefix); a no-op when already so. |
 | `scan-body` | by hand | **`--sha`** `--remote-ref` | Check a landed commit's body (not its subject) for a CI-suppressing token. |
 | `cross-check` | workflow | **`--file`** **`--transport`** | An mcp close with gh recorded unavailable must have a transport-fallback row. |
@@ -292,9 +297,10 @@ CI runs: wait for one, prove one was dispatched, re-validate and gate a merge on
 | --- | --- | --- | --- |
 | `locate` | workflow | **`--prompt-file`** `--issue-text-file` **`--branch`** **`--repo`** `--file` **`--selection-out`** `--evidence-file` | Select and validate the red CI run for the adopted debug branch before local discovery: exit 0 selects red CI, 1 selects local discovery, 2 rejects arguments, 8 rejects ambiguous references, 80 requests read fallback, and 82 requires owner action for unavailable or mismatched evidence. |
 | `wait` | by hand | `--pr` `--head` `--branch` `--until` `--budget-s` `--interval-s` `--once` `--dispatch-if-absent` | Bounded poll for a CI check on a PR (--pr) or a CI run at a head (--head --branch), present or completed. |
-| `dispatch` | workflow | `--pr` `--sha` **`--fid`** `--label` `--file` `--workflow` `--step` `--artifact` `--field` `--budget-s` `--interval-s` `--poll-result` `--attempts` `--all-errored` `--retriggered` | CI-Dispatch Gate after the last push: poll, one clean re-trigger, the ciDispatch verdict, and the body scan. A run in place on dev has no PR: it polls the push-event run at the pushed sha, and its re-trigger commits and pushes only the run's own work. |
-| `gate` | workflow | `--ci-selection-file` `--head` `--pr` `--squash-of` `--snapshot` `--record` `--validated` `--month` `--fid` `--repo` `--branch` `--fetch` `--event` `--file` `--capstone-only` | Ship merge gate: the capstone job present and green at the head (exit 0), or why not. |
-| `revalidate` | workflow | **`--pr`** **`--entry-head`** **`--code-head`** **`--branch`** **`--month`** **`--fid`** **`--file`** `--reason` `--repo` | Ship: pick the head CI must pass at, probe for a run there, dispatch only when none, wait for it to complete. |
+| `handoff` | workflow | `--invocation` **`--repo`** `--pr` **`--head`** **`--branch`** `--budget-s` `--interval-s` **`--result`** **`--polls`** | Persist one batch of CI poll observations into the invocation's run and derive the phase, cumulative attempts and errors, next action and verdict from the persisted rows (poll-again \| retrigger \| reconcile-retrigger \| verdict). Rows for another repo, PR or head never count. |
+| `dispatch` | workflow | `--invocation` `--pr` `--sha` **`--fid`** `--label` `--file` `--workflow` `--step` `--artifact` `--field` `--budget-s` `--interval-s` | CI-Dispatch Gate after the last push: poll, one clean re-trigger, the ciDispatch verdict, and the body scan. A run in place on dev has no PR: it polls the push-event run at the pushed sha, and its re-trigger commits and pushes only the run's own work. It needs a workflow run's --invocation and resumes from the rows that run persisted (its own polls and `runs handoff` turns): attempts, errors and the re-trigger checkpoint are never supplied. |
+| `gate` | workflow | `--ci-selection-file` `--fresh-base` `--facts-file` `--head` `--pr` `--squash-of` `--snapshot` `--record` `--validated` `--month` `--fid` `--repo` `--branch` `--fetch` `--event` `--file` `--capstone-only` `--wait` `--budget-s` `--interval-s` | Ship merge gate: the capstone job present and green at the head (exit 0), or why not. |
+| `revalidate` | workflow | `--require-reconciled` **`--pr`** **`--entry-head`** **`--code-head`** **`--branch`** **`--month`** **`--fid`** **`--file`** `--reason` `--repo` | Ship: pick the head CI must pass at, probe for a run there, dispatch only when none, wait for it to complete. |
 | `mirror` | workflow | **`--head`** `--branch` `--repo` `--ci-workflow` `--capstone` `--absent-minutes` `--max-minutes` `--interval-s` | Release PR: wait for the branch's push run at the head and copy its capstone verdict. |
 | `context` | workflow | **`--phase`** **`--arg`** `--marker` | /bkit-auto Step 1: the phase and mode, the repo, and the issue / FID / PR / run the dispatch carries. |
 | `declared` | by hand | — | Whether the repo declares a CI workflow: .github/workflows/<bkit.testing.ciWorkflow> exists (exit 0) or not (exit 1). |
@@ -336,8 +342,9 @@ Read and annotate a workflow's status.jsonl.
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
 | `path` | by hand | **`--workflow`** **`--fid`** **`--month`** | Where this workflow's status.jsonl lives. |
-| `route` | workflow | `--file` **`--workflow`** `--step` `--group` `--require` `--expect` `--prompt-file` `--fid` `--month` | Routing state: last verdict / failures / strategy of a step, debug and push mode; with --prompt-file, debug's start decisions. |
-| `resume` | by hand | **`--file`** **`--workflow`** | The step a stopped run continues at: after its last DONE step, setup steps and retired rows aside. |
+| `route` | workflow | `--file` **`--workflow`** `--step` `--group` `--require` `--expect` `--prompt-file` `--fid` `--month` | Routing state: last verdict / failures / strategy of a step, debug and push mode; with --step, nextStrategy and repeatTests (the next fix round's label, from the tests failing again); with --prompt-file, debug's start decisions. |
+| `invocation` | workflow | `--workflow` `--step` `--file` `--group` `--attempt` `--agent` `--host` `--configured-model` `--observed-model` `--standalone` `--name` | Issue an engine-bound invocation: a run's step (and agent), or a runless audit or utility call. |
+| `resume` | by hand | **`--file`** **`--workflow`** | The step a stopped run continues at: after its last DONE step, setup steps and retired rows aside; gateRerun and rerunFrom say whether an open red-gate pause re-runs its gate first, and which. |
 | `meta` | workflow | **`--file`** **`--workflow`** `--debug-mode` `--push-mode` `--debug-attempt` `--opened-pr` `--ci-selection-file` | Append a workflow-meta row (run-level routing state). |
 | `row` | workflow | **`--file`** **`--workflow`** **`--type`** `--field` | Append a typed audit row the fold does not model (ship's gate refusals, CI probes, merge CI); an owner-pause row also logs a human-confirm friction row. |
 
@@ -349,10 +356,10 @@ Write a step's status row, finish a step in one call, read a verdict header, che
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
 | `done` | workflow | **`--file`** **`--workflow`** **`--step`** `--status` `--verdict` `--agent` `--allowed` `--failures` `--attempt` `--group` `--strategy` `--artifact` `--field` `--parent-sha` `--commit` `--message` | Append a step-done row and commit it (parentSha captured first). |
-| `finish` | workflow | **`--file`** **`--workflow`** **`--step`** `--artifact` `--optional-artifact` `--agent` `--verdict` `--allowed` `--failures` `--attempt` `--attempt-of` `--count-field` `--group` `--strategy` `--scope` `--field` `--clamp-log` `--docs-only` `--plan` `--parent-sha` `--commit` `--message` `--done-fallback` `--verbose-ci-local` `--number` `--title` `--post` `--group-count` `--link-ref` `--tree` `--owner-repo` `--comment-body` `--comment-field` | End a step: read the verdict header(s), derive the attempt, check the gate, write the row, commit, print the tracker comment. |
-| `verdict` | by hand | **`--file`** `--agent` `--allowed` `--field` | Read an artifact's header down to <!-- verdict:end -->. |
+| `finish` | workflow | **`--file`** **`--workflow`** **`--step`** `--artifact` `--optional-artifact` `--agent` `--verdict` `--allowed` `--failures` `--attempt` `--attempt-of` `--count-field` `--group` `--strategy` `--scope` `--field` `--clamp-log` `--docs-only` `--plan` `--parent-sha` `--commit` `--message` `--done-fallback` `--verbose-ci-local` `--number` `--title` `--post` `--group-count` `--link-ref` `--tree` `--owner-repo` `--comment-body` `--comment-field` | End a step: read the verdict header(s), derive the attempt, check the gate, write the row, commit, print the tracker comment. Exit 11 on a build tests step that changed an earlier task's recorded test no open task of the group names, and on a code step that changed a planned test; for each BLOCKED test a ticked task owns, a code step first adds a takeover task to the plan and its build-takeover row, and prints them under contradicts. |
+| `verdict` | by hand | **`--file`** `--agent` `--allowed` `--field` `--result-file` | Read an artifact's header down to <!-- verdict:end -->. |
 | `gate` | workflow | `--file` `--ref` **`--workflow`** **`--step`** `--group` `--progress-number` `--attempt` `--attempt-of` `--artifact` `--verdict-required` `--agent` `--allowed` `--placeholder` `--fid` `--issue` `--month` `--token` | Mechanical gate checks for one step: placeholders, FID, lock, artifacts, verdict, status row (with its attempt / strategy / scope where the step writes them). |
-| `stub` | workflow | **`--from`** **`--to`** `--strip-header` | Seed a versioned artifact: copy the prior version, then put a PENDING verdict header on top. |
+| `stub` | workflow | `--from` **`--to`** `--agent` `--result-file` `--invocation` `--strip-header` | Seed a versioned artifact: copy the prior version, then put a PENDING verdict header on top. |
 
 ### `tasks`
 
@@ -361,8 +368,9 @@ Tick a plan's task boxes, from the tasks a verify judged satisfied.
 <!-- prettier-ignore -->
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
-| `tick` | workflow | **`--plan`** **`--group`** `--tasks` `--green` | Tick the named tasks of one task group, less those a `tests green` report gaps; exit 0 ticked (including none), 1 a plan with no task blocks, 2 a bad flag value or plan. |
+| `tick` | workflow | **`--plan`** `--group` `--tasks` `--decision` `--green` | Tick the named tasks of one task group, less those a `tests green` report gaps; exit 0 ticked (including none), 1 a plan with no task blocks, 2 a bad flag value or plan, a `--green` report with no Gaps section or fewer gap lines than its `Gaps:` header, or a `--decision` file that is not a verify or holistic pause of this group with a green gate. |
 | `open` | by hand | **`--plan`** **`--group`** **`--log`** | Print the group's tasks holding neither a `DONE` nor a `BLOCKED` line in the plan-execute log, and whether any is open; exit 0 (including none), 1 a plan with no task blocks, 2 a missing file or group. |
+| `takeover` | workflow | **`--plan`** **`--file`** `--pending` | Print the takeover group whose tests half has not run: the plan's takeover tasks (added by `steps finish` on a code step that contradicts a ticked task's planned test, each named by a build-takeover row) in the latest group holding a planned test with no `tests red` entry yet, or null. Writes nothing. Exit 0 (including nothing pending), 1 a plan with no task blocks, 2 a bad flag value or plan. |
 | `currency` | by hand | **`--plan`** `--base` `--against` | Print each task whose CREATE / READ / UPDATE / DELETE paths or symbols moved between --base and --against, with its matched paths, needles and diff hunks (run logs under docs/plans/*/logs/ are left out); exit 0 (including no match), 1 a plan with no task blocks, 2 a bad plan. |
 
 ### `tests`
@@ -372,11 +380,13 @@ Run the deepest declared local gate, or one test file to record a red and audit 
 <!-- prettier-ignore -->
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
-| `changed` | by hand | `--lock-wait-s` `--base` `--fallback` | Check only the files changed since --base: run `bkit:gate:changed` with them as arguments, else the --fallback gate; exit 0 PASS or nothing changed, 1 FAIL, 4 could not run, 81 tests lock held. |
-| `run` | by hand | **`--gate`** **`--log`** `--tail` `--lock-wait-s` `--artifact` `--fid` `--step` `--attempt` `--file` `--workflow` `--ci-run` `--ci-url` | Run the first declared --gate, and with --file append a test-run status row for the run; exit 0 PASS, 1 FAIL, 4 could not run, 81 tests lock held. |
-| `red` | workflow | **`--file`** **`--workflow`** **`--group`** **`--plan`** **`--log`** `--writer-log` | Run every TEST FIRST test of one group's open tasks before any task code exists, and write one build-tests-red row holding a state and blob per planned test; a test an earlier row of the group proved red, its file unchanged since, is not run again. Exit 0 every test red, 1 a gap (a test passing, absent from its report, failing lint, or its file missing), 3 bkit:test:file undeclared (blobs recorded, nothing ran), 4 a script could not run. |
-| `green` | workflow | **`--file`** **`--workflow`** `--group` **`--plan`** **`--log`** | Audit a plan's test-first evidence (each TEST FIRST test red at its group's tests step, by the build-tests-red row, or accepted there as passing before any task code; the named test passing now); exit 0 no gaps, 1 gaps or a plan with no task markers. |
-| `plan-check` | by hand | **`--plan`** `--existence` **`--log`** | Check a plan's group and task blocks: the block format, DONE WHEN and TEST FIRST on every task, DEPENDS ON order, the caps from package.json `bkit.workflows.tasks` (defaults: 5 tasks and 25 TEST FIRST tests per group; 10 tests across 3 test files per task), a Reuse Inventory NEW row per CREATE file, a Supersession Inventory row per DELETE, a `Task` on every Derived Test Matrix row and a row per test-bearing task, and that each READ / UPDATE / DELETE file and symbol exists; exit 0 no problems, 1 refused. |
+| `base` | workflow | `--log` `--file` `--workflow` `--out` | Check whether the failing tests of a red gate also fail on the commit the branch started from; exit 0 for every verdict. |
+| `changed` | by hand | `--lock-wait-s` `--base` `--fallback` | Check only the files changed since --base: run `bkit:gate:changed` with them as arguments, else the --fallback gate; exit 0 PASS or nothing changed, 1 FAIL, 4 could not run, 81 tests lock held (read from the lock status file, never from the exit code alone). |
+| `jump` | by hand | **`--run`** `--checkout` | Move the waiting run named <run> to the front of the tests line; the holder keeps the lock. Every use needs the human's approval, so ask them to approve it; exit 0 moved, 1 no single run matched, 3 the lock script failed. |
+| `run` | by hand | **`--gate`** **`--log`** `--tail` `--lock-wait-s` `--artifact` `--fid` `--step` `--attempt` `--file` `--workflow` `--changed-since` `--since-pass-of` `--ci-run` `--ci-url` | Run the first declared --gate, or with --changed-since only the files changed since that commit, and with --file append a test-run status row for the run; exit 0 PASS (also when nothing changed), 1 FAIL, 4 could not run, 81 tests lock held (read from the lock status file, never from the exit code alone). |
+| `red` | workflow | **`--file`** **`--workflow`** **`--group`** **`--plan`** **`--log`** `--writer-log` | Run every TEST FIRST test of one group's open tasks before any task code exists, and write one build-tests-red row holding a state and blob per planned test; a test an earlier row of the group proved red, its file unchanged since, is not run again. A test a later task takes over from an earlier one (same file and name) carries `from`, and one that passes after the rewrite is recorded taken-over. Exit 0 every test red, 1 a gap (a test passing, absent from its report, failing lint, or its file missing), 3 bkit:test:file undeclared (blobs recorded, nothing ran), 4 a script could not run. |
+| `green` | workflow | **`--file`** **`--workflow`** `--group` **`--plan`** **`--log`** | Audit a plan's test-first evidence (each TEST FIRST test red at its group's tests step, by the build-tests-red row, or accepted there as passing before any task code; the named test passing now); a taken-over test is listed under takenOver with its diff since the earlier task's red, never as a gap or unproven; exit 0 no gaps, 1 gaps or a plan with no task markers. |
+| `plan-check` | by hand | **`--plan`** `--existence` **`--log`** `--ledger-rows` | Check a plan's group and task blocks: the block format, DONE WHEN and TEST FIRST on every task, DEPENDS ON order, the caps from package.json `bkit.workflows.tasks` (defaults: 5 tasks and 25 TEST FIRST tests per group; 10 tests across 3 test files per task), a Reuse Inventory NEW row per CREATE file, a Supersession Inventory row per DELETE, a `Task` on every Derived Test Matrix row and a row per test-bearing task, and that each READ / UPDATE / DELETE file and symbol exists; lists each later task's TEST FIRST test an earlier task also names under takeovers, reported only; exit 0 no problems, 1 refused. |
 
 ### `workflows`
 
@@ -385,11 +395,11 @@ Start, fail, hand over, summarize and close a phase workflow run; promote and li
 <!-- prettier-ignore -->
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
-| `start` | workflow | **`--workflow`** **`--fid`** `--month` `--file` `--lock-held` `--token` `--branch` | Take the feature lock and open a run (workflow-started unless resuming). |
-| `fail` | workflow | **`--workflow`** `--fid` `--month` `--file` `--token` `--max-exceeded` `--label` `--pr` `--step-number` `--step-title` `--sub-step` `--error-file` `--error` `--stderr-file` `--post` `--issue` `--session-dir` | Failure Path: workflow-failed row, abort rebase, release lock, clear sentinels (with --token); the bkit:failed labels and the failure comment. |
+| `start` | workflow | **`--workflow`** **`--fid`** `--month` `--file` `--session-dir` `--lock-held` `--token` `--branch` | Take the feature lock and open a run (workflow-started unless resuming). |
+| `fail` | workflow | **`--workflow`** `--fid` `--month` `--file` `--token` `--max-exceeded` `--label` `--pr` `--step-number` `--step-title` `--sub-step` `--error-file` `--error` `--stderr-file` `--next-step` `--post` `--issue` `--session-dir` | Failure Path: workflow-failed row, abort rebase, release lock, clear sentinels (with --token); the bkit:failed labels and the failure comment. |
 | `handover` | workflow | **`--workflow`** **`--fid`** `--month` `--push` `--flush` `--open-pr` `--ref` `--list-stray` `--worktree` `--owner-repo` `--post` | Keep a failed run's record: commit and push it on the feature branch, or land its logs and ledgers on dev (--push from dev / main, ship's --flush); print the handover comment. |
 | `close` | workflow | **`--workflow`** **`--fid`** `--month` `--file` `--pr-number` `--squash-sha` `--ref` `--owner-repo` `--outbox` `--record-step` `--message` `--label` `--verbose-ci-local` `--number` `--title` `--post` `--tree` `--ending` `--publish` `--flush` `--token` `--branch` `--session-dir` `--final-return` `--summary-file` `--summary` `--summary-missing` `--warning` `--line` `--suggest` | Grade compliance, workflow-done row, counter + outcome telemetry, report, artifact links; --flush lands ship's close on dev. |
-| `input` | workflow | **`--workflow`** **`--fid`** `--month` `--file` **`--run`** **`--prompt-file`** `--description-file` `--comments-file` `--plan` `--design` `--audit` | Write logs/{FID}/{workflow}-input-{run}.md: the session prompt, the issue description and each human comment, then the plan, design and audit reports, each section dated. |
+| `input` | workflow | **`--workflow`** **`--fid`** `--month` `--file` **`--run`** **`--prompt-file`** `--description-file` `--comments-file` `--plan` `--design` `--audit` | Write logs/{FID}/{workflow}-input-{run}.md: the session prompt, the issue description and each human comment, then the plan, design and audit reports, each section dated. An existing {workflow}-grill-{run}.md in the same folder is appended at the end. |
 | `promote` | workflow | **`--workflow`** **`--fid`** `--month` `--file` `--resolve` | Design / plan close: the highest versioned draft becomes the canonical doc (anchor stamped, a changed canonical archived). |
 | `links` | workflow | **`--workflow`** **`--fid`** `--month` `--ref` `--owner-repo` `--outbox` `--number` `--title` `--post` | The feature's docs and this workflow's logs on a ref as markdown links; optionally the close comment. |
 | `summary` | workflow | **`--workflow`** **`--file`** `--plan` `--pr` `--publish` | The Summary step: write {workflow}-summary.md next to --file with the run's verdict, reasons and next command. |
@@ -402,6 +412,6 @@ Set up and remove the per-feature worktrees under .worktrees/.
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
 | `setup` | workflow | **`--workflow`** **`--fid`** **`--month`** `--worktrees` `--detect` `--branch` `--issue` | Create, resume or adopt the feature's worktree (Step 2 — Worktree Setup). |
-| `remove` | workflow | **`--fid`** `--branch` | Remove .worktrees/{fid} when a workflow created it, prune stale entries, and delete the feature branch. |
+| `remove` | workflow | **`--fid`** `--branch` | Remove a workflow-owned worktree when its work is safely on dev; conditionally delete its local and remote branch at their proved landed tips. |
 
 <!-- cli:end -->

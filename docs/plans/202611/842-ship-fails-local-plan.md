@@ -125,6 +125,10 @@ Ship finishes whenever the branch can be integrated without a person's judgement
 | Real command wiring preserves remote-only and local-only work through feature reconciliation | Integration | `.bkit/core/engine/commands/workflow/worktrees.integration.test.ts` | 1 |
 | Real close wiring preserves a newer remote tip, including an advance after the safety proof and a disappeared/recreated ref | Integration | `.bkit/core/engine/commands/workflow/worktrees.integration.test.ts` | 4 |
 | Compiled output and every provider render match the updated source contract | Static | `.bkit/core/.bkit/workflows.md` | 8 |
+| requires reconciliation for remote code first observed during revalidation while retaining bookkeeping reuse | Unit | `.bkit/core/engine/commands/workflow/runs.test.ts` | 9 |
+| routes late revalidation code and gate seventeen through reconciliation before merge | Unit | `.bkit/core/engine/audits/workflows/ship-invariants.test.ts` | 9 |
+| rejects MCP green runs from another repository or workflow at the same head | Unit | `.bkit/core/engine/commands/workflow/runs.test.ts` | 10 |
+| rejects MCP capstone jobs belonging to another run | Unit | `.bkit/core/engine/commands/workflow/runs.test.ts` | 10 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -369,7 +373,7 @@ Code-only — `git revert` sufficient. Revert the implementation and regenerated
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Reconcile the remote feature branch before base classification and publish code with CI
+- [x] **TASK 1:** Reconcile the remote feature branch before base classification and publish code with CI
   - **UPDATE:** `syncVerb` in `.bkit/core/engine/commands/workflow/branches.ts`: add ship opt-in reconciliation, explicit feature fetch, fast-forward/divergence handling and resulting head outputs; preserve existing default sync callers.
   - **UPDATE:** `mergeDev` in `.bkit/core/engine/commands/workflow/branches.ts`: generalize the merge target and continuation safely, reuse mechanical settlement, and keep code-carrying commits free of skip tokens.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/branches.test.ts`: add the unit regressions below with real temporary Git repositories.
@@ -389,7 +393,7 @@ Code-only — `git revert` sufficient. Revert the implementation and regenerated
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Fetch ship branches during setup and reject inherited unpublished dev work
+- [x] **TASK 2:** Fetch ship branches during setup and reject inherited unpublished dev work
   - **UPDATE:** `.bkit/core/engine/commands/workflow/worktrees.ts`: extend ship setup, adoption, fetch and inherited-work checks with commit identifiers and accurate failure diagnostics; expose the same check to each publication candidate.
   - **UPDATE:** `syncVerb` in `.bkit/core/engine/commands/workflow/branches.ts`: invoke that check on the fetched remote and reconciled heads before any push, including changed candidates on retries.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/worktrees.test.ts`: add the setup regressions below and fix affected existing expectations in this task.
@@ -407,7 +411,7 @@ Code-only — `git revert` sufficient. Revert the implementation and regenerated
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Qualify the merged-on-entry shortcut against current feature work
+- [x] **TASK 3:** Qualify the merged-on-entry shortcut against current feature work
   - **UPDATE:** `probePr` in `.bkit/core/engine/commands/workflow/prs.ts`: add an opt-in ship check of the reconciled local and remote feature state against a merged PR's recorded head, retaining open-PR priority and generic probe compatibility; accept validated scoped MCP facts through the same engine decision path.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/prs.test.ts`: add probe regressions and update output expectations together.
   - **DEPENDS ON:** 1, 2
@@ -421,7 +425,7 @@ Code-only — `git revert` sufficient. Revert the implementation and regenerated
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Guard ship cleanup with one shared landed-content comparison
+- [x] **TASK 4:** Guard ship cleanup with one shared landed-content comparison
   - **UPDATE:** `.bkit/core/engine/commands/workflow/worktrees.ts`: own the moved comparison, cover deleted files and Git tree-entry mode/type, inspect fresh local and remote tips and dirty work, and preserve unsafe or uncertain cleanup targets. Delete a local ref only with an atomic expected-tip check; preserve remote refs when conditional deletion cannot be guaranteed within the no-force-push policy.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/branches.ts`: import the shared helper for land and delete its original `notOnDev` implementation.
   - **DELETE:** `notOnDev` in `.bkit/core/engine/commands/workflow/branches.ts`: remove the old implementation after moving it to the worktree module.
@@ -451,7 +455,7 @@ Code-only — `git revert` sufficient. Revert the implementation and regenerated
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Enforce fresh dev ancestry at the pre-merge gate
+- [x] **TASK 5:** Enforce fresh dev ancestry at the pre-merge gate
   - **UPDATE:** `runGate` in `.bkit/core/engine/commands/workflow/runs.ts`: refresh scoped dev evidence, require it in the validated code head, and emit an additive distinct stale-base outcome with snapshot/refusal evidence; validate scoped MCP PR/CI/base facts through the same gate when gh is unavailable.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/runs.test.ts`: add the gate regressions below using real Git ancestry and the existing gh fixture boundary.
   - **DEPENDS ON:** 1
@@ -466,7 +470,7 @@ Code-only — `git revert` sufficient. Revert the implementation and regenerated
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Distinguish moved-head and base-conflict merge refusals
+- [x] **TASK 6:** Distinguish moved-head and base-conflict merge refusals
   - **UPDATE:** `mergePr` in `.bkit/core/engine/commands/workflow/prs.ts`: add ship opt-in retry classification from independently re-read PR state, checking moved head before new base conflicts and returning explicit terminal reasons otherwise; validate scoped independent MCP post-attempt facts through that same classifier.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/prs.test.ts`: add refusal regressions with a fixture that changes PR state between the attempted merge and reread.
   - **DEPENDS ON:** 5
@@ -481,7 +485,7 @@ Code-only — `git revert` sufficient. Revert the implementation and regenerated
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Wire reconciliation and bounded retry routes across the ship workflow and resolver
+- [x] **TASK 7:** Wire reconciliation and bounded retry routes across the ship workflow and resolver
   - **UPDATE:** `.bkit/core/workflows/bkit-ship.md`: wire opt-in engine contracts, early publication, fresh head variables, new-PR handling, stale-base→Step 3 and moved-head→Step 9 routing, one durable attempt count and guarded post-merge cleanup; remove eager merge-time branch deletion. Wire exit-80 and runtime-gh-unavailable fact handoffs through the same engine classifiers with single-transition transport accounting and independent rereads.
   - **UPDATE:** `.bkit/core/prompts/bkit-ship-conflict-resolve.md`: verify and continue the engine-recorded merge target using the same mechanical-only resolution contract.
   - **UPDATE:** `.bkit/core/engine/audits/workflows/ship-invariants.test.ts`: assert the routes, counter consumption, target passing and cleanup ownership structurally, while retaining existing staging and head-pin assertions.
@@ -499,7 +503,7 @@ Code-only — `git revert` sufficient. Revert the implementation and regenerated
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Synchronize documentation, compiled output and provider renders
+- [x] **TASK 8:** Synchronize documentation, compiled output and provider renders
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: document the final reconciliation and retry flow, cleanup ownership, retained-remote behavior and residual API timing limit, including the separate repository-managed automatic deletion boundary.
   - **UPDATE:** `.bkit/core/.bkit/prompts.md`: document the conflict resolver's merge-target input.
   - **UPDATE:** `.bkit/core/.bkit/cli.md`: regenerate the command reference from final specs with `pnpm cli:sync`.
@@ -513,6 +517,32 @@ Code-only — `git revert` sufficient. Revert the implementation and regenerated
 <!-- bkit:task 8 end -->
 
 <!-- bkit:group 2 end -->
+
+<!-- bkit:group 3 start -->
+
+### TASK GROUP 3: Challenge round 1 findings
+
+<!-- bkit:task 9 start -->
+
+- [x] **TASK 9:** A remote code push after bookkeeping reaches merge without reconciliation or refreshed feature coverage
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/workflows/bkit-ship.md:645` · **Round:** 1
+  - **DONE WHEN:** Newly observed feature code in Step 9 and non-bookkeeping head movement reported by Step 10 exit 17 both return through Step 3 reconciliation, inherited-unpublished-dev eligibility checks and Steps 5/6 coverage decisions before the new head can authorize merge. Step 9 consumes an explicit reconciliation-needed result instead of silently advancing `VALIDATED_HEAD`. The existing bounded retry accounting remains intact, and pure bookkeeping movement retains covered sweep/docs work. Update the existing engine/workflow owners and regenerate their shipped mirrors; no second reconciliation implementation is needed.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/runs.test.ts` `requires reconciliation for remote code first observed during revalidation while retaining bookkeeping reuse` fails because `runRevalidate` currently selects the changed remote code head and returns validation success without a reconciliation-needed outcome; the same test verifies that a bookkeeping-only descendant preserves the covered code head and does not request renewed feature review.
+    - `.bkit/core/engine/audits/workflows/ship-invariants.test.ts` `routes late revalidation code and gate seventeen through reconciliation before merge` fails because Step 9 accepts `validatedHead` without routing a newly observed code change to Step 3, and Step 10 exit 17 returns to Step 9 without setting `RECONCILE_REQUIRED` or otherwise requiring reconciliation; scope assertions to both route blocks and retain the bounded counter and bookkeeping-reuse assertions.
+
+<!-- bkit:task 9 end -->
+<!-- bkit:task 10 start -->
+
+- [x] **TASK 10:** Substitute unrelated green Actions evidence into scoped MCP facts to authorize a merge
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/runs.ts:2027` · **Round:** 1
+  - **DONE WHEN:** The MCP adapter rejects CI evidence whose repository or configured workflow does not match the requested scope, and rejects jobs whose run identity or head does not match the selected run. Missing provenance fails closed. Update the fallback facts contract and fixtures together while retaining valid scoped evidence and paginated jobs.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/runs.test.ts` `rejects MCP green runs from another repository or workflow at the same head` fails because a correct PR/base envelope containing a successful run for another repository or workflow at the requested SHA currently passes. Give the foreign run a successful capstone, keep the envelope and base valid, and assert a nonzero gate exit with `passed: false`.
+    - `.bkit/core/engine/commands/workflow/runs.test.ts` `rejects MCP capstone jobs belonging to another run` fails because the adapter returns the same `ci.jobs` payload for any requested run ID present in `ci.workflowRuns`; a successful capstone with a different `run_id`, `run_url` or `head_sha` can satisfy the selected run. Assert refusal with otherwise valid run, PR and base evidence, and acceptance of the matching control.
+
+<!-- bkit:task 10 end -->
+<!-- bkit:group 3 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 
