@@ -2419,7 +2419,9 @@ describe("machine lock hold limit", { timeout: BUDGET.testTimeout }, () => {
     await expect.poll(() => fs.existsSync(pidFile), { timeout: BUDGET.hookTimeout }).toBe(true);
     wrapper.child.kill("SIGTERM");
     // Checked before the wait below, which a command left running would hold open until it ends.
-    await expect.poll(() => pidAlive(readPid(pidFile)), { timeout: 10_000 }).toBe(false);
+    await expect
+      .poll(() => pidAlive(readPid(pidFile)), { timeout: BUDGET.hookTimeout / 3 })
+      .toBe(false);
     const done = await wrapper.done;
     expect(done.status, done.stderr).toBe(143);
     expect(done.stderr).toContain("passed TERM on to term gate");
@@ -2439,7 +2441,9 @@ describe("machine lock hold limit", { timeout: BUDGET.testTimeout }, () => {
       .toBe(true);
     wrapper.child.kill("SIGTERM");
     // The command would otherwise outlive the wrapper and keep running with the lock freed.
-    await expect.poll(() => pidAlive(readPid(pidFile)), { timeout: 10_000 }).toBe(false);
+    await expect
+      .poll(() => pidAlive(readPid(pidFile)), { timeout: BUDGET.hookTimeout / 3 })
+      .toBe(false);
     const done = await wrapper.done;
     expect(done.status, done.stderr).toBe(143);
     expectTestsLockFree(holdEnv("60"));
