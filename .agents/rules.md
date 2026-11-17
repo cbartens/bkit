@@ -205,6 +205,18 @@
 - **Install to mirror:** After editing `.bkit/core/workflows/*`, `.bkit/core/prompts/*`, `.bkit/core/.agents/*`, `.bkit/core/.bkit/*` or `.bkit/core/docs/templates/*`, run `pnpm tsx .bkit/core/engine/cli.ts upgrade` to re-render the installed copies in `.claude/`, `.cursor/`, `.opencode/`, `.codex/`, `.agents/`, `.bkit/` and `docs/templates/`, once at the end of the session rather than after each edit.
 - **Verify before complete:** Call work done only after a real dogfood run: `pnpm build` → `node dist/cli.js <verb> <flags>` on a fresh scratch consumer → inspect the on-disk footprint. Green tests are not proof.
 
+## Project Goals
+
+Goals break ties: when two options both satisfy the rules, pick the one that serves these goals better. The first three are the outcomes, in priority order; the rest are how bkit gets them. A goal never widens a task (`Scope discipline`): outside your task, propose the change.
+
+- **Quality code out:** bkit exists so that agents ship production-grade code in a consumer's repo. Judge every workflow, prompt and engine change by the code it makes agents produce.
+- **Runs finish unattended:** A run asks the owner only for decisions that need a human. Every other stop, question or hand repair is a defect.
+- **Fewer tokens:** Every line an agent reads is sent again on each later request. Prefer the change that puts fewer lines in front of an agent.
+- **Engine over agents:** Anything with one right answer (counting, routing, resume points, ledger rows, gate checks) belongs in a `bkit <noun> <verb>` command. A model turn is for writing code or for a call that needs judgement (design, review, diagnosis).
+- **Checks over instructions:** Enforce a requirement that matters with a gate that fails, not with a sentence asking the agent to comply.
+- **One home per fact:** Keep each kind of fact in one plain file, ledger or tracker comment, and point to it from everywhere else instead of copying it.
+- **Nothing is fixed:** No rule, workflow step, prompt, gate or doc is beyond question, these goals included. When changing one would serve a goal better, propose the change with evidence, and follow the current text until the owner approves.
+
 ## Project Settings
 
 Non-secret identifiers agents pass to MCP servers and CLIs; tokens stay in env files. One row per value; delete unused rows.
