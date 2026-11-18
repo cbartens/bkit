@@ -427,6 +427,7 @@ describe("bkit steps done", () => {
       "--artifact=logs/verify-1.md",
     ]);
     expect(r.json.commit).toBeNull();
+    expect(r.json.row.uncommitted).toBe(true);
     expect(git(cwd, "status", "--porcelain")).toContain("logs/");
   });
 

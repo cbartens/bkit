@@ -2847,3 +2847,29 @@ describe("build planned-test takeovers", () => {
     expect(rerun.indexOf("§ Pending takeovers")).toBeLessThan(rerun.indexOf("decisions apply"));
   });
 });
+
+describe("build gaps-fix source checks", () => {
+  const build = workflow("build");
+
+  it("bkit-build gaps-fix source checks measure from the previous step, never HEAD~1", () => {
+    expect(build).not.toContain("--base=HEAD~1");
+    const calls = commandLines(build, "branches scan-diff").filter((l) =>
+      l.includes("--since-step"),
+    );
+    expect(calls).toHaveLength(2);
+    const [step9, step10] = [
+      stepBody(build, /Step 9 — /),
+      stepBody(build, /Step 10 — Plan Verify Holistic/),
+    ];
+    const in9 = commandLines(step9, "branches scan-diff");
+    const in10 = commandLines(step10, "branches scan-diff");
+    expect(in9).toHaveLength(1);
+    expect(in9[0]).toContain("--since-step=build-plan-gaps-remediate ");
+    expect(in9[0]).toContain('--file="{STATUS}"');
+    expect(in9[0]).toContain("--code");
+    expect(in10).toHaveLength(1);
+    expect(in10[0]).toContain("--since-step=build-plan-gaps-remediate-holistic ");
+    expect(in10[0]).toContain('--file="{STATUS}"');
+    expect(in10[0]).toContain("--code");
+  });
+});

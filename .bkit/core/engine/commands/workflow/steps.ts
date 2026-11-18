@@ -695,6 +695,7 @@ export function writeStepRow(
     ...(r.failures === undefined ? {} : { failures: r.failures }),
     ...(r.strategy === undefined ? {} : { strategy: r.strategy as Step["strategy"] }),
     ...(r.extras ?? {}),
+    ...(r.commit === "none" ? { uncommitted: true } : {}),
   };
   const progressLine = stepProgress(cwd, r);
   // An in-place run on a shared branch commits its own paths only; a refusal

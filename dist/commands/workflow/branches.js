@@ -31,6 +31,7 @@ import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { appendFeature } from "./roadmap.js";
 import { detect } from "./runtime.js";
 import { defaultRange } from "./feature-base.js";
+import { stepBase } from "./step-base.js";
 import { readRuns, readStatusRows, readStatusRowsAt } from "./status.js";
 import { declaredName, testSource } from "./test-blocks.js";
 import { addAllButCopied, assertShipEligible, copyExcludes, hasLeftovers, notOnDev, rebaseNoteFile, recordRebase, removeWorktree, worktreeDir, } from "./worktrees.js";
@@ -1388,10 +1389,22 @@ function scanDiffVerb(ctx) {
             return EXIT.USAGE;
         }
     }
+    const sinceStep = str(ctx.flags.sinceStep);
+    if (sinceStep !== undefined && explicitBase !== undefined)
+        throw new CommandError(EXIT.USAGE, "--since-step and --base are exclusive");
     const top = topLevel(ctx.cwd);
-    const fallback = explicitBase === undefined ? defaultRange(top, ctx.log) : null;
-    const base = explicitBase ?? fallback.base;
-    const fetched = explicitBase === undefined ? null : fetchRemoteRef(top, base);
+    let stepStart = null;
+    if (sinceStep !== undefined) {
+        stepStart = stepBase({ cwd: ctx.cwd, step: sinceStep, file: str(ctx.flags.file) });
+        if (stepStart === null) {
+            ctx.log(`--since-step ${sinceStep}: no active run or no commit to measure from`);
+            return EXIT_DIFF_FAILED;
+        }
+    }
+    const rangeBase = explicitBase ?? stepStart ?? undefined;
+    const fallback = rangeBase === undefined ? defaultRange(top, ctx.log) : null;
+    const base = rangeBase ?? fallback.base;
+    const fetched = rangeBase === undefined || stepStart !== null ? null : fetchRemoteRef(top, base);
     if (fetched !== null && !fetched.ok) {
         ctx.log(`git fetch for ${base} failed: ${fetched.stderr} — diffing against the local ref`);
     }
@@ -3072,6 +3085,16 @@ export const branchesCommand = {
                     name: "base",
                     type: "string",
                     help: "diff <base>...HEAD; an origin/<branch> base is fetched first (default: the feature base, where the branch's own work starts)",
+                },
+                {
+                    name: "since-step",
+                    type: "string",
+                    help: "diff from the commit before this step's own work (the previous step-done row's commit of the active run), so a fix committed by the subagent or by `steps finish` both count; exclusive with --base",
+                },
+                {
+                    name: "file",
+                    type: "string",
+                    help: "the run's status.jsonl, for --since-step (default: the single in-progress run)",
                 },
                 {
                     name: "paths",

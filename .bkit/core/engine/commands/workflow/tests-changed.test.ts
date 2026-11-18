@@ -16,6 +16,7 @@ import {
   snapshotTree,
 } from "./tests-changed";
 import { testsCommand } from "./tests";
+import { newRecord, writeRecord } from "./ledgers";
 
 const dirs: string[] = [];
 const tmp = (prefix: string) => {
@@ -401,5 +402,188 @@ describe("tests changed", () => {
     const r = await changed(["--base=no-such-ref"]);
     expect(r.code).toBe(2);
     expect(ranWith()).toBeNull();
+  });
+});
+
+describe("tests changed default base", () => {
+  const STATUS_REL = "docs/plans/202611/logs/1-x/status.jsonl";
+  const appendRow = (row: Record<string, unknown>) => {
+    const file = path.join(cwd, STATUS_REL);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.appendFileSync(file, `${JSON.stringify(row)}\n`);
+  };
+  /**
+   * A run in flight: its start row in one commit, then a previous step that committed
+   * `src/prev.ts` together with its `step-done` row. Returns nothing; HEAD is that commit.
+   */
+  function runWithPreviousStep() {
+    checkout({ [BKIT_GATE_CHANGED_SCRIPT]: "x" });
+    appendRow({ type: "workflow-started", workflow: "build", at: "2026-11-01T10:00:00Z" });
+    const start = commit("run start");
+    write("src/prev.ts", "prev\n");
+    appendRow({
+      type: "step-done",
+      workflow: "build",
+      step: "build-plan-prev",
+      status: "DONE",
+      at: "2026-11-01T10:05:00Z",
+      parentSha: start,
+      artifacts: [],
+    });
+    commit("previous step");
+  }
+
+  it("lists a file the subagent committed after the last step-done commit", async () => {
+    runWithPreviousStep();
+    write("src/a.ts", "subagent edit\n");
+    commit("subagent commit");
+    const r = await changed([]);
+    expect(r.json?.files).toEqual(["src/a.ts"]);
+  });
+
+  it("lists the same file when it is left uncommitted", async () => {
+    runWithPreviousStep();
+    write("src/a.ts", "subagent edit\n");
+    const r = await changed([]);
+    expect(r.json?.files).toEqual(["src/a.ts"]);
+  });
+
+  it("leaves out a file only the previous step's own commit touched", async () => {
+    runWithPreviousStep();
+    write("src/a.ts", "subagent edit\n");
+    commit("subagent commit");
+    const r = await changed([]);
+    expect(r.json?.files).not.toContain("src/prev.ts");
+    expect(r.json?.files).toEqual(["src/a.ts"]);
+  });
+
+  it("lists the subagent's file when a later commit sweeps in an uncommitted step-done row", async () => {
+    checkout({ [BKIT_GATE_CHANGED_SCRIPT]: "x" });
+    appendRow({ type: "workflow-started", workflow: "build", at: "2026-11-01T10:00:00Z" });
+    commit("run start");
+    write("src/prev.ts", "prev\n");
+    const prevHead = commit("previous step work");
+    appendRow({
+      type: "step-done",
+      workflow: "build",
+      step: "build-plan-prev",
+      status: "DONE",
+      at: "2026-11-01T10:05:00Z",
+      parentSha: prevHead,
+      uncommitted: true,
+      artifacts: [],
+    });
+    write("src/a.ts", "subagent edit\n");
+    commit("subagent commit sweeps the row");
+    const r = await changed([]);
+    expect(r.json?.files).toContain("src/a.ts");
+    expect(r.json?.files).not.toContain("src/prev.ts");
+  });
+
+  it("lists the subagent's committed file when another feature's run is also in progress", async () => {
+    checkout({ [BKIT_GATE_CHANGED_SCRIPT]: "x" });
+    git("checkout", "-q", "-B", "feat/1-x");
+    appendRow({ type: "workflow-started", workflow: "build", at: "2026-11-01T10:00:00Z" });
+    const start = commit("run start");
+    appendRow({
+      type: "step-done",
+      workflow: "build",
+      step: "build-plan-prev",
+      status: "DONE",
+      at: "2026-11-01T10:05:00Z",
+      parentSha: start,
+      artifacts: [],
+    });
+    commit("previous step");
+    write(
+      "docs/plans/202611/logs/2-y/status.jsonl",
+      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-11-01T11:00:00Z" })}\n`,
+    );
+    commit("another feature's run start");
+    write("src/a.ts", "subagent edit\n");
+    commit("subagent commit");
+    const r = await changed([]);
+    expect(r.json?.files).toEqual(["src/a.ts"]);
+  });
+
+  it("on an in-place shared-branch run leaves out a file another agent committed after the last step-done commit", async () => {
+    checkout({ [BKIT_GATE_CHANGED_SCRIPT]: "x" });
+    git("checkout", "-q", "-B", "dev");
+    appendRow({ type: "workflow-started", workflow: "build", at: "2026-11-01T10:00:00Z" });
+    const start = commit("run start");
+    appendRow({
+      type: "step-done",
+      workflow: "build",
+      step: "build-plan-prev",
+      status: "DONE",
+      at: "2026-11-01T10:05:00Z",
+      parentSha: start,
+      artifacts: [],
+    });
+    commit("previous step");
+    writeRecord(cwd, newRecord(cwd, "1-x", "dev"));
+    write("src/foreign.ts", "foreign\n");
+    commit("another agent's commit");
+    write("src/a.ts", "debug edit\n");
+    const r = await changed([]);
+    expect(r.json?.files).toContain("src/a.ts");
+    expect(r.json?.files).not.toContain("src/foreign.ts");
+  });
+
+  it("on an in-place shared-branch run with a second run in progress and a dirty status file leaves out another agent's commit", async () => {
+    checkout({ [BKIT_GATE_CHANGED_SCRIPT]: "x" });
+    git("checkout", "-q", "-B", "dev");
+    appendRow({ type: "workflow-started", workflow: "build", at: "2026-11-01T10:00:00Z" });
+    const start = commit("run start");
+    appendRow({
+      type: "step-done",
+      workflow: "build",
+      step: "build-plan-prev",
+      status: "DONE",
+      at: "2026-11-01T10:05:00Z",
+      parentSha: start,
+      artifacts: [],
+    });
+    commit("previous step");
+    writeRecord(cwd, newRecord(cwd, "1-x", "dev"));
+    write(
+      "docs/plans/202611/logs/2-y/status.jsonl",
+      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-11-01T11:00:00Z" })}\n`,
+    );
+    commit("another feature's run start");
+    write("src/foreign.ts", "foreign\n");
+    commit("another agent's commit");
+    appendRow({ type: "engine-call", workflow: "build", at: "2026-11-01T12:00:00Z" });
+    write("src/a.ts", "debug edit\n");
+    const r = await changed([]);
+    expect(r.json?.files).toContain("src/a.ts");
+    expect(r.json?.files).not.toContain("src/foreign.ts");
+  });
+
+  it("lists the subagent's committed file on an adopted branch when another feature's run is also in progress", async () => {
+    checkout({ [BKIT_GATE_CHANGED_SCRIPT]: "x" });
+    git("checkout", "-q", "-B", "dev");
+    write(
+      "docs/plans/202611/logs/2-y/status.jsonl",
+      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-11-01T09:00:00Z" })}\n`,
+    );
+    commit("another feature's run start");
+    git("checkout", "-q", "-B", "claude/session");
+    appendRow({ type: "workflow-started", workflow: "build", at: "2026-11-01T10:00:00Z" });
+    const start = commit("run start");
+    appendRow({
+      type: "step-done",
+      workflow: "build",
+      step: "build-plan-prev",
+      status: "DONE",
+      at: "2026-11-01T10:05:00Z",
+      parentSha: start,
+      artifacts: [],
+    });
+    commit("previous step");
+    write("src/a.ts", "subagent edit\n");
+    commit("subagent commit");
+    const r = await changed([]);
+    expect(r.json?.files).toEqual(["src/a.ts"]);
   });
 });

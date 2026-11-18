@@ -14,6 +14,11 @@ import { CommandError, EXIT, git, runGit, wholeNumber, type VerbSpec } from "../
 import { readPackageJson } from "../../shared/package-json.js";
 import { COULD_NOT_RUN_EXIT_CODES, scriptCommand } from "../../shared/package-manager.js";
 import { runGateUnderLock } from "./junit.js";
+import { readRecord } from "./ledgers.js";
+import { stepBase, stepRun } from "./step-base.js";
+
+/** A run's status ledger: bookkeeping, never a file the gate checks (another feature's run commits one too). */
+const RUN_STATUS_FILE = /^docs\/plans\/[^/]+\/logs\/[^/]+\/status\.jsonl$/;
 
 /** Exit code: neither `bkit:gate:changed` nor the --fallback gate is declared. */
 const EXIT_NO_GATE = 3;
@@ -36,7 +41,9 @@ export function changedFiles(top: string, base: string): string[] {
     ...gitPaths(top, ["ls-files", "--others", "--exclude-standard", "-z"]),
     ...gitPaths(top, ["diff", "--name-only", "--no-renames", "-z", `${base}...HEAD`]),
   ]);
-  return [...all].filter((f) => fs.existsSync(path.join(top, f))).sort();
+  return [...all]
+    .filter((f) => !RUN_STATUS_FILE.test(f) && fs.existsSync(path.join(top, f)))
+    .sort();
 }
 
 /**
@@ -170,7 +177,7 @@ export const testsChangedVerb: VerbSpec = {
     {
       name: "base",
       type: "string",
-      help: "commit the step began on; files committed after it count as changed (default HEAD: uncommitted files only)",
+      help: "commit the step began after; files committed after it count as changed (default: the commit holding the active run's last step-done row, else HEAD; a run in place on a shared branch always uses HEAD)",
     },
     {
       name: "fallback",
@@ -200,7 +207,17 @@ export const testsChangedVerb: VerbSpec = {
       60,
     );
     const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
-    const base = typeof ctx.flags.base === "string" ? ctx.flags.base : "HEAD";
+    let base: string;
+    if (typeof ctx.flags.base === "string") base = ctx.flags.base;
+    else {
+      // A run in place on a shared branch has other agents' commits after its last step-done commit.
+      const run = stepRun({ cwd: top });
+      const inPlace =
+        run !== undefined && readRecord(top, path.basename(path.dirname(run.file))) !== null;
+      const fromRun = inPlace ? null : stepBase({ cwd: top });
+      if (fromRun === null) ctx.log("no active run with a step-done row — measuring from HEAD");
+      base = fromRun ?? "HEAD";
+    }
     if (git(top, ["rev-parse", "-q", "--verify", `${base}^{commit}`]) === null)
       throw new CommandError(EXIT.USAGE, `--base ${base} names no commit`);
     const fallback = typeof ctx.flags.fallback === "string" ? ctx.flags.fallback : undefined;

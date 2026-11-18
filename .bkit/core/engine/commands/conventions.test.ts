@@ -178,6 +178,8 @@ const HELPER_SOURCES = new Set([
   path.join("commands", "workflow", "open-decision.ts"),
   // The `tests changed` verb, registered on `bkit tests` in tests.ts.
   path.join("commands", "workflow", "tests-changed.ts"),
+  // The last step-done commit of a run, read by `tests changed` and `branches scan-diff`.
+  path.join("commands", "workflow", "step-base.ts"),
   // The `tests jump` verb, registered on `bkit tests` in tests.ts.
   path.join("commands", "workflow", "tests-jump.ts"),
   // The `tests base` verb, registered on `bkit tests` in tests.ts.

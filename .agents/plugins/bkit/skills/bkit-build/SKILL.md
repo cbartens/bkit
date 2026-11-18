@@ -886,12 +886,12 @@ Run § Pending takeovers first.
    "{BKIT}" steps finish --workflow=build --step=build-plan-gaps-remediate --file="{STATUS}" --attempt-of=build-plan-verify:current --group={GROUP} --agent=bkit-build-plan-gaps-remediate --artifact="docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{GROUP}-<attempt>-log.md" --number=9 --post --title="Plan Gaps Remediate" --message="chore({FID}): plan-gaps-remediate group {GROUP} attempt <attempt>"
    ```
    **If** exit 11 → the fix edited a planned test case the tests step recorded (`tests`; the engine logs an `agent-rework` friction row): invoke `@bkit-build-plan-gaps-remediate` again with ``"<problem> Put each test in <tests> back as the tests step left it; your other edits to those files stay. Or, when a correct code change forces the edit, keep it and append the line BLOCKED — Gap {N}: test `{file}` `{name}` — {why} to your log, then append DONE — Gap {N} again. Correct the Fixed count and verdict in your log to match."`` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
-   Hold `fields.Fixed` as `VERIFY_FIXED`. Nothing routes on `verdict`: it only goes on the step's row. Step 8 runs again and judges the fixes. A later PASS verification of the same group resolves a gaps-fix FAIL in the summary; separate warnings remain concerns.
+   Hold `fields.Fixed` as `VERIFY_FIXED`. Nothing routes on `verdict`: it goes on the step's row. Step 8 runs again and judges the fixes. A later PASS verification of the same group resolves a gaps-fix FAIL in the summary; separate warnings remain concerns.
 5. Check that the attempt changed source files, not only logs and ledgers:
    ```bash
-   cd "{WORKTREE_PATH}" && "{BKIT}" branches scan-diff --base=HEAD~1 --code >/dev/null
+   cd "{WORKTREE_PATH}" && "{BKIT}" branches scan-diff --since-step=build-plan-gaps-remediate --file="{STATUS}" --code >/dev/null
    ```
-   Exit 1 means the attempt changed no source file. Hold `SOURCE_CHANGED` = true on exit 0, else false.
+   Exit 1 means no source file changed. Hold `SOURCE_CHANGED` = true on exit 0, else false.
    Route — first match wins:
    - **If** exit 1 **or** `VERIFY_FIXED` = 0:
      - Set `PAUSE_STEP` = 9, `PAUSE_POINT` = `build.verify` and `PAUSE_QUESTION` = `VERIFY_GAPS`.
@@ -1002,7 +1002,7 @@ This step checks the whole feature against the plan after the last group, and ag
     Hold `fields.Fixed` as `HOLISTIC_FIXED`. Nothing routes on `verdict`: it only goes on the step's row. Sub-step 1 runs again and judges the fixes. A later PASS holistic verification resolves a holistic gaps-fix FAIL in the summary.
 12. Check that the attempt changed source files, as Step 9 sub-step 5 does:
     ```bash
-    cd "{WORKTREE_PATH}" && "{BKIT}" branches scan-diff --base=HEAD~1 --code >/dev/null
+    cd "{WORKTREE_PATH}" && "{BKIT}" branches scan-diff --since-step=build-plan-gaps-remediate-holistic --file="{STATUS}" --code >/dev/null
     ```
     Hold `SOURCE_CHANGED` = true on exit 0, else false.
     Route — first match wins:

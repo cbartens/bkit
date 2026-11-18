@@ -23,6 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
+_(refreshed 2026-11-18T09:35:22Z)_
 _(refreshed 2026-11-18T07:34:51Z)_
 _(refreshed 2026-11-18T06:41:08Z)_
 _(refreshed 2026-11-18T03:53:35Z)_
@@ -62,6 +63,7 @@ _(refreshed 2026-11-18T03:59:28Z)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 1018-subagent-commits-makes | 1018-subagent-commits-makes | 1794994522115 |
 | 1020-two-small-check | 1020-two-small-check | 1794962637613 |
 | 1028-gate-fails-workflow | 1028-gate-fails-workflow | 1794967440896 |
 | 1030-later-scope-passing | 1030-later-scope-passing | 1794972956727 |

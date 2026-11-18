@@ -4353,3 +4353,102 @@ describe("branches regenerate", { timeout: GIT_TIMEOUT }, () => {
     expect((await run(clone, ["regenerate"])).code).toBe(2);
   });
 });
+
+describe("branches scan-diff --since-step", { timeout: GIT_TIMEOUT }, () => {
+  const STEP = "build-plan-gaps-remediate";
+  const REL = "docs/plans/202611/logs/1-x/status.jsonl";
+  const row = (r: Record<string, unknown>) => `${JSON.stringify(r)}\n`;
+  /** A feature branch whose run has started and finished one earlier step; returns the run file. */
+  function runWithEarlierStep(name: string) {
+    const { clone } = featureBranch(name);
+    commit(
+      clone,
+      { [REL]: row({ type: "workflow-started", workflow: "build", at: "2026-11-01T10:00:00Z" }) },
+      "run start",
+    );
+    commit(
+      clone,
+      {
+        [REL]: row({
+          type: "step-done",
+          workflow: "build",
+          step: "build-plan-gaps",
+          status: "DONE",
+          at: "2026-11-01T10:05:00Z",
+          parentSha: sha(clone),
+          artifacts: [],
+        }),
+      },
+      "earlier step",
+    );
+    return { clone, file: path.join(clone, REL) };
+  }
+  /** What `steps finish` does: append the step's row, then commit it with whatever is in the tree. */
+  const finish = (clone: string) =>
+    commit(
+      clone,
+      {
+        [REL]: row({
+          type: "step-done",
+          workflow: "build",
+          step: STEP,
+          status: "DONE",
+          at: "2026-11-01T10:10:00Z",
+          parentSha: sha(clone),
+          artifacts: [],
+        }),
+      },
+      "step finish",
+    );
+  const scan = (clone: string, file: string) =>
+    run(clone, ["scan-diff", `--since-step=${STEP}`, "--code", `--file=${file}`]);
+
+  it("scan-diff --since-step --code exits 0 when the subagent committed its fix before steps finish", async () => {
+    const { clone, file } = runWithEarlierStep("since-committed");
+    commit(clone, { "src/fix.ts": "fix\n" }, "subagent fix");
+    finish(clone);
+    const r = await scan(clone, file);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ found: true, paths: ["src/fix.ts"] });
+  });
+
+  it("scan-diff --since-step --code exits 0 when the fix was left uncommitted and the finish commit holds it", async () => {
+    const { clone, file } = runWithEarlierStep("since-uncommitted");
+    write(clone, "src/fix.ts", "fix\n");
+    finish(clone);
+    const r = await scan(clone, file);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ found: true, paths: ["src/fix.ts"] });
+  });
+
+  it("scan-diff --since-step --code exits 1 when the step changed only logs", async () => {
+    const { clone, file } = runWithEarlierStep("since-logs");
+    commit(clone, { "docs/plans/202611/logs/1-x/note.md": "note\n" }, "subagent logs");
+    finish(clone);
+    const r = await scan(clone, file);
+    expect(r.code).toBe(1);
+    expect(r.json).toEqual({ found: false, paths: [] });
+  });
+
+  it("scan-diff --since-step --code exits 0 when a refused finish wrote a takeover row after the subagent committed its fix", async () => {
+    const { clone, file } = runWithEarlierStep("since-takeover");
+    commit(clone, { "src/fix.ts": "fix\n" }, "subagent fix");
+    fs.appendFileSync(
+      file,
+      row({
+        type: "step-done",
+        workflow: "build",
+        step: "build-takeover",
+        status: "DONE",
+        at: "2026-11-01T10:08:00Z",
+        parentSha: sha(clone),
+        uncommitted: true,
+        artifacts: [],
+      }),
+    );
+    finish(clone);
+    const r = await scan(clone, file);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ found: true, paths: ["src/fix.ts"] });
+  });
+});
