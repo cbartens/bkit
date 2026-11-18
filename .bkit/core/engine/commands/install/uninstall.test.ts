@@ -337,7 +337,7 @@ describe("buildDecisionTable — byte-equal-text hash guard", () => {
     const content = "BKIT_GH_TOKEN=\n";
     writeFile(OWNED, content);
     writeBkitVersionFile(version({ [OWNED]: sha256(content) }));
-    for (const host of ["claude", "cursor"]) {
+    for (const host of ["claude", "cursor"] as const) {
       const table = buildDecisionTable([host], makeCtx());
       expect(table.find((r) => r.file === OWNED)).toBeUndefined();
     }
