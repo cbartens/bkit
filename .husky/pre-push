@@ -388,9 +388,9 @@ if [ -n "$PUSH_DEV_SHA" ] && [ -f scripts/ci/lanes/bkit-resolve-push-base.mjs ];
   fi
 fi
 
-# bkit repo only: committed `dist/` must equal the `tsc` output of committed source, and
-# actionlint over `.github/workflows/*` (skips when actionlint is absent). A min push
-# skips both: it changes no code.
+# bkit repo only: the staged `dist/` must equal the `tsc` output of the staged tree (the
+# index), and actionlint over `.github/workflows/*` (skips when actionlint is absent). A min
+# push skips both: it changes no code.
 if [ "$MIN_PUSH" != "1" ]; then
   pnpm bkit:check:dist < /dev/null
   pnpm bkit:lint:workflows < /dev/null

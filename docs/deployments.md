@@ -588,8 +588,10 @@ Gate fails locally → fix + re-stage; do not `--no-verify` or amend over failed
 
 Source-repo only. Any `.bkit/core/engine/**/*.ts` change MUST include `pnpm build && git add dist/` in same commit.
 
-- Hooks run `typecheck` + the unit and integration tiers, not `pnpm build`. Source-repo pre-push runs `pnpm bkit:check:dist` (blocks stale `dist/`) but does not commit freshened `dist/`; run `pnpm build && git add dist/` manually.
-- CI `bkit-tests-static` "Assert Dist Freshness" (`pnpm bkit:check:dist` → `rm -rf dist && tsc && git diff --exit-code dist/`) — `.github/workflows/bkit-ci.yml` only.
+- `pnpm bkit:check:dist` runs `node scripts/gate/bkit-check-dist.mjs`. It compiles the staged tree (the index) in a scratch folder under `tmp/`, compares each output's mode and content with the staged `dist/`, and fails when they differ or when the compile writes no file under `dist/`. It leaves the working tree's `dist/` alone.
+- Hooks run `typecheck` + the unit and integration tiers, not `pnpm build`, and never commit a freshened `dist/`; run `pnpm build && git add dist/` by hand.
+- Source-repo pre-commit runs `pnpm bkit:check:dist` when the commit adds, changes, deletes or renames a non-test `.bkit/core/engine/**/*.ts` file. Source-repo pre-push runs it on every push except a min push.
+- CI `bkit-tests-static` "Assert Dist Freshness" runs `pnpm bkit:check:dist` — `.github/workflows/bkit-ci.yml` only.
 - Consumer template `.bkit/templates/.github/workflows/bkit-ci.yml` omits freshness (tarball install, no recompile). Do not add there.
 
 ### `.husky/pre-push` bkit check gate
