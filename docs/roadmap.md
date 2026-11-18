@@ -23,14 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-18T10:31:42Z)_
-_(refreshed 2026-11-18T09:35:22Z)_
-_(refreshed 2026-11-18T07:34:51Z)_
-_(refreshed 2026-11-18T06:41:08Z)_
-_(refreshed 2026-11-18T03:53:35Z)_
-_(refreshed 2026-11-18T03:35:56Z)_
-_(refreshed 2026-11-18T02:04:00Z)_
-_(refreshed 2026-11-18T03:59:28Z)_
+_(refreshed 2026-11-18T11:47:23Z)_
 
 ### Design
 
@@ -71,6 +64,7 @@ _(refreshed 2026-11-18T03:59:28Z)_
 | 1039-ledger-query-status | 1039-ledger-query-status | 1794984068525 |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
 | 811-publish-dev-refused | 811-publish-dev-refused | 1794974015158 |
+| 812-keep-steps-placeholder | 812-keep-steps-placeholder | 1795002443754 |
 | 819-build-pre-commit | 819-build-pre-commit | 1794987291593 |
 | 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1794438325395 |
 | 864-move-project-docs | 864-move-project-docs | 1794355539739 |

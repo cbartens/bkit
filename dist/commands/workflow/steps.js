@@ -648,6 +648,8 @@ function gateChecks(cwd, o) {
         add(`artifact ${a}`, problem, "present and non-empty");
         if (problem)
             continue;
+        if (o.derivedArtifacts?.includes(a))
+            continue;
         const left = placeholderLines(path.resolve(cwd, a));
         add(`placeholders ${a}`, left.length ? `PENDING left on line(s) ${left.join(", ")}` : undefined, "none left");
     }
@@ -898,11 +900,15 @@ async function finish(ctx) {
     const scope = str(f.scope);
     if (scope !== undefined)
         extras.scope = scope;
+    const derivedArtifacts = list(f.derivedArtifact)
+        .map((a) => fill(a, attempt))
+        .filter((a) => fs.existsSync(path.resolve(ctx.cwd, a)));
     const artifacts = [
         ...list(f.artifact).map((a) => fill(a, attempt)),
         ...list(f.optionalArtifact)
             .map((a) => fill(a, attempt))
             .filter((a) => fs.existsSync(path.resolve(ctx.cwd, a))),
+        ...derivedArtifacts,
     ];
     // Artifacts first: every one present, non-empty, inside the working directory.
     const bad = artifacts.map((a) => artifactProblem(ctx.cwd, a)).filter(Boolean);
@@ -1038,6 +1044,7 @@ async function finish(ctx) {
         workflow,
         step,
         artifacts,
+        derivedArtifacts,
         verdictRequired: false,
         allowed,
         placeholders: [],
@@ -1254,7 +1261,7 @@ async function finish(ctx) {
     // The attempt finished is the latest one this run saved artifacts for.
     if (attempt !== undefined) {
         const startSha = activeRunStart(file, workflow)?.parentSha;
-        const later = laterAttempts(ctx.cwd, [...list(f.artifact), ...list(f.optionalArtifact)], attempt, typeof startSha === "string" && startSha !== "" ? startSha : undefined);
+        const later = laterAttempts(ctx.cwd, [...list(f.artifact), ...list(f.optionalArtifact), ...list(f.derivedArtifact)], attempt, typeof startSha === "string" && startSha !== "" ? startSha : undefined);
         if (later.length > 0) {
             ctx.log(`attempt ${attempt} is not the latest: this run saved ${later.join(", ")} after it — finish the latest attempt (nothing written)`);
             ctx.emit({ pass: false, attempt, later });
@@ -1380,6 +1387,7 @@ async function finish(ctx) {
         group,
         attempt,
         artifacts,
+        derivedArtifacts,
         verdictRequired: false,
         allowed,
         placeholders: [],
@@ -1768,6 +1776,12 @@ export const stepsCommand = {
                     type: "string",
                     repeatable: true,
                     help: "an artifact recorded (and checked) only when the file exists",
+                },
+                {
+                    name: "derived-artifact",
+                    type: "string",
+                    repeatable: true,
+                    help: "copied external text: may be missing, recorded when present, not scanned for PENDING",
                 },
                 {
                     name: "agent",

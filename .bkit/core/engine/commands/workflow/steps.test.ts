@@ -1131,6 +1131,55 @@ describe("bkit steps finish", () => {
     expect(fs.existsSync(path.join(cwd, "logs/status.jsonl"))).toBe(false);
   });
 
+  describe("--derived-artifact", () => {
+    const DERIVED = ["--step=build-create-pr", "--commit=none"];
+
+    it("a --derived-artifact holding a whole-line PENDING passes and is recorded", async () => {
+      const cwd = repo();
+      write(cwd, "logs/related.md", "Quoted from another issue:\nPENDING\nStatus: PENDING\n");
+      const r = await run(cwd, [...FINISH, ...DERIVED, "--derived-artifact=logs/related.md"]);
+      expect(r.code).toBe(0);
+      expect(r.json.row.artifacts).toContain("logs/related.md");
+    });
+
+    it("a PENDING in --artifact still refuses while a --derived-artifact is passed", async () => {
+      const cwd = repo();
+      write(cwd, "logs/related.md", "PENDING\n");
+      write(cwd, "logs/own.md", "# Own\n\nPENDING\n");
+      const r = await run(cwd, [
+        ...FINISH,
+        ...DERIVED,
+        "--artifact=logs/own.md",
+        "--derived-artifact=logs/related.md",
+      ]);
+      expect(r.code).not.toBe(0);
+      expect(r.err).toContain("placeholders logs/own.md");
+      expect(r.err).not.toContain("placeholders logs/related.md");
+    });
+
+    it("a PENDING in --optional-artifact still refuses while a --derived-artifact is passed", async () => {
+      const cwd = repo();
+      write(cwd, "logs/related.md", "PENDING\n");
+      write(cwd, "logs/opt.md", "# Opt\n\nPENDING\n");
+      const r = await run(cwd, [
+        ...FINISH,
+        ...DERIVED,
+        "--optional-artifact=logs/opt.md",
+        "--derived-artifact=logs/related.md",
+      ]);
+      expect(r.code).not.toBe(0);
+      expect(r.err).toContain("placeholders logs/opt.md");
+      expect(r.err).not.toContain("placeholders logs/related.md");
+    });
+
+    it("a missing --derived-artifact is skipped and not recorded", async () => {
+      const cwd = repo();
+      const r = await run(cwd, [...FINISH, ...DERIVED, "--derived-artifact=logs/absent.md"]);
+      expect(r.code).toBe(0);
+      expect(r.json.row.artifacts).not.toContain("logs/absent.md");
+    });
+  });
+
   it("re-asks (exit 6) when a field the prompt declares is missing", async () => {
     const cwd = repo();
     write(cwd, "logs/verify-1.md", "Verdict: PASS\n<!-- verdict:end -->\n");

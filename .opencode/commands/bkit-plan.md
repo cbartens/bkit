@@ -276,7 +276,7 @@ Before generating, ask the engine for this step's invocation id and keep the pri
    ```
 4. Finish:
    ```bash
-   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-fetch-context --attempt=1 --optional-artifact=docs/plans/{YYYYMM}/logs/{FID}/related-issues.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/related-failures.md --clamp-log=plan-fetch-context --message="chore({FID}): fetch-context" --number=4 --post --title="Fetch Context" --link-ref=dev
+   "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-fetch-context --attempt=1 --derived-artifact=docs/plans/{YYYYMM}/logs/{FID}/related-issues.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/related-failures.md --clamp-log=plan-fetch-context --message="chore({FID}): fetch-context" --number=4 --post --title="Fetch Context" --link-ref=dev
    ```
 
 ### 🔒 Gate 4 — Fetch Context

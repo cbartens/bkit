@@ -425,7 +425,7 @@ Reading does not remove the log, so a retried status block re-emits the same arr
 - Never assign one in prose (`Init counters:` / `Increment X + 1` are prohibited), and never do prose arithmetic.
 - A display-only block (tracker comment, narration) may use a value a command printed earlier in the same step.
 - Take limits by ask point only, through `bkit counters max --point=` or `bkit counters route --point=`, never as a literal (§ Ask points).
-- `steps finish` refuses an attempt below one the run has already saved: an `--artifact` / `--optional-artifact` pattern holding `<attempt>` with a higher-numbered file on disk → exit 12, nothing written, `later` names the files. A file already committed at the run's `workflow-started` `parentSha` belongs to an earlier run and does not count.
+- `steps finish` refuses an attempt below one the run has already saved: an `--artifact` / `--optional-artifact` / `--derived-artifact` pattern holding `<attempt>` with a higher-numbered file on disk → exit 12, nothing written, `later` names the files. A file already committed at the run's `workflow-started` `parentSha` belongs to an earlier run and does not count.
 
 Gate: `.bkit/core/engine/audits/workflows/counter-prose-audit.test.ts`.
 

@@ -807,6 +807,8 @@ interface GateOptions {
   group?: number;
   attempt?: number;
   artifacts: string[];
+  /** Artifacts of copied external text: checked present, never scanned for PENDING. */
+  derivedArtifacts?: string[];
   verdictRequired: boolean;
   allowed: string[];
   fid?: string;
@@ -866,6 +868,7 @@ function gateChecks(cwd: string, o: GateOptions): Check[] {
     const problem = artifactProblem(cwd, a);
     add(`artifact ${a}`, problem, "present and non-empty");
     if (problem) continue;
+    if (o.derivedArtifacts?.includes(a)) continue;
     const left = placeholderLines(path.resolve(cwd, a));
     add(
       `placeholders ${a}`,
@@ -1147,11 +1150,15 @@ async function finish(ctx: RunContext): Promise<number> {
   }
   const scope = str(f.scope);
   if (scope !== undefined) extras.scope = scope;
+  const derivedArtifacts = list(f.derivedArtifact)
+    .map((a) => fill(a, attempt))
+    .filter((a) => fs.existsSync(path.resolve(ctx.cwd, a)));
   const artifacts = [
     ...list(f.artifact).map((a) => fill(a, attempt)),
     ...list(f.optionalArtifact)
       .map((a) => fill(a, attempt))
       .filter((a) => fs.existsSync(path.resolve(ctx.cwd, a))),
+    ...derivedArtifacts,
   ];
 
   // Artifacts first: every one present, non-empty, inside the working directory.
@@ -1307,6 +1314,7 @@ async function finish(ctx: RunContext): Promise<number> {
     workflow,
     step,
     artifacts,
+    derivedArtifacts,
     verdictRequired: false,
     allowed,
     placeholders: [],
@@ -1550,7 +1558,7 @@ async function finish(ctx: RunContext): Promise<number> {
     const startSha = activeRunStart(file, workflow)?.parentSha;
     const later = laterAttempts(
       ctx.cwd,
-      [...list(f.artifact), ...list(f.optionalArtifact)],
+      [...list(f.artifact), ...list(f.optionalArtifact), ...list(f.derivedArtifact)],
       attempt,
       typeof startSha === "string" && startSha !== "" ? startSha : undefined,
     );
@@ -1701,6 +1709,7 @@ async function finish(ctx: RunContext): Promise<number> {
     group,
     attempt,
     artifacts,
+    derivedArtifacts,
     verdictRequired: false,
     allowed,
     placeholders: [],
@@ -2114,6 +2123,12 @@ export const stepsCommand: CommandSpec = {
           type: "string",
           repeatable: true,
           help: "an artifact recorded (and checked) only when the file exists",
+        },
+        {
+          name: "derived-artifact",
+          type: "string",
+          repeatable: true,
+          help: "copied external text: may be missing, recorded when present, not scanned for PENDING",
         },
         {
           name: "agent",

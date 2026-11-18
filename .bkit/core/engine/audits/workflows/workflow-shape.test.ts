@@ -1584,6 +1584,14 @@ describe("plan", () => {
     expect(plan).not.toContain("--brief");
   });
 
+  it("Fetch Context passes related-issues.md as a derived artifact", () => {
+    const finish4 = commandLines(section(plan, /Step 4 — Fetch Context/), "steps finish");
+    expect(finish4).toHaveLength(1);
+    expect(finish4[0]).toContain(`--derived-artifact=${LOG}/related-issues.md`);
+    expect(finish4[0]).not.toContain(`--optional-artifact=${LOG}/related-issues.md`);
+    expect(finish4[0]).not.toContain(`--artifact=${LOG}/related-issues.md`);
+  });
+
   it("carries draft formatting findings through review and update, with a strict final check", () => {
     const generate = section(plan, /Step 3 — Generate Plan/);
     const review = section(plan, /Step 5 — Review Plan/);
