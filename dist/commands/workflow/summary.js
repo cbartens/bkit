@@ -61,8 +61,8 @@ export function refOf(fid, tracker = "any") {
 }
 /**
  * Review updates cover their review's findings. The same group's verification, or a
- * whole-plan verification, covers failed execution; a passing test run covers a failed
- * test-failure fix. None covers a remediation agent's separate warnings or flakes.
+ * whole-plan verification, covers failed execution; a passing test run clears a failed
+ * test fix and turns a failed build diagnose into a concern; a failed debug diagnose or soak step has no entry and is never cleared. None covers a remediation agent's separate warnings or flakes.
  */
 const RESOLVED_BY = {
     "plan/plan-review": ["plan-apply-review"],
@@ -70,11 +70,18 @@ const RESOLVED_BY = {
     "build/build-plan-tasks": ["build-plan-verify", "build-plan-verify-holistic"],
     "build/build-plan-gaps-remediate": ["build-plan-verify", "build-plan-verify-holistic"],
     "build/build-plan-gaps-remediate-holistic": ["build-plan-verify-holistic"],
+    "build/build-failure-diagnose": ["build-run-tests"],
     "build/build-failure-remediate": ["build-run-tests"],
     "debug/debug-failure-remediate": ["debug-run-tests"],
 };
-/** Test-fix steps whose resolving run must have run the scope of the run the fix followed. */
-const SAME_SCOPE = new Set(["build/build-failure-remediate", "debug/debug-failure-remediate"]);
+/** The build diagnose step: a later passing run leaves a concern, not a cleared finding. */
+const DIAGNOSE = new Set(["build/build-failure-diagnose"]);
+/** Test-fix and build diagnose steps whose resolving run must have run the scope of the run they followed. */
+const SAME_SCOPE = new Set([
+    "build/build-failure-diagnose",
+    "build/build-failure-remediate",
+    "debug/debug-failure-remediate",
+]);
 /** Steps that check the whole run, so they answer a failure in any task group. */
 const WHOLE_RUN = new Set(["build-plan-verify-holistic", "build-run-tests"]);
 /**
@@ -464,6 +471,8 @@ export function buildSummary(input) {
         }
         if (answer !== undefined && !spike && answer.row.verdict === "CONCERNS")
             reassessed.push(`${g.label} ${String(row.verdict)}, remaining findings assessed by ${String(answer.row.step)}`);
+        else if (answer !== undefined && !spike && DIAGNOSE.has(`${workflow}/${g.step}`))
+            concerns.push(`${g.label} FAIL, tests passed since (${String(answer.row.step)})`);
         else if (answer !== undefined && !spike)
             resolved.set(g.key, String(answer.row.step));
         else if (row.verdict === "FAIL")

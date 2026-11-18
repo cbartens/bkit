@@ -934,6 +934,125 @@ describe("buildSummary", () => {
       );
   });
 
+  const diagnoseCase = (workflow: "build" | "debug") => {
+    const tests = (attempt: number, verdict: string, failures: number, scope?: string) =>
+      scopedRun(`${workflow}-run-tests`, attempt, verdict, failures, scope);
+    const diagnose = {
+      type: "step-done",
+      step: `${workflow}-failure-diagnose`,
+      verdict: "FAIL",
+      attempt: 1,
+    };
+    return { tests, diagnose, scope: "src/a.test.ts" };
+  };
+
+  it("a build-failure-diagnose FAIL resolved by a later passing test run on the same scope is historical", () => {
+    const { tests, diagnose, scope } = diagnoseCase("build");
+    const answered = buildSummary(
+      input({ rows: [tests(1, "FAIL", 1, scope), diagnose, tests(2, "PASS", 0, scope)] }),
+    );
+    expect(answered.reasons).not.toContain("build-failure-diagnose FAIL");
+    expect(answered.reasons).toContain(
+      "build-failure-diagnose FAIL, tests passed since (build-run-tests)",
+    );
+    expect(answered.markdown).not.toContain(
+      "build-failure-diagnose FAIL, resolved by build-run-tests",
+    );
+    expect(answered.verdict).toBe("CONCERNS");
+  });
+
+  it("a debug-failure-diagnose FAIL resolved by a later passing test run on the same scope is historical", () => {
+    const { tests, diagnose, scope } = diagnoseCase("debug");
+    const answered = buildSummary(
+      input({
+        workflow: "debug",
+        rows: [tests(1, "FAIL", 1, scope), diagnose, tests(2, "PASS", 0, scope)],
+      }),
+    );
+    expect(answered.reasons).toContain("debug-failure-diagnose FAIL");
+    expect(answered.reasons).not.toContain(
+      "debug-failure-diagnose FAIL, tests passed since (debug-run-tests)",
+    );
+    expect(answered.markdown).not.toContain(
+      "debug-failure-diagnose FAIL, resolved by debug-run-tests",
+    );
+    expect(answered.verdict).toBe("FAIL");
+  });
+
+  it("a debug-failure-diagnose FAIL answered by a later same-scope pass still holds the debug summary at FAIL", () => {
+    const { tests, diagnose, scope } = diagnoseCase("debug");
+    const summary = buildSummary(
+      input({
+        workflow: "debug",
+        rows: [
+          scopedRun("debug-run-tests", 1, "FAIL", 1, "src/a.test.ts"),
+          diagnose,
+          scopedRun("debug-run-tests", 2, "PASS", 0, "src/a.test.ts"),
+        ],
+      }),
+    );
+    expect(tests(2, "PASS", 0, scope).scope).toBe("src/a.test.ts");
+    expect(summary.verdict).toBe("FAIL");
+    expect(summary.reasons).toContain("debug-failure-diagnose FAIL");
+  });
+
+  it("a diagnose FAIL with no later passing same-scope test run is still a FAIL", () => {
+    for (const workflow of ["build", "debug"] as const) {
+      const { tests, diagnose, scope } = diagnoseCase(workflow);
+      const summary = buildSummary(
+        input({
+          workflow,
+          rows: [tests(1, "FAIL", 1, scope), diagnose, tests(2, "PASS", 0, "other/scope")],
+        }),
+      );
+      expect(summary.verdict).toBe("FAIL");
+      expect(summary.reasons).toContain(`${workflow}-failure-diagnose FAIL`);
+      expect(summary.reasons).not.toContain(
+        `${workflow}-failure-diagnose FAIL, tests passed since (${workflow}-run-tests)`,
+      );
+    }
+  });
+
+  it("a diagnose FAIL followed by a passing run on a different scope still counts", () => {
+    for (const workflow of ["build", "debug"] as const) {
+      const { tests, diagnose, scope } = diagnoseCase(workflow);
+      const summary = buildSummary(
+        input({
+          workflow,
+          rows: [tests(1, "FAIL", 1, scope), diagnose, tests(2, "PASS", 0, "other/scope")],
+        }),
+      );
+      expect(summary.reasons).toContain(`${workflow}-failure-diagnose FAIL`);
+    }
+  });
+
+  it("a diagnose FAIL followed by a passing run with no scope still counts", () => {
+    for (const workflow of ["build", "debug"] as const) {
+      const { tests, diagnose, scope } = diagnoseCase(workflow);
+      const summary = buildSummary(
+        input({
+          workflow,
+          rows: [tests(1, "FAIL", 1, scope), diagnose, tests(2, "PASS", 0)],
+        }),
+      );
+      expect(summary.reasons).toContain(`${workflow}-failure-diagnose FAIL`);
+    }
+  });
+
+  it("a debug-failure-soak FAIL followed by a passing same-scope run still counts", () => {
+    const tests = (attempt: number, verdict: string, failures: number, scope?: string) =>
+      scopedRun("debug-run-tests", attempt, verdict, failures, scope);
+    const soak = { type: "step-done", step: "debug-failure-soak", verdict: "FAIL", attempt: 1 };
+    const scope = "src/a.test.ts";
+    const summary = buildSummary(
+      input({
+        workflow: "debug",
+        rows: [tests(1, "FAIL", 1, scope), soak, tests(2, "PASS", 0, scope)],
+      }),
+    );
+    expect(summary.reasons).toContain("debug-failure-soak FAIL");
+  });
+
   it("a debug fix FAIL after a CI-sourced round is not resolved by a local pass", () => {
     const tests = (attempt: number, verdict: string, failures: number, scope: string) =>
       scopedRun("debug-run-tests", attempt, verdict, failures, scope);
