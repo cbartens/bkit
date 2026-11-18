@@ -198,10 +198,19 @@ describe("module dispatch: .bkit/.env.example reaches every host install", () =>
       effortMap: parseEffortMap(promptsMd),
     });
 
-  for (const host of [null, "claude", "cursor", "opencode", "codex", "antigravity"] as const) {
-    it(`${host === null ? "core alone" : `--${host}`} writes .bkit/.env.example`, () => {
+  const installs = [
+    { name: "core alone", modules: ["core"] },
+    { name: "--claude", modules: ["core", "claude"] },
+    { name: "--cursor", modules: ["core", "cursor"] },
+    { name: "--opencode", modules: ["core", "opencode"] },
+    { name: "--codex", modules: ["core", "codex"] },
+    { name: "--antigravity", modules: ["core", "antigravity"] },
+  ] as const;
+
+  for (const { name, modules } of installs) {
+    it(`${name} writes .bkit/.env.example`, () => {
       const ws = makeWriteSet();
-      dispatchModules(new Set(host === null ? ["core"] : ["core", host]), hostCtx(ws));
+      dispatchModules(new Set(modules), hostCtx(ws));
       expect(ws.writes.map((w) => w.path)).toContain(envExample);
       const content = fs.readFileSync(path.join(tmpDir, envExample), "utf-8");
       expect(content).toContain("BKIT_GH_TOKEN=");
