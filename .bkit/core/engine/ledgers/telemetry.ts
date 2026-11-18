@@ -264,6 +264,13 @@ export const VALID_SEVERITIES: Set<string> = new Set(["CRITICAL", "HIGH", "MEDIU
  */
 export const SEVERITY_KINDS: Set<string> = new Set(["friction", "deferral", "failure"]);
 
+/** The status a row of `kind` has when it gives none: OPEN, ACTIVE, or undefined. */
+export function defaultStatus(kind: string): string | undefined {
+  if (SEVERITY_KINDS.has(kind)) return "OPEN";
+  if (kind === "decision" || kind === "knowledge") return "ACTIVE";
+  return undefined;
+}
+
 /**
  * The triage ladder, shared by the SEVERITY_KINDS trio (friction/deferral/failure).
  *
@@ -1985,9 +1992,6 @@ export interface LedgerQueryResult {
   readRows: number;
 }
 
-/** Statuses of the keyed lifecycle kinds: a row with no `status` is ACTIVE. */
-const DEFAULT_ACTIVE_KINDS: ReadonlySet<string> = new Set(["decision", "knowledge"]);
-
 /**
  * The canonical ledger read: parse every line (reporting each unreadable one with its line
  * number), fold with {@link fold}, and only then apply `filter` to the winners, so an older
@@ -2026,7 +2030,7 @@ export function queryLedger(raw: string, filter: LedgerQuery = {}): LedgerQueryR
     .filter((e) => {
       if (filter.key !== undefined && e.key !== filter.key) return false;
       if (filter.status === undefined) return true;
-      const status = e.status ?? (DEFAULT_ACTIVE_KINDS.has(String(e.kind)) ? "ACTIVE" : undefined);
+      const status = e.status ?? defaultStatus(String(e.kind));
       return status === filter.status;
     });
   return { rows, diagnostics, lines, readRows: events.length };

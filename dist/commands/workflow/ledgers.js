@@ -15,7 +15,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { readBkitVersion } from "../../install/version-file.js";
 import { readBkitConfig } from "../../shared/settings.js";
-import { APPEND_LEDGERS, SCHEMA, UNJUSTIFIED_REASON, gitEnv, parse, queryLedger, mintTs, resolveRepoSlug, SEVERITY_KINDS, validate, withLineage, writerProblem, } from "../../ledgers/telemetry.js";
+import { APPEND_LEDGERS, SCHEMA, UNJUSTIFIED_REASON, gitEnv, parse, queryLedger, mintTs, resolveRepoSlug, defaultStatus, validate, withLineage, writerProblem, } from "../../ledgers/telemetry.js";
 import { COMPACT_LEDGERS, compactLedgers } from "../../ledgers/compact.js";
 import { CORRECTION_REJECTED_ROW, CORRECTION_SUCCEEDED_ROW, actionHash, appendHeld, appendLine, correctionScope, ledgerEffect, ledgerIntent, ledgerOperation, ledgerOperationsFile, pendingLedgerIntentsFor, recordLedgerIntent, recordLedgerOperation, statusTimestamp, withTargetLock, writePrepared, } from "../../ledgers/status.js";
 import { CommandError, CorrectionExhausted, EXIT, INVOCATION_FLAG, invocationDir, isIgnoredPath, isSharedBranch, NoWriteRejection, parseJson, UncertainEffect, wholeNumber, } from "../lib.js";
@@ -1447,7 +1447,7 @@ export function appendLedgerRows(root, ledger, rows, invocation, options = {}) {
             for (const [k, v] of Object.entries(filled))
                 if (!(k in row))
                     row[k] = v;
-            if (row["status"] === undefined && SEVERITY_KINDS.has(String(row["kind"])))
+            if (row["status"] === undefined && defaultStatus(String(row["kind"])) === "OPEN")
                 row["status"] = "OPEN";
             const v = validate(row);
             if (!v.ok)

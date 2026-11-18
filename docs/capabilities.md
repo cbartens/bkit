@@ -133,7 +133,7 @@ flowchart LR
     n_bkit_core_engine_shared["shared<br/>157 symbols · 13 files<br/>1 open finding"]
   end
   nscripts_harvest["scripts/harvest<br/>199 symbols · 2 files"]
-  n_bkit_core_engine_commands -->|475| n_bkit_core_engine_ledgers
+  n_bkit_core_engine_commands -->|476| n_bkit_core_engine_ledgers
   n_bkit_core_engine_commands -->|431| n_bkit_core_engine_shared
   n_bkit_core_engine_commands -->|219| n_bkit_core_engine_install
   n_bkit_core_engine_install -->|187| n_bkit_core_engine_shared
@@ -149,9 +149,9 @@ flowchart LR
   n_bkit_core_engine_shared -->|16| n_bkit_core_engine_install
   n_bkit_core_engine_commands -->|15| n_bkit_core_engine_cli
   nscripts_harvest -->|14| n_bkit_core_engine_ledgers
+  n_bkit_core_engine_checks -->|13| n_bkit_core_engine_ledgers
   n_bkit_core_engine_checks -->|12| n_bkit_core_engine_cli
   n_bkit_core_engine_render -->|12| n_bkit_core_engine_shared
-  n_bkit_core_engine_checks -->|11| n_bkit_core_engine_ledgers
   n_bkit_core_engine_install -->|11| n_bkit_core_engine_ledgers
   n_bkit_core_engine_install -->|10| n_bkit_core_engine_cli
   n_bkit_core_engine_cli -->|7| n_bkit_core_engine_install
@@ -184,7 +184,7 @@ flowchart LR
   linkStyle 14 stroke:#59636eb3,stroke-width:3px
   linkStyle 15 stroke:#59636eb3,stroke-width:3px
   linkStyle 16 stroke:#59636eb3,stroke-width:3px
-  linkStyle 17 stroke:#59636eb3,stroke-width:3px
+  linkStyle 17 stroke:#59636e80,stroke-width:2px
   linkStyle 18 stroke:#59636e80,stroke-width:2px
   linkStyle 19 stroke:#59636e80,stroke-width:2px
   linkStyle 20 stroke:#59636e80,stroke-width:2px
@@ -358,9 +358,9 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_runs -->|28| n_bkit_core_engine_ledgers_status
   n_bkit_core_engine_commands_workflow_status -->|27| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_counters -->|26| n_bkit_core_engine_commands_workflow_status
+  n_bkit_core_engine_commands_workflow_ledgers -->|26| n_bkit_core_engine_ledgers_telemetry
   n_bkit_core_engine_commands_workflow_workflows -->|26| n_bkit_core_engine_commands_workflow_ledgers
   n_bkit_core_engine_commands_workflow_context -->|25| n_bkit_core_engine_commands_lib
-  n_bkit_core_engine_commands_workflow_ledgers -->|25| n_bkit_core_engine_ledgers_telemetry
   n_bkit_core_engine_commands_workflow_steps -->|25| n_bkit_core_engine_commands_workflow_status
   n_bkit_core_engine_commands_workflow_counters -->|24| n_bkit_core_engine_ledgers_status
   n_bkit_core_engine_commands_workflow_workflows -->|24| n_bkit_core_engine_commands_workflow_locks
@@ -504,6 +504,7 @@ flowchart LR
   n_bkit_core_engine_checks_after_github -->|7| n_bkit_core_engine_shared_json
   n_bkit_core_engine_checks_after_index -->|7| n_bkit_core_engine_checks_tips_index
   n_bkit_core_engine_checks_after_index -->|7| n_bkit_core_engine_checks_after_auth
+  n_bkit_core_engine_checks_tips_detect -->|7| n_bkit_core_engine_ledgers_telemetry
   n_bkit_core_engine_checks_tips_index -->|7| n_bkit_core_engine_checks_after_suppression
   n_bkit_core_engine_commands_ci_pins -->|7| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_comply -->|7| n_bkit_core_engine_ledgers_telemetry
@@ -903,6 +904,7 @@ flowchart LR
   linkStyle 223 stroke:#59636e80,stroke-width:2px
   linkStyle 224 stroke:#59636e80,stroke-width:2px
   linkStyle 225 stroke:#59636e80,stroke-width:2px
+  linkStyle 226 stroke:#59636e80,stroke-width:2px
 ```
 
 <!-- graphify:end -->

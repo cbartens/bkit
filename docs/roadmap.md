@@ -23,6 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
+_(refreshed 2026-11-18T06:41:08Z)_
 _(refreshed 2026-11-18T03:53:35Z)_
 _(refreshed 2026-11-18T03:35:56Z)_
 _(refreshed 2026-11-18T02:04:00Z)_
@@ -60,9 +61,10 @@ _(refreshed 2026-11-18T03:59:28Z)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
-| 1030-later-scope-passing | 1030-later-scope-passing | 1794972956727 |
 | 1020-two-small-check | 1020-two-small-check | 1794962637613 |
 | 1028-gate-fails-workflow | 1028-gate-fails-workflow | 1794967440896 |
+| 1030-later-scope-passing | 1030-later-scope-passing | 1794972956727 |
+| 1039-ledger-query-status | 1039-ledger-query-status | 1794984068525 |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
 | 811-publish-dev-refused | 811-publish-dev-refused | 1794974015158 |
 | 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1794438325395 |

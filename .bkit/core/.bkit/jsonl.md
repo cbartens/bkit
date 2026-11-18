@@ -21,7 +21,7 @@
 
 - **Identity:** Group by § Identity / Dedup. A bare `key` suffices only within one keyed kind and one repo.
 - **Winner:** Keep the highest numeric `ts` per identity; the later line wins a tie.
-- **Filters:** Apply status and query filters after folding, so superseded rows stay superseded. Decisions / knowledge default to `ACTIVE`; open failures / deferrals include `TRIAGED` and exclude `CLOSED` (§ Updating a Row).
+- **Filters:** Apply status and query filters after folding, so superseded rows stay superseded. A row with no `status` reads as `OPEN` on `friction` / `deferral` / `failure` and as `ACTIVE` on `decision` / `knowledge`, so `bkit ledgers query --status=` finds it; open failures / deferrals include `TRIAGED` and exclude `CLOSED` (§ Updating a Row).
 - **History:** Retain the rows needed for the requested time range instead of reducing them to current state.
 - **Workflow logs:** Read `status.jsonl` through the workflow's status commands. These are event histories with their own replay rules, outside this fold.
 
@@ -344,7 +344,7 @@ To update a row, copy the prior row, change what changed, and append it. Through
 
 **`TRIAGED` is still open work.** Open-entry counts (the audit debt lens, the age report) test `status != "CLOSED"`. Only `CLOSED` is done.
 
-`bkit ledgers append` writes `status: "OPEN"` on a `friction` / `deferral` / `failure` row that gives none; a given `status` is kept.
+`bkit ledgers append` writes `status: "OPEN"` on a `friction` / `deferral` / `failure` row that gives none; a given `status` is kept. `bkit ledgers query` reads a row of those kinds that has no `status` as `OPEN`.
 
 The ladder is not used on `knowledge` or `decision`: both use `ACTIVE` / `SUPERSEDED`. An absent `status` = `ACTIVE`.
 

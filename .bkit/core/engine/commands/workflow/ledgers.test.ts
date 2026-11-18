@@ -2292,6 +2292,26 @@ describe("bkit ledgers query", () => {
     expect(fs.readFileSync(path.join(r, FILE), "utf-8")).toBe(bytes);
   });
 
+  it("query --status=OPEN returns a deferral winner that has no status, printed as stored", async () => {
+    const r = repo();
+    const stored = JSON.stringify({
+      schema: 3,
+      ts: 1001,
+      kind: "deferral",
+      key: "701-old-deferral",
+      repo: "o/r",
+      bkit: { version: "6.0.0" },
+      by: { workflow: "build", step: "build-close-workflow" },
+      summary: "an old deferral written before status existed",
+      severity: "MEDIUM",
+    });
+    put(r, "docs/deferrals.jsonl", `${stored}\n`);
+    const res = await run(r, ["query", `--root=${r}`, "--ledger=deferrals", "--status=OPEN"]);
+    expect(res.code).toBe(0);
+    expect(res.json.rows.map((x: { key: string }) => x.key)).toEqual(["701-old-deferral"]);
+    expect(res.json.rows[0]).not.toHaveProperty("status");
+  });
+
   it("a negative --cursor offset is refused", async () => {
     const r = fixture();
     const page1 = await q(r, "--status=ACTIVE", "--limit=2");

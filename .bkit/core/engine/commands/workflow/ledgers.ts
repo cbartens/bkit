@@ -26,7 +26,7 @@ import {
   queryLedger,
   mintTs,
   resolveRepoSlug,
-  SEVERITY_KINDS,
+  defaultStatus,
   validate,
   withLineage,
   writerProblem,
@@ -1795,7 +1795,7 @@ export function appendLedgerRows(
       const row: Record<string, unknown> = {};
       for (const k of TOP_ORDER) if (filled[k] !== undefined) row[k] = filled[k];
       for (const [k, v] of Object.entries(filled)) if (!(k in row)) row[k] = v;
-      if (row["status"] === undefined && SEVERITY_KINDS.has(String(row["kind"])))
+      if (row["status"] === undefined && defaultStatus(String(row["kind"])) === "OPEN")
         row["status"] = "OPEN";
       const v = validate(row);
       if (!v.ok) throw reject(v.reason ?? "invalid", i + 1);

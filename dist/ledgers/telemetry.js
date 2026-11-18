@@ -131,6 +131,14 @@ export const VALID_SEVERITIES = new Set(["CRITICAL", "HIGH", "MEDIUM", "LOW"]);
  * sync with the payload interfaces below.
  */
 export const SEVERITY_KINDS = new Set(["friction", "deferral", "failure"]);
+/** The status a row of `kind` has when it gives none: OPEN, ACTIVE, or undefined. */
+export function defaultStatus(kind) {
+    if (SEVERITY_KINDS.has(kind))
+        return "OPEN";
+    if (kind === "decision" || kind === "knowledge")
+        return "ACTIVE";
+    return undefined;
+}
 export const TRIAGE_STATUSES = new Set(["OPEN", "TRIAGED", "CLOSED"]);
 /** The `ACTIVE` / `SUPERSEDED` lifecycle shared by `decision` and `knowledge`. */
 export const DECISION_STATUSES = new Set(["ACTIVE", "SUPERSEDED"]);
@@ -1277,8 +1285,6 @@ export function fold(events) {
     }
     return state;
 }
-/** Statuses of the keyed lifecycle kinds: a row with no `status` is ACTIVE. */
-const DEFAULT_ACTIVE_KINDS = new Set(["decision", "knowledge"]);
 /**
  * The canonical ledger read: parse every line (reporting each unreadable one with its line
  * number), fold with {@link fold}, and only then apply `filter` to the winners, so an older
@@ -1317,7 +1323,7 @@ export function queryLedger(raw, filter = {}) {
             return false;
         if (filter.status === undefined)
             return true;
-        const status = e.status ?? (DEFAULT_ACTIVE_KINDS.has(String(e.kind)) ? "ACTIVE" : undefined);
+        const status = e.status ?? defaultStatus(String(e.kind));
         return status === filter.status;
     });
     return { rows, diagnostics, lines, readRows: events.length };

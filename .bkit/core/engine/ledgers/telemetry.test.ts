@@ -37,6 +37,7 @@ import {
   parse,
   placeLineage,
   queryLedger,
+  defaultStatus,
   totalsProblem,
   validate,
   withLineage,
@@ -3107,6 +3108,43 @@ describe("queryLedger — canonical winners before filtering", () => {
     expect(queryLedger(raw, {}).rows.map((r) => r.key)).toEqual(
       queryLedger(raw, {}).rows.map((r) => r.key),
     );
+  });
+});
+
+describe("queryLedger — status default for rows with no status", () => {
+  it("a friction, deferral or failure winner with no status matches the OPEN filter", () => {
+    const row = (kind: string, key: string, extra: Row = {}) =>
+      JSON.stringify({ ...baseEnvelope(kind as TelemetryEvent["kind"]), key, ...extra });
+    const raw = [
+      row("friction", "f-old"),
+      row("deferral", "d-old"),
+      row("failure", "x-old"),
+      row("friction", "f-new", { status: "OPEN" }),
+      row("decision", "dec-old"),
+    ].join("\n");
+    const open = queryLedger(raw, { status: "OPEN" });
+    expect(open.rows.map((r) => r.key).sort()).toEqual(["d-old", "f-new", "f-old", "x-old"]);
+    // Stored as written: the read adds no status.
+    expect(open.rows.find((r) => r.key === "f-old")).not.toHaveProperty("status");
+    // A decision with no status still reads as ACTIVE, not OPEN.
+    expect(queryLedger(raw, { status: "ACTIVE" }).rows.map((r) => r.key)).toEqual(["dec-old"]);
+  });
+
+  it("a status-less winner whose newer row is CLOSED does not match OPEN", () => {
+    const row = (ts: number, extra: Row = {}) =>
+      JSON.stringify({ ...baseEnvelope("friction", { ts }), key: "f-closed", ...extra });
+    const raw = [row(1_700_000_000_000), row(1_700_000_001_000, { status: "CLOSED" })].join("\n");
+    expect(queryLedger(raw, { status: "OPEN" }).rows).toEqual([]);
+    expect(queryLedger(raw, { status: "CLOSED" }).rows.map((r) => r.key)).toEqual(["f-closed"]);
+  });
+
+  it("defaultStatus gives OPEN for severity kinds, ACTIVE for decision and knowledge, none otherwise", () => {
+    expect(defaultStatus("friction")).toBe("OPEN");
+    expect(defaultStatus("deferral")).toBe("OPEN");
+    expect(defaultStatus("failure")).toBe("OPEN");
+    expect(defaultStatus("decision")).toBe("ACTIVE");
+    expect(defaultStatus("knowledge")).toBe("ACTIVE");
+    expect(defaultStatus("feature")).toBeUndefined();
   });
 });
 

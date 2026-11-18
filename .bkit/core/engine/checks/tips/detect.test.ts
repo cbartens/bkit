@@ -9,6 +9,7 @@ import {
   hasLintStagedConfig,
   hasMcpServer,
   hasTestLinter,
+  hasUnsharedFriction,
   listMcpServers,
   readsBkitText,
   unlockedMcpServers,
@@ -252,5 +253,32 @@ describe("readsBkitText", () => {
   ])("leaves %s alone", (file, content) => {
     write(file, content);
     expect(readsBkitText(cwd)).toEqual([]);
+  });
+});
+
+describe("hasUnsharedFriction", () => {
+  const friction = (extra: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      schema: 3,
+      ts: 1_700_000_000_000,
+      kind: "friction",
+      repo: "acme/app",
+      bkit: { version: "4.1.4" },
+      by: { workflow: "build", step: "build-close-workflow" },
+      key: "f1",
+      ...extra,
+    });
+
+  it("hasUnsharedFriction counts a friction winner with no status", () => {
+    write(".bkit/friction.jsonl", `${friction()}\n`);
+    expect(hasUnsharedFriction(cwd)).toBe(true);
+  });
+
+  it("does not count a friction winner whose newer row is TRIAGED", () => {
+    write(
+      ".bkit/friction.jsonl",
+      `${friction()}\n${friction({ ts: 1_700_000_001_000, status: "TRIAGED" })}\n`,
+    );
+    expect(hasUnsharedFriction(cwd)).toBe(false);
   });
 });

@@ -3,7 +3,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { git } from "../../commands/lib.js";
-import { fold, parse } from "../../ledgers/telemetry.js";
+import { defaultStatus, fold, parse } from "../../ledgers/telemetry.js";
 import { BKIT_PACKAGE, cachedBkitOutdated } from "../../shared/bkit-latest.js";
 import { parseJson } from "../../shared/json.js";
 import { readDependencyNames, readPackageJson } from "../../shared/package-json.js";
@@ -249,7 +249,7 @@ export function hasUnsharedFriction(cwd) {
     return [...fold(parse(fs.readFileSync(p, "utf-8")).events).values()].some((row) => {
         const r = row;
         return (r["kind"] === "friction" &&
-            (r["status"] === undefined || r["status"] === "OPEN") &&
+            (r["status"] ?? defaultStatus("friction")) === "OPEN" &&
             r["scope"] !== "consumer");
     });
 }
