@@ -23,6 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
+_(refreshed 2026-11-18T10:31:42Z)_
 _(refreshed 2026-11-18T09:35:22Z)_
 _(refreshed 2026-11-18T07:34:51Z)_
 _(refreshed 2026-11-18T06:41:08Z)_
@@ -77,6 +78,7 @@ _(refreshed 2026-11-18T03:59:28Z)_
 | 901-challenge-merge-breaks | 901-challenge-merge-breaks | 1794380576794 |
 | 914-build-planned-test | 914-build-planned-test | 1794815291907 |
 | 918-ad-hoc-agent | 918-ad-hoc-agent | 1794476513474 |
+| 919-worktree-setup-tries | 919-worktree-setup-tries | 1794997902102 |
 | 992-ledger-commands-six | 992-ledger-commands-six | 1794952547396 |
 
 ### Debug

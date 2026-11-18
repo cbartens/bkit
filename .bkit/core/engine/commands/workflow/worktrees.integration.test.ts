@@ -1147,6 +1147,30 @@ describe("bkit worktrees setup — mint (resume)", () => {
   });
 });
 
+describe("bkit worktrees setup — a host-made worktree on feat/{fid}", () => {
+  it("plan from a host-made worktree on feat/{fid} adopts it without rebasing", async () => {
+    const f = fixture();
+    const host = path.join(path.dirname(f.repo), "host-wt");
+    git(f.repo, "worktree", "add", "-q", host, "-b", `feat/${FID}`);
+    const hostReal = fs.realpathSync(host);
+    const head = git(hostReal, "rev-parse", "HEAD");
+    advanceDev(f, "moved.txt", "moved\n");
+    git(f.repo, "fetch", "-q", "origin");
+
+    const r = await setup(hostReal, "plan", "--worktrees");
+    expect(r.err).not.toContain("already used by worktree");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      mode: "adopted",
+      worktreePath: hostReal,
+      rebaseConflict: false,
+    });
+    expect(r.json.logDir).toBe(path.join(hostReal, "docs/plans", MONTH, "logs", FID));
+    expect(git(hostReal, "rev-parse", "HEAD")).toBe(head);
+    expect(fs.existsSync(wtOf(f))).toBe(false);
+  });
+});
+
 describe("bkit worktrees setup — debug adopts, never mints", () => {
   it("adopts the session branch in place when there is no worktree and no feat/{fid}", async () => {
     const f = fixture();

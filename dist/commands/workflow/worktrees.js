@@ -986,7 +986,7 @@ export const worktreesCommand = {
                 [EXIT_FETCH]: "could not fetch from origin",
                 [EXIT_INSTALL]: "dependency install failed",
                 [EXIT_INSTALL_COULD_NOT_RUN]: "the package manager could not run (exit 126 / 127)",
-                [EXIT_REFUSED]: "refused: main as the working branch (dev too, except debug in place), ship of dev / main, detached HEAD, ship could not switch to its branch (a missing feat/{fid} is named), or a design / plan branch carrying unpushed dev commits (publish dev, then re-run)",
+                [EXIT_REFUSED]: "refused: main as the working branch (dev too, except debug in place), ship of dev / main, detached HEAD, ship could not switch to its branch (a missing feat/{fid} is named), design / plan / build in the main checkout already on feat/{fid} under --worktrees, or a design / plan branch carrying unpushed dev commits (publish dev, then re-run)",
                 [EXIT_WORKTREE_ADD]: "git worktree add failed",
                 [EXIT_REBASE_NOT_STARTED]: "resume rebase could not start, even after committing what an earlier run left (e.g. a commit hook refused that commit)",
                 [EXIT_NOT_A_WORKTREE]: ".worktrees/{fid} exists but is not a registered git worktree",
@@ -1047,14 +1047,21 @@ export const worktreesCommand = {
                     !runGit(root, ["show-ref", "--verify", "--quiet", `refs/remotes/origin/${target}`]).ok) {
                     throw new CommandError(EXIT_REFUSED, `${target} does not exist — debug adopts an existing branch`);
                 }
-                // Ship mints only when the session is not already on the branch it ships:
-                // that branch cannot be checked out in two places.
+                // Every workflow mints only when the session is not already on the target
+                // branch: that branch cannot be checked out in two places, so setup adopts
+                // the session's own checkout (a host may have made it).
                 if (f.worktrees === true && f.detect === true)
                     throw new CommandError(EXIT.USAGE, "give --worktrees or --detect, not both");
                 const worktrees = f.detect === true
                     ? detect(ctx.cwd, root, ctx.log).runtimeWorktrees
                     : f.worktrees === true;
-                const mint = worktrees && !(workflow === "ship" && session === target);
+                const mint = worktrees && session !== target;
+                if (worktrees &&
+                    session === target &&
+                    (workflow === "plan" || workflow === "design" || workflow === "build") &&
+                    real(git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? root) === real(root)) {
+                    throw new CommandError(EXIT_REFUSED, `refusing to run ${workflow} in place in the main checkout on ${target}: its abort and pause handover commits every uncommitted file there. Switch the main checkout off ${target}, or run from the feature's worktree.`);
+                }
                 const wtDir = worktreeDir(root, fid);
                 let mode = "adopted";
                 if (mint) {
@@ -1085,15 +1092,22 @@ export const worktreesCommand = {
                             mode = "created";
                     }
                 }
-                const wt = mode === "adopted" ? root : wtDir;
+                // Adopted on the target branch: the session's own checkout, which is a linked
+                // worktree when a host made one; otherwise the main checkout.
+                const adoptRoot = mode === "adopted" && session === target
+                    ? (git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? root)
+                    : root;
+                const wt = mode === "adopted" ? adoptRoot : wtDir;
                 const logDir = logDirOf(wt, month, fid);
                 const marker = ownershipMarker(root, fid);
                 if (mode === "adopted") {
-                    if (workflow === "debug" && named && git(root, ["branch", "--show-current"]) !== target) {
+                    if (workflow === "debug" &&
+                        named &&
+                        git(adoptRoot, ["branch", "--show-current"]) !== target) {
                         throw new CommandError(EXIT_REFUSED, `adopt mode: checkout does not hold requested ${target}; use its existing checkout or enable worktrees`);
                     }
-                    if (workflow === "ship" && git(root, ["branch", "--show-current"]) !== target) {
-                        const sw = runGit(root, hasLocal(root, target)
+                    if (workflow === "ship" && git(adoptRoot, ["branch", "--show-current"]) !== target) {
+                        const sw = runGit(adoptRoot, hasLocal(root, target)
                             ? ["switch", target]
                             : ["switch", "--no-track", "-c", target, `refs/remotes/origin/${target}`]);
                         if (!sw.ok) {
@@ -1103,7 +1117,7 @@ export const worktreesCommand = {
                             throw new CommandError(EXIT_REFUSED, `adopt mode: cannot switch to ${target} — commit or stash local changes, then re-run (${sw.stderr})`);
                         }
                     }
-                    const here = git(root, ["branch", "--show-current"]) ?? "";
+                    const here = git(adoptRoot, ["branch", "--show-current"]) ?? "";
                     // Debug may work in place on dev (its shared-checkout path); nothing works in place on main.
                     if (here === "" || here === MAIN || (here === DEV && workflow !== "debug")) {
                         throw new CommandError(EXIT_REFUSED, here === ""
@@ -1113,7 +1127,7 @@ export const worktreesCommand = {
                 }
                 // An in-place run on a shared branch records what was dirty before it, so its
                 // commits and push take only its own work.
-                const shared = mode === "adopted" && isSharedBranch(git(root, ["branch", "--show-current"]) ?? "")
+                const shared = mode === "adopted" && isSharedBranch(git(adoptRoot, ["branch", "--show-current"]) ?? "")
                     ? openSharedRecord(root, fid, workflow, logDir)
                     : undefined;
                 let rebaseConflict = false;

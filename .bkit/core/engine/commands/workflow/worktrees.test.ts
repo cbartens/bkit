@@ -181,6 +181,86 @@ describe("bkit worktrees setup — adopt in place", () => {
   });
 });
 
+/** A worktree a host made outside `.worktrees/`, already on `feat/{fid}`. */
+function hostWorktree(cwd: string, fid = FID) {
+  const dir = path.join(
+    fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-wt-host-"))),
+    fid,
+  );
+  dirs.push(path.dirname(dir));
+  git(cwd, "worktree", "add", "-q", dir, "-b", `feat/${fid}`);
+  return fs.realpathSync(dir);
+}
+
+const worktreeCount = (cwd: string) =>
+  git(cwd, "worktree", "list", "--porcelain")
+    .split("\n")
+    .filter((l) => l.startsWith("worktree ")).length;
+
+describe("bkit worktrees setup — adopt the checkout the session is already on", () => {
+  it("adopts the linked worktree already on feat/{fid} for design, plan, build and debug", async () => {
+    for (const workflow of ["design", "plan", "build", "debug"]) {
+      const cwd = repo("dev");
+      const wt = hostWorktree(cwd);
+      const r = await setup(wt, workflow, "--worktrees");
+      expect(r.err, workflow).not.toContain("already used by worktree");
+      expect(r.code, workflow).toBe(0);
+      expect(r.json, workflow).toMatchObject({
+        mode: "adopted",
+        branch: `feat/${FID}`,
+        worktreePath: wt,
+      });
+      expect(worktreeCount(cwd), workflow).toBe(2);
+      expect(fs.existsSync(path.join(cwd, ".worktrees", FID)), workflow).toBe(false);
+    }
+  });
+
+  it("ship run from a linked worktree on its target branch adopts that worktree", async () => {
+    const cwd = repo("dev");
+    const wt = hostWorktree(cwd);
+    const r = await setup(wt, "ship", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ mode: "adopted", branch: `feat/${FID}`, worktreePath: wt });
+    expect(git(cwd, "branch", "--show-current")).toBe("dev");
+    expect(worktreeCount(cwd)).toBe(2);
+  });
+
+  it("the adopted linked worktree holds the log directory", async () => {
+    const cwd = repo("dev");
+    const wt = hostWorktree(cwd);
+    const r = await setup(wt, "plan", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json.logDir).toBe(path.join(wt, "docs/plans", MONTH, "logs", FID));
+    expect(fs.existsSync(r.json.logDir)).toBe(true);
+    expect(fs.existsSync(path.join(cwd, "docs"))).toBe(false);
+  });
+
+  it("refuses design, plan and build in place in the main checkout on feat/{fid} under --worktrees", async () => {
+    for (const workflow of ["design", "plan", "build"]) {
+      const cwd = repo(`feat/${FID}`);
+      const r = await setup(cwd, workflow, "--worktrees");
+      expect(r.code, workflow).toBe(7);
+      expect(r.err, workflow).toContain("main checkout");
+      expect(fs.existsSync(path.join(cwd, "docs/plans", MONTH, "logs", FID)), workflow).toBe(false);
+    }
+  });
+
+  it("a plan session on another branch still mints .worktrees/{fid}", async () => {
+    const cwd = repo("dev");
+    const origin = path.join(path.dirname(cwd), `${path.basename(cwd)}-origin.git`);
+    dirs.push(origin);
+    git(path.dirname(cwd), "init", "-q", "--bare", "-b", "dev", origin);
+    git(cwd, "remote", "add", "origin", origin);
+    git(cwd, "push", "-q", "origin", "dev");
+    git(cwd, "switch", "-q", "-c", "claude/session");
+    const r = await setup(cwd, "plan", "--worktrees");
+    expect(r.err).not.toContain("already used by worktree");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ mode: "created", worktreePath: worktreeDir(cwd, FID) });
+    expect(fs.existsSync(worktreeDir(cwd, FID))).toBe(true);
+  });
+});
+
 describe("bkit worktrees setup — debug", () => {
   it("adopts a requested debug branch without mutating conflicting worktrees", async () => {
     const cwd = repo("dev");
