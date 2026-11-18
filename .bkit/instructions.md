@@ -2367,6 +2367,22 @@ Rules below `bkit:end` in `.agents/rules.md`: bkit's own, never shipped; no ship
 **Shared instructions:** Editing sentences in `.bkit/core/workflows/*.md`, `.bkit/core/prompts/*.md`, the `bkit:start` / `bkit:end` block of `.agents/rules.md`, or a `bkit-audit-*` template → ALWAYS run `pnpm instructions:show --file {basename}` (or `grep` `.bkit/instructions.md`) first.
 ```
 
+### shared-wording-sync
+
+- rule: Project Rules › Universal Rules › Repo Authoring
+
+```text
+**Shared wording sync:** After a clause edit in `.bkit/instructions.md` § Clauses, run `pnpm exec tsx .bkit/core/engine/tools/instructions.ts` first; it reports what would change and writes nothing. Run `pnpm instructions:sync` only when the report shows the change you expect. After editing a bkit rule, run the same check and sync. Checked by `.bkit/core/engine/tools/instructions.test.ts`.
+```
+
+### save-checklist
+
+- rule: Project Rules › Universal Rules › Repo Authoring
+
+```text
+**Save checklist:** After changing a rule, a clause or `.bkit/authoring.md`, run `pnpm exec tsx .bkit/core/engine/tools/instructions.ts` and read what it reports. Run the tests named in the `Checked by:` lines of the rules you touched.
+```
+
 ### contract-changes
 
 - rule: Project Rules › Universal Rules › Repo Authoring

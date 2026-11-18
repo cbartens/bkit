@@ -178,9 +178,6 @@ This section applies to `.bkit/core/prompts/*.md`, `.bkit/core/workflows/*.md`, 
 - **Shared wording:** Change a sentence that two or more shipped files carry word for word only in its one home, `.bkit/instructions.md` § Clauses.
   - Why: The sync tool writes the clause into every file that carries it, so the copies cannot drift.
   - A shared line with per-file detail is a `{{slot}}` template in that section. The slot matches each file's own detail, so the sync tool leaves that detail in place.
-  - After the edit, run `pnpm exec tsx .bkit/core/engine/tools/instructions.ts` first. It reports what would change and writes nothing.
-  - Run `pnpm instructions:sync`, which writes the change into every file, only when that report shows the change you expect.
-  - Checked by: `.bkit/core/engine/tools/instructions.test.ts`.
 
 - **Current state:** Describe how things work now, and leave out history: what an older version did, why it changed, or which incident caused it.
   - Why: An agent acts on what it reads, so a sentence about old behaviour gets followed as if it were current. Decisions go in `docs/decisions.jsonl`, and incidents in `docs/knowledge.jsonl`.
@@ -287,7 +284,7 @@ Every prompt and workflow has the same parts, in this order:
   - When the closest case breaks a rule in this file, follow the rule, not the case.
 
 - **Header blocks:** After `**Role:**` and `**Scope:**`, every prompt and workflow has three blocks, in this order: `**Protocol:**`, `**Contract:**`, `**Rules:**`, each opening with its fixed lead-in line from `.bkit/instructions.md` and then one bullet per line.
-  - Why: Fixed blocks let an agent find what a file asks of it at a glance, and let `pnpm instructions:sync` maintain the shared lines.
+  - Why: Fixed blocks let an agent find what a file asks of it at a glance, and let the sync tool maintain the shared lines.
   - Protocol holds a line only if it would read the same in a file with a different job. Prompts order it `**Rules file:**`, `**Order:**`, `**No improv:**`. Workflows add `**Narrate:**`, ``**`Failures`:**``, `**Placeholders:**`, `**Commands:**`, `**Timeouts:**` and `**CI wait turn-loop:**`.
   - Contract is the deal between the agent and whoever runs it: the orchestrator for a prompt, and for a workflow the person who started it plus the bkit engine. It opens with `**Read / Update / Create:**`, `**Mandate:**` and `**No commits:**`, then holds every line specific to this agent's job. A workflow's tracker groups sit inside it.
   - Rules holds bkit rules from `.agents/rules.md`, word for word and in `rules.md` order, and nothing else.
@@ -295,7 +292,6 @@ Every prompt and workflow has the same parts, in this order:
     - **If** it says what a bkit rule says, in any words → it is that rule. Carry the rule word for word in Rules, and delete the paraphrase.
     - **If** it is about this agent's job → Contract.
     - **Else** → Protocol.
-  - Checked by: `.bkit/core/engine/tools/instructions.test.ts` checks block order, the shared lines and `**Rules file:**`. `.bkit/core/engine/tools/instructions.ts` fails a Protocol or Contract bullet that copies a bkit rule's text.
 
 - **Placeholders say who fills them:** Mark every value filled in later with the marker for whoever fills it.
   - Why: Different readers fill different markers at different times. A marker that names the wrong one leaves a literal placeholder in a command or a commit message. In a workflow, a flag still holding a literal `{PLACEHOLDER}` exits 2.
@@ -321,9 +317,8 @@ Every prompt and workflow has the same parts, in this order:
 
 - **Cross-file alignment:** When you change an instruction, change every prompt and workflow that carries it in the same edit.
   - Why: Two files that disagree make the pipeline contradict itself: one agent writes what the next one rejects.
-  - A bkit rule: edit `.agents/rules.md`. The rule's `- carry:` line in `.bkit/instructions.md` names the prompts that copy it into their `**Rules:**` block. Then run the check and the sync that § All Agent-Read Files, **Shared wording** names.
+  - A bkit rule: edit `.agents/rules.md`. The rule's `- carry:` line in `.bkit/instructions.md` names the prompts that copy it into their `**Rules:**` block.
   - A shared sentence: follow **Shared wording**.
-  - Checked by: `.bkit/core/engine/tools/instructions.test.ts`.
 
 - **Long inputs before instructions:** When a prompt embeds a long input (a diff, a log, a document), put it above the instructions that act on it, with the question last.
   - Why: Answers improve when the long context comes first and the question last.
@@ -718,8 +713,6 @@ This section applies to `.bkit/core/workflows/*.md`. § Prompts and Workflows ap
 ## Before You Save
 
 - Re-read every added or edited passage once for token efficiency, cutting filler, repetition and wording with a shorter equivalent. Keep the original wording wherever shortening would lose meaning, clarity or compliance with the applicable rules.
-- Run `pnpm exec tsx .bkit/core/engine/tools/instructions.ts` after you change a rule, a clause or this file, and read what it reports. It writes nothing (§ All Agent-Read Files, **Shared wording**).
-- Run the tests named in the `Checked by:` lines of the rules you touched.
 - Read the change once as a tier-1 model would: check each capital word against the test in § All Agent-Read Files, **Capitals only for invariants**, and check that the done condition and the early stops are named.
 - Read it once more as a tier-2 model would: for each step, check that the order, the inputs and the output are all stated.
 

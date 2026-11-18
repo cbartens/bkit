@@ -508,3 +508,19 @@ describe("starter section citations", () => {
     expect(unresolvedCitations()).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The shipped authoring doc names no bkit-repo-only command
+// ---------------------------------------------------------------------------
+
+/** Commands and files that exist only in the bkit repo, never in a consumer repo. */
+const BKIT_ONLY_COMMANDS =
+  /instructions\.ts|instructions:sync|instructions:show|instructions\.test\.ts/;
+
+describe("shipped authoring doc", () => {
+  it("the shipped authoring.md names no command that exists only in the bkit repo", () => {
+    const rel = ".bkit/core/.bkit/authoring.md";
+    expect(fs.existsSync(path.join(REPO_ROOT, rel))).toBe(true);
+    expect(allLines(rel, BKIT_ONLY_COMMANDS)).toEqual([]);
+  });
+});

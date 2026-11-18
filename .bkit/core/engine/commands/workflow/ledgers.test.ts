@@ -1422,6 +1422,59 @@ describe("bkit ledgers append", () => {
       expect(row).not.toHaveProperty("updates");
     }
   });
+
+  it("append writes status OPEN on a friction row given none", async () => {
+    const r = repo();
+    const friction = {
+      kind: "friction",
+      by: { workflow: "ship", step: "ship-close-gate" },
+      key: "f-open",
+      summary: "s",
+      severity: "LOW",
+    };
+    expect((await append(r, "friction", [friction])).code).toBe(0);
+    expect(lines(r, ".bkit/friction.jsonl")[0]).toMatchObject({ status: "OPEN" });
+  });
+
+  it("append writes status OPEN on a deferral row given none", async () => {
+    const r = repo();
+    const deferral = {
+      kind: "deferral",
+      key: "701-deferred-guard",
+      by: { workflow: "build", step: "build-close-workflow" },
+      references: ["701", "src/a.ts"],
+      type: "issue",
+      category: "correctness",
+      severity: "MEDIUM",
+      reason: "scope-declared",
+      summary: "guard a call",
+      description: "the call is unguarded",
+      remediation: "Add the check in src/a.ts beside the guard, then a test in src/a.test.ts.",
+    };
+    const res = await append(r, "deferrals", [deferral]);
+    expect(res.code).toBe(0);
+    expect(lines(r, "docs/deferrals.jsonl")[0]).toMatchObject({ status: "OPEN" });
+  });
+
+  it("append writes status OPEN on a failure row given none", async () => {
+    const r = repo();
+    const { status: _status, ...noStatus } = failure();
+    expect((await append(r, "failures", [noStatus])).code).toBe(0);
+    expect(lines(r, "docs/failures.jsonl")[0]).toMatchObject({ status: "OPEN" });
+  });
+
+  it("append keeps a given status next to a defaulted one", async () => {
+    const r = repo();
+    const { status: _status, ...noStatus } = failure({ key: "no-status" });
+    const res = await append(r, "failures", [
+      failure({ key: "given", status: "TRIAGED" }),
+      noStatus,
+    ]);
+    expect(res.code).toBe(0);
+    const [given, defaulted] = lines(r, "docs/failures.jsonl");
+    expect(given).toMatchObject({ key: "given", status: "TRIAGED" });
+    expect(defaulted).toMatchObject({ key: "no-status", status: "OPEN" });
+  });
 });
 
 describe("bkit ledgers compact", () => {
