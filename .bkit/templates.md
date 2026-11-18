@@ -990,6 +990,9 @@ cp .bkit/templates/scripts/cleanup/bkit-disk-prune.machine.mjs ~/.config/bkit/di
   - Branches stay.
   - It keeps a locked worktree, or one committed to in 2 days, and notes the rest.
 - Adapt: keep a step only when what it deletes comes back by itself. These are left out on purpose: named Docker volumes (local databases), runtimes and SDKs, and the whole pnpm store (`node_modules` hard-link into it).
+- macOS clutter the steps leave out (caches, logs and temporary files outside build tools, leftovers of uninstalled apps): run Mole (`brew install mole`) by hand, `mo clean --dry-run` first, then `mo clean`.
+  - Keep `mo clean` out of the step files: Mole's own whitelist, not the step, decides what it deletes, and deleted logs do not come back.
+  - Keep `mo purge` out as well: it deletes build output in every project folder it scans, including checkouts in use.
 - Wiring: it is the last block of each Husky template.
   - `pre-commit` → `--mode=min --auto`.
   - `pre-push` → `--mode=max --auto`, after every gate (workflow pushes too).
