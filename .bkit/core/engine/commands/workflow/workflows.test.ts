@@ -1774,6 +1774,43 @@ const startedThenFailed = (workflow: string, start: number) =>
     { type: "workflow-failed", workflow, at: new Date(start + 500).toISOString() },
   ]);
 
+/** A gh on PATH that records its calls and answers one open PR on `head`, merging on request. */
+function ghStub(head: string, base: "dev" | "none" = "dev") {
+  const bin = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-workflows-gh-")));
+  dirs.push(bin);
+  const baseField = base === "dev" ? ',"baseRefName":"dev"' : "";
+  fs.writeFileSync(
+    path.join(bin, "gh"),
+    [
+      "#!/bin/sh",
+      `echo "$*" >> "${bin}/calls"`,
+      'case "$1 $2" in',
+      '  "pr create") exit 0 ;;',
+      `  "pr list") echo '[{"number":9,"url":"https://github.com/o/r/pull/9","state":"OPEN"${baseField},"headRefName":"${head}"}]' ;;`,
+      `  "pr view") if [ -f "${bin}/merged" ]; then echo '{"number":9,"state":"MERGED","baseRefName":"dev","mergeCommit":{"oid":"abc"}}'; else echo '{"number":9,"state":"OPEN"${baseField}}'; fi ;;`,
+      `  "pr merge") : > "${bin}/merged"; exit 0 ;;`,
+      "esac",
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  const calls = () =>
+    fs.existsSync(path.join(bin, "calls"))
+      ? fs.readFileSync(path.join(bin, "calls"), "utf-8").trim().split("\n")
+      : [];
+  return { bin, calls };
+}
+
+async function withGhOnPath<T>(bin: string, fn: () => Promise<T>): Promise<T> {
+  const saved = process.env.PATH;
+  process.env.PATH = `${bin}${path.delimiter}${saved ?? ""}`;
+  try {
+    return await fn();
+  } finally {
+    process.env.PATH = saved;
+  }
+}
+
 describe("bkit workflows handover", () => {
   function withRemote() {
     const cwd = repo();
@@ -1936,7 +1973,7 @@ describe("bkit workflows handover", () => {
     expect(r.json.handover).toBe(`${REL}/ship-handover.md`);
   });
 
-  it("--flush refused by dev keeps the record in the book and exits 10", async () => {
+  it("--flush refused by dev with the PR path failing keeps the record and exits 10", async () => {
     const { remote, wt } = withDevRemote();
     const hook = path.join(remote, "hooks", "pre-receive");
     fs.writeFileSync(hook, "#!/bin/sh\necho protected >&2\nexit 1\n", { mode: 0o755 });
@@ -1948,6 +1985,62 @@ describe("bkit workflows handover", () => {
     expect(r.err).toContain(`ship FAILED record kept in ${wt}`);
     expect(git(remote, "rev-parse", "dev")).toBe(before);
     expect(fs.existsSync(path.join(wt, REL, "status.jsonl"))).toBe(true);
+    expect(r.err).toContain("dev refused the push");
+    expect(r.err).toMatch(/branch push failed/);
+  });
+
+  /** A remote whose hook refuses only dev, so a ship-failed branch push goes through. */
+  function devOnlyRefused() {
+    const s = withDevRemote();
+    fs.writeFileSync(
+      path.join(s.remote, "hooks", "pre-receive"),
+      '#!/bin/sh\nwhile read o n ref; do [ "$ref" = refs/heads/dev ] && { echo "dev is protected" >&2; exit 1; }; done\nexit 0\n',
+      { mode: 0o755 },
+    );
+    write(s.wt, `${REL}/status.jsonl`, jsonl([{ type: "workflow-failed", workflow: "ship" }]));
+    return s;
+  }
+
+  it("--flush refused by dev publishes the FAILED record through a PR", async () => {
+    const { remote, wt } = devOnlyRefused();
+    const before = git(remote, "rev-parse", "dev");
+    const gh = ghStub(`ship-failed/${FID}`);
+    const r = await withGhOnPath(gh.bin, () =>
+      run(wt, wf("handover", "ship", `--month=${M}`, "--flush")),
+    );
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ pushed: true, ref: `ship-failed/${FID}` });
+    expect(git(remote, "rev-parse", "dev")).toBe(before);
+    expect(git(remote, "log", "-1", "--format=%s", `ship-failed/${FID}`)).toBe(
+      "chore(12-export-csv): ship FAILED bkit [skip ci]",
+    );
+    expect(git(remote, "show", `ship-failed/${FID}:${REL}/status.jsonl`)).toContain(
+      "workflow-failed",
+    );
+    expect(gh.calls().some((c) => c.startsWith("pr merge"))).toBe(true);
+  });
+
+  it("--flush refused by dev links the handover comment at dev once the PR merged", async () => {
+    const { wt } = devOnlyRefused();
+    write(wt, `${REL}/ship-handover.md`, "# Handover\n");
+    const gh = ghStub(`ship-failed/${FID}`);
+    const r = await withGhOnPath(gh.bin, () =>
+      run(wt, wf("handover", "ship", `--month=${M}`, "--flush", "--owner-repo=o/r")),
+    );
+    expect(r.json).toMatchObject({ pushed: true, ref: `ship-failed/${FID}` });
+    expect(r.json.comment).toContain("/blob/dev/");
+    expect(r.json.comment).not.toContain("/blob/ship-failed/");
+  });
+
+  it("closePr titles the PR by the record it carries", async () => {
+    const { wt } = devOnlyRefused();
+    const gh = ghStub(`ship-failed/${FID}`);
+    await withGhOnPath(gh.bin, () => run(wt, wf("handover", "ship", `--month=${M}`, "--flush")));
+    const create = gh.calls().filter((c) => c.startsWith("pr create"));
+    expect(create).toHaveLength(1);
+    expect(create[0]).toContain("--title chore(12-export-csv): ship FAILED");
+    expect(create[0]).toContain(`--head ship-failed/${FID}`);
+    expect(create[0]).not.toContain("ship DONE");
   });
 
   describe("route and message: every exit the handover reaches ends the run as a stop", () => {
@@ -2526,39 +2619,9 @@ describe("bkit workflows close --flush (ship)", () => {
         '#!/bin/sh\nwhile read o n ref; do [ "$ref" = refs/heads/dev ] && { echo "dev is protected" >&2; exit 1; }; done\nexit 0\n',
         { mode: 0o755 },
       );
-      const bin = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-workflows-gh-")));
-      dirs.push(bin);
-      const baseField = base === "dev" ? ',"baseRefName":"dev"' : "";
-      fs.writeFileSync(
-        path.join(bin, "gh"),
-        [
-          "#!/bin/sh",
-          `echo "$*" >> "${bin}/calls"`,
-          'case "$1 $2" in',
-          '  "pr create") exit 0 ;;',
-          `  "pr list") echo '[{"number":9,"url":"https://github.com/o/r/pull/9","state":"OPEN"${baseField},"headRefName":"ship-close/${FID}"}]' ;;`,
-          `  "pr view") if [ -f "${bin}/merged" ]; then echo '{"number":9,"state":"MERGED","baseRefName":"dev","mergeCommit":{"oid":"abc"}}'; else echo '{"number":9,"state":"OPEN"${baseField}}'; fi ;;`,
-          `  "pr merge") : > "${bin}/merged"; exit 0 ;;`,
-          "esac",
-          "",
-        ].join("\n"),
-        { mode: 0o755 },
-      );
-      const calls = () =>
-        fs.existsSync(path.join(bin, "calls"))
-          ? fs.readFileSync(path.join(bin, "calls"), "utf-8").trim().split("\n")
-          : [];
-      return { ...s, bin, calls };
+      return { ...s, ...ghStub(`ship-close/${FID}`, base) };
     }
-    const withGh = async <T>(bin: string, fn: () => Promise<T>) => {
-      const saved = process.env.PATH;
-      process.env.PATH = `${bin}${path.delimiter}${saved ?? ""}`;
-      try {
-        return await fn();
-      } finally {
-        process.env.PATH = saved;
-      }
-    };
+    const withGh = withGhOnPath;
 
     it("closePr with base dev still merges", async () => {
       const { wt, close, bin, calls } = refusedDev("dev");
@@ -2566,6 +2629,9 @@ describe("bkit workflows close --flush (ship)", () => {
       expect(r.code).toBe(0);
       expect(r.json.landed).toEqual({ ref: `ship-close/${FID}`, via: "close-pr" });
       expect(calls().some((c) => c.startsWith("pr merge"))).toBe(true);
+      expect(calls().find((c) => c.startsWith("pr create"))).toContain(
+        `--title docs(${FID}): ship DONE`,
+      );
     });
 
     it("closePr refuses when the PR base is unknown", async () => {

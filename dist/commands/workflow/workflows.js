@@ -550,10 +550,23 @@ async function landFailedRecord(ctx, o) {
     const startMs = starts.length > 0 ? Math.max(...starts) : NaN;
     let carried;
     let res;
+    let pr = null;
+    let refusal = "";
     try {
         res = await pushToDev({
             root,
             dir: landDir(root, o.fid),
+            refused: o.viaPr
+                ? async (dir, stderr) => {
+                    refusal = stderr;
+                    ctx.log(`dev refused the ${o.workflow} FAILED push — publishing it through a PR: ${stderr}`);
+                    pr = closePr(ctx, dir, {
+                        title: `chore(${o.fid}): ${o.workflow} FAILED`,
+                        branch: `ship-failed/${o.fid}`,
+                        subject: `chore(${o.fid}): ${o.workflow} FAILED bkit [skip ci]`,
+                    });
+                }
+                : undefined,
             build: (dir) => {
                 if (o.shared)
                     carried = carryOwnBook(book, dir, {
@@ -594,8 +607,20 @@ async function landFailedRecord(ctx, o) {
     switch (res.kind) {
         case "landed":
             return { code: EXIT.OK, pushed: true, ref: DEV, skipped: null, sha: res.sha, carried };
-        case "refused":
-            return stop(EXIT_PUSH_FAILED, `dev refused the push: ${res.stderr}`);
+        case "refused": {
+            const landedPr = pr;
+            if (landedPr === null)
+                return stop(EXIT_PUSH_FAILED, `dev refused the push: ${res.stderr}`);
+            if ("failed" in landedPr)
+                return stop(EXIT_PUSH_FAILED, `dev refused the push: ${refusal || res.stderr}; the PR path failed too: ${landedPr.failed}`);
+            return {
+                code: EXIT.OK,
+                pushed: true,
+                ref: landedPr.ref,
+                linkRef: landedPr.via === "close-pr" ? DEV : landedPr.ref,
+                skipped: null,
+            };
+        }
         case "push-failed":
             return stop(EXIT_PUSH_FAILED, `dev push failed without a server answer: ${res.stderr}`);
         case "exhausted":
@@ -635,6 +660,7 @@ async function handoverVerb(ctx) {
     const present = fs.existsSync(abs) && fs.statSync(abs).size > 0;
     let code = EXIT.OK;
     let ref = str(ctx.flags.ref) ?? null;
+    let linkRef = null;
     let pushed = false;
     let skipped = null;
     const tree = worktree === undefined ? (git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? base) : base;
@@ -659,7 +685,14 @@ async function handoverVerb(ctx) {
         writeParkedCommits(tree, workflow, rec);
     }
     if (push && shared) {
-        const r = await landFailedRecord(ctx, { workflow, fid, month, book: tree, shared });
+        const r = await landFailedRecord(ctx, {
+            workflow,
+            fid,
+            month,
+            book: tree,
+            shared,
+            viaPr: false,
+        });
         if (r.sha !== undefined && r.carried !== undefined)
             handed = { sha: r.sha, carried: r.carried };
         code = r.code;
@@ -688,12 +721,20 @@ async function handoverVerb(ctx) {
                     : EXIT_PUSH_FAILED;
     }
     else if (flush) {
-        const r = await landFailedRecord(ctx, { workflow, fid, month, book: tree, shared });
+        const r = await landFailedRecord(ctx, {
+            workflow,
+            fid,
+            month,
+            book: tree,
+            shared,
+            viaPr: true,
+        });
         if (r.sha !== undefined && r.carried !== undefined)
             handed = { sha: r.sha, carried: r.carried };
         code = r.code;
         pushed = r.pushed;
         ref = r.ref;
+        linkRef = r.linkRef ?? r.ref;
         skipped = r.skipped;
     }
     const linkable = ref !== null && (pushed || (!push && !flush));
@@ -701,7 +742,7 @@ async function handoverVerb(ctx) {
         ? buildComment(base, {
             kind: "handover",
             ownerRepo: linkable ? (str(ctx.flags.ownerRepo) ?? resolveRepoSlug(base)) : undefined,
-            ref: linkable ? ref : undefined,
+            ref: linkable ? (linkRef ?? ref) : undefined,
             artifacts: linkable ? [artifact] : [],
             bodyFile: artifact,
         })
@@ -1114,14 +1155,14 @@ export function closeWorkflow(cwd, o, log) {
     };
 }
 /**
- * Publish a close commit dev refused through its own `ship-close/{fid}` PR,
+ * Publish a commit dev refused through its own `branch` PR titled `title`,
  * merged with an empty body. Returns where it landed, or why it did not.
  */
-function closePr(ctx, dir, fid, subject) {
-    const branch = `ship-close/${fid}`;
+function closePr(ctx, dir, o) {
+    const { branch, title, subject } = o;
     const head = headSha(dir);
     if (!runGit(dir, ["push", "origin", `HEAD:refs/heads/${branch}`]).ok)
-        return { failed: `close branch push failed` };
+        return { failed: `close branch push failed for ${branch}` };
     const created = runGh(dir, [
         "pr",
         "create",
@@ -1130,7 +1171,7 @@ function closePr(ctx, dir, fid, subject) {
         "--head",
         branch,
         "--title",
-        `docs(${fid}): ship DONE`,
+        title,
         "--body",
         "",
     ]);
@@ -1142,7 +1183,7 @@ function closePr(ctx, dir, fid, subject) {
         return { failed: `close PR not found for ${branch}` };
     const merged = mergePr(dir, { number: String(number), subject, matchHead: head, deleteBranch: true }, ctx.log);
     if (!merged.out.merged)
-        ctx.log(`close PR #${number} opened but not merged — merge it by hand`);
+        ctx.log(`close PR #${number} (${branch}) opened but not merged — merge it by hand`);
     return { ref: branch, via: merged.out.merged ? "close-pr" : "close-pr-open" };
 }
 /**
@@ -1182,7 +1223,11 @@ async function shipClose(ctx, o, token) {
             },
             refused: async (dir, stderr) => {
                 ctx.log(`dev refused the close push — publishing it through a PR: ${stderr}`);
-                viaPr = closePr(ctx, dir, o.fid, subject);
+                viaPr = closePr(ctx, dir, {
+                    title: `docs(${o.fid}): ship DONE`,
+                    branch: `ship-close/${o.fid}`,
+                    subject,
+                });
             },
             log: ctx.log,
         });

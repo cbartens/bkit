@@ -139,6 +139,8 @@ The design and plan Close Workflow lands docs on `dev` in one of two ways. Every
 - **Branch protection on `dev` permits the autonomous merge**, because no human review is required. The PR-path merge does not wait for checks: its merge subject carries `bkit [skip ci]`, so a docs-only close dispatches no run to wait for. A rule requiring status checks to pass will block it.
 - **"Automatically delete head branches" is enabled** (repo Settings → General). The PR-path close deliberately does not pass `--delete-branch`, because `gh` would also delete the local branch. That fails when the branch is checked out in a worktree, and returns non-zero after a successful merge. Head-branch cleanup relies on the repo setting instead.
 
+A refused ship FAILED flush (`bkit workflows handover --flush`) opens and merges a `ship-failed/{FID}` PR under the same two prerequisites.
+
 Confirm both before running phase closes from a cloud agent session.
 
 ## Run-level decision matrix
