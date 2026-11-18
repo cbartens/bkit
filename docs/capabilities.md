@@ -133,7 +133,7 @@ flowchart LR
     n_bkit_core_engine_shared["shared<br/>157 symbols · 13 files<br/>1 open finding"]
   end
   nscripts_harvest["scripts/harvest<br/>199 symbols · 2 files"]
-  n_bkit_core_engine_commands -->|474| n_bkit_core_engine_ledgers
+  n_bkit_core_engine_commands -->|475| n_bkit_core_engine_ledgers
   n_bkit_core_engine_commands -->|431| n_bkit_core_engine_shared
   n_bkit_core_engine_commands -->|219| n_bkit_core_engine_install
   n_bkit_core_engine_install -->|187| n_bkit_core_engine_shared
@@ -360,9 +360,9 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_counters -->|26| n_bkit_core_engine_commands_workflow_status
   n_bkit_core_engine_commands_workflow_workflows -->|26| n_bkit_core_engine_commands_workflow_ledgers
   n_bkit_core_engine_commands_workflow_context -->|25| n_bkit_core_engine_commands_lib
+  n_bkit_core_engine_commands_workflow_ledgers -->|25| n_bkit_core_engine_ledgers_telemetry
   n_bkit_core_engine_commands_workflow_steps -->|25| n_bkit_core_engine_commands_workflow_status
   n_bkit_core_engine_commands_workflow_counters -->|24| n_bkit_core_engine_ledgers_status
-  n_bkit_core_engine_commands_workflow_ledgers -->|24| n_bkit_core_engine_ledgers_telemetry
   n_bkit_core_engine_commands_workflow_workflows -->|24| n_bkit_core_engine_commands_workflow_locks
   n_bkit_core_engine_commands_workflow_worktrees -->|24| n_bkit_core_engine_commands_workflow_ledgers
   n_bkit_core_engine_commands_workflow_branches -->|23| n_bkit_core_engine_commands_workflow_worktrees
@@ -390,7 +390,6 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_branches -->|16| n_bkit_core_engine_commands_workflow_ledgers
   n_bkit_core_engine_commands_workflow_roadmap -->|16| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_runs -->|16| n_bkit_core_engine_commands_workflow_prs
-  n_bkit_core_engine_install_modules_claude -->|16| n_bkit_core_engine_install_write
   n_bkit_core_engine_install_modules_core -->|16| n_bkit_core_engine_install_version_file
   n_bkit_core_engine_install_write -->|16| n_bkit_core_engine_install_managed_block
   n_bkit_core_engine_ledgers_compact -->|16| n_bkit_core_engine_ledgers_telemetry
@@ -413,6 +412,7 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_branches -->|14| n_bkit_core_engine_commands_workflow_prs
   n_bkit_core_engine_commands_workflow_context -->|14| n_bkit_core_engine_commands_workflow_tests
   n_bkit_core_engine_commands_workflow_summary_findings -->|14| n_bkit_core_engine_commands_workflow_challenge
+  n_bkit_core_engine_install_modules_claude -->|14| n_bkit_core_engine_install_write
   nscripts_harvest -->|14| n_bkit_core_engine_ledgers_telemetry
   n_bkit_core_engine_checks_after_index -->|13| n_bkit_core_engine_checks_after_tools
   n_bkit_core_engine_checks_before_index -->|13| n_bkit_core_engine_checks_before_files
