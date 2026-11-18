@@ -31,7 +31,6 @@ import {
   commentDiagnostic,
   commentFileOf,
   commentRunProof,
-  endedRunActionKey,
   fetchIssue,
   moveOnBoard,
   postForVerb,
@@ -1344,10 +1343,7 @@ export const issuesCommand: CommandSpec = {
           str(ctx.flags.attempt),
         ];
         const workflow = str(ctx.flags.workflow);
-        const key =
-          purpose === "terminal" && workflow !== undefined
-            ? endedRunActionKey(file, workflow, ...keyParts)
-            : runActionKey(file, workflow, ...keyParts);
+        const key = runActionKey(file, workflow, ...keyParts);
         const tracker = await postForVerb(ctx, comment, {
           fid: str(ctx.flags.fid),
           issue: str(ctx.flags.issue),

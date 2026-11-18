@@ -434,7 +434,7 @@ Before generating, ask the engine for this step's invocation id and keep the pri
      cd "{REPO_ROOT}" && "{BKIT}" tests plan-check --plan=docs/plans/{YYYYMM}/{FID}-plan.md --existence=refuse --log={OUTBOX}/plan-answers-check.md
      ```
      Route — first match wins:
-     - **If** exit 0 → the commit below.
+     - **If** exit 0 → the next bullet.
      - **If** this is the second exit 1 → tell the user what `{OUTBOX}/plan-answers-check.md` names, and commit nothing from this round.
      - **If** exit 1 → invoke `@bkit-plan-update` again with Context `"Fix only what '{OUTBOX}/plan-answers-check.md' names; edit only those lines, do not seed the file again."`, Update: `docs/plans/{YYYYMM}/{FID}-plan.md` → re-run this sub-step.
      - **Else** → tell the user what the command printed, and commit nothing from this round.

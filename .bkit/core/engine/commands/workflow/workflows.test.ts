@@ -14,6 +14,7 @@ import { tipsText } from "../tips";
 import { newRecord, writeRecord } from "./ledgers";
 import { EXIT_LOCK_BUSY, locksCommand } from "./locks";
 import { chatFingerprint } from "./run-facts";
+import { sessionPublication } from "./tracker";
 import { workflowsCommand } from "./workflows";
 
 useGateRunner();
@@ -3907,5 +3908,53 @@ describe("bkit workflows summary", () => {
     fs.rmSync(path.join(cwd, SREL, "status.jsonl"));
     expect((await summarize(cwd)).code).toBe(3);
     expect((await summarize(cwd, "release")).code).toBe(2);
+  });
+});
+
+describe("bkit workflows start — the run's progress link", () => {
+  const sessionWith = (cwd: string, name: string, id?: string) => {
+    const common = git(cwd, "rev-parse", "--path-format=absolute", "--git-common-dir");
+    const dir = path.join(common, "bkit-outbox", "sessions", name);
+    fs.mkdirSync(dir, { recursive: true });
+    if (id !== undefined) fs.writeFileSync(path.join(dir, "progress-id"), id);
+    return dir;
+  };
+
+  it("start with --session-dir writes the session's link as progress on the workflow-started row", async () => {
+    const cwd = repo();
+    const dir = sessionWith(cwd, "20261024T010203Z-0a1b2c3d", "feedfacecafe0001");
+    const r = await run(cwd, wf("start", "plan", `--session-dir=${dir}`));
+    expect(r.code, r.err).toBe(0);
+    const started = rows(statusOf(cwd)).filter((row) => row.type === "workflow-started");
+    expect(started).toHaveLength(1);
+    expect(started[0]?.progress).toBe(sessionPublication(cwd, dir, "plan")?.invocation);
+    expect(started[0]?.progress).toEqual(expect.any(String));
+  });
+
+  it("a resumed start with another session keeps the run's first link", async () => {
+    const cwd = repo();
+    const first = sessionWith(cwd, "20261024T010203Z-0a1b2c3d", "feedfacecafe0001");
+    const second = sessionWith(cwd, "20261024T010204Z-0a1b2c3e", "feedfacecafe0002");
+    await run(cwd, wf("start", "plan", `--session-dir=${first}`));
+    const r = await run(cwd, wf("start", "plan", `--session-dir=${second}`));
+    expect(r.code, r.err).toBe(0);
+    expect(r.json).toMatchObject({ resumed: true });
+    const started = rows(statusOf(cwd)).filter((row) => row.type === "workflow-started");
+    expect(started).toHaveLength(1);
+    expect(started[0]?.progress).toBe(sessionPublication(cwd, first, "plan")?.invocation);
+    expect(started[0]?.progress).not.toBe(sessionPublication(cwd, second, "plan")?.invocation);
+  });
+
+  it("start with a session folder that holds no progress id writes the row without progress and records association friction", async () => {
+    const cwd = repo();
+    const dir = sessionWith(cwd, "20261024T010203Z-0a1b2c3d");
+    const r = await run(cwd, wf("start", "plan", `--session-dir=${dir}`));
+    expect(r.code, r.err).toBe(0);
+    const started = rows(statusOf(cwd)).filter((row) => row.type === "workflow-started");
+    expect(started).toHaveLength(1);
+    expect(started[0]).not.toHaveProperty("progress");
+    expect(r.err).toContain("invocation association unavailable");
+    const friction = fs.readFileSync(path.join(cwd, ".bkit/friction.jsonl"), "utf-8");
+    expect(friction).toContain("comment-association");
   });
 });

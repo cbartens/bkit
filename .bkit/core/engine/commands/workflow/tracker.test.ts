@@ -26,6 +26,8 @@ import {
   readBlockers,
   readLabels,
   runActionKey,
+  sessionPublication,
+  sessionsRoot,
   splitAt,
   trackerTarget,
   writeLabels,
@@ -853,6 +855,50 @@ function jiraMcp(...results: Array<unknown>) {
 // ---------------------------------------------------------------------------
 // target
 // ---------------------------------------------------------------------------
+
+describe("sessionPublication: the link comes from the folder's progress id", () => {
+  const sessionIn = (cwd: string, name: string, id?: string) => {
+    const dir = path.join(sessionsRoot(cwd) as string, name);
+    fs.mkdirSync(dir, { recursive: true });
+    if (id !== undefined) fs.writeFileSync(path.join(dir, "progress-id"), id);
+    return dir;
+  };
+
+  it("gives two session folders holding the same progress id the same link", () => {
+    const cwd = github();
+    const a = sessionIn(cwd, "20260101T000000Z-aaaaaaaa", "deadbeefcafe");
+    const b = sessionIn(cwd, "20260101T000001Z-bbbbbbbb", "deadbeefcafe");
+    const other = sessionIn(cwd, "20260101T000002Z-cccccccc", "0123456789ab");
+    const one = sessionPublication(cwd, a, "plan");
+    expect(one?.invocation).toBeTruthy();
+    expect(sessionPublication(cwd, b, "plan")?.invocation).toBe(one?.invocation);
+    expect(sessionPublication(cwd, other, "plan")?.invocation).not.toBe(one?.invocation);
+  });
+
+  it("throws for a session folder whose progress id is missing or empty", () => {
+    const cwd = github();
+    const missing = sessionIn(cwd, "20260101T000000Z-aaaaaaaa");
+    const empty = sessionIn(cwd, "20260101T000001Z-bbbbbbbb", "");
+    expect(() => sessionPublication(cwd, missing, "plan")).toThrow();
+    expect(() => sessionPublication(cwd, empty, "plan")).toThrow();
+  });
+});
+
+describe("runActionKey after the run ended", () => {
+  it("runActionKey names the latest run after it ended", () => {
+    const cwd = github();
+    const file = path.join(cwd, "docs/plans/202611/logs/12-x/status.jsonl");
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const rows = [
+      { type: "workflow-started", workflow: "plan", at: "2026-11-01T01:00:00Z" },
+      { type: "workflow-done", workflow: "plan", at: "2026-11-01T01:05:00Z" },
+    ];
+    fs.writeFileSync(file, rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+    const key = runActionKey(file, "plan", "owner-answers");
+    expect(key).toContain("plan/1/");
+    expect(key).not.toContain("plan/2/");
+  });
+});
 
 describe("trackerTarget", () => {
   it("github: the issue from the FID, owner/repo from origin", () => {

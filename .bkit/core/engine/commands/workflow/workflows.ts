@@ -148,10 +148,11 @@ import {
   attempt,
   commentFileOf,
   postForVerb,
-  bindRunPublication,
+  commentDiagnostic,
+  sessionPublication,
   issueRef,
   readLabels,
-  endedRunActionKey,
+  runActionKey,
   skipOf,
   trackerTarget,
   writeLabels,
@@ -417,7 +418,7 @@ async function failVerb(ctx: RunContext): Promise<number> {
   if (ctx.flags.post === true && comment === null)
     throw new CommandError(EXIT.USAGE, "--post needs --step-number");
   // Once per run and step: an engine-action row where the run's status.jsonl exists.
-  const key = endedRunActionKey(
+  const key = runActionKey(
     state.status,
     workflow,
     "failure",
@@ -2206,11 +2207,22 @@ export const workflowsCommand: CommandSpec = {
           const limits = Object.fromEntries(
             ASK_POINTS.filter((p) => p.startsWith(`${workflow}.`)).map((p) => [p, asks[p]]),
           );
+          let progress: string | undefined;
+          try {
+            progress = sessionPublication(ctx.cwd, str(ctx.flags.sessionDir), workflow)?.invocation;
+          } catch {
+            commentDiagnostic(
+              { cwd: ctx.cwd, workflow, log: (line) => ctx.log(line) },
+              "[bkit-tracker] invocation association unavailable; progress may start fresh",
+              [],
+            );
+          }
           row = {
             type: "workflow-started",
             workflow,
             at: statusTimestamp(),
             parentSha: headSha(path.dirname(file)),
+            ...(progress === undefined ? {} : { progress }),
             ...(Object.keys(limits).length === 0 ? {} : { limits }),
           };
           fs.appendFileSync(file, appendLine(row as StatusEvent));
@@ -2218,7 +2230,6 @@ export const workflowsCommand: CommandSpec = {
         recordChat(file, workflow, process.env);
         const runs = fold(readStatusEvents(file));
         const run = runNumber(runs, workflow);
-        bindRunPublication(ctx, file, workflow, run);
         const current = resumed ? lastRun(runs, workflow) : undefined;
         ctx.emit({
           lock,

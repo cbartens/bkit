@@ -639,13 +639,13 @@ description: "Design Feature — Autonomous design phase"
      Read: `{OUTBOX}/design-answers.md`.
      Update: `docs/plans/{YYYYMM}/{FID}-design.md`.
      **If** `Verdict` = FAIL → tell the user which answer stays unapplied, never the **Failure Path**.
-   - Commit `docs/plans/{YYYYMM}/{FID}-design.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-answers-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` and, when a row was written, `docs/decisions.jsonl` on `dev`, those files only, with the message `docs({FID}): owner answers bkit [skip ci]`. NEVER push.
    <!-- bkit:tracker true start -->
    - **Skip if** `ISSUE_ID` empty. Comment — this round's answers:
      ```bash
-     cd "{REPO_ROOT}" && "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --workflow=design --step-number=12 --step-title="Owner Answers" --body-file="{OUTBOX}/design-answers.md" --session-dir="{SESSION_DIR}"
+     cd "{REPO_ROOT}" && "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --workflow=design --step-number=12 --step-title="Owner Answers" --body-file="{OUTBOX}/design-answers.md" --file="{REPO_ROOT}/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
      ```
    <!-- bkit:tracker true end -->
+   - Commit `docs/plans/{YYYYMM}/{FID}-design.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-answers-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` and, when a row was written, `docs/decisions.jsonl` on `dev`, those files only, with the message `docs({FID}): owner answers bkit [skip ci]`. NEVER push.
 
 ### 🔒 Gate 12 — Close Workflow
 

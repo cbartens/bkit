@@ -190,6 +190,22 @@ describe("fold — event log → run array", () => {
     expect((runs[0].steps[0] as Record<string, unknown>).workflow).toBeUndefined();
   });
 
+  it("carries the workflow-started progress link onto its run", () => {
+    const withLink = fold([
+      {
+        type: "workflow-started",
+        workflow: "plan",
+        at: "2026-05-01T00:00:00Z",
+        progress: "abc123",
+      },
+    ] as StatusEvent[]);
+    expect((withLink[0] as Record<string, unknown>).progress).toBe("abc123");
+    const without = fold([
+      { type: "workflow-started", workflow: "plan", at: "2026-05-01T00:00:00Z" },
+    ]);
+    expect("progress" in without[0]).toBe(false);
+  });
+
   it("preserves multiple phase runs in one log (design → plan → build)", () => {
     const events: StatusEvent[] = [
       { type: "workflow-started", workflow: "design", at: "2026-05-01T00:00:00Z" },

@@ -486,15 +486,15 @@ Before generating, ask the engine for this step's invocation id and keep the pri
      cd "{REPO_ROOT}" && "{BKIT}" tests plan-check --plan=docs/plans/{YYYYMM}/{FID}-plan.md --existence=refuse --log={OUTBOX}/plan-answers-check.md
      ```
      Route — first match wins:
-     - **If** exit 0 → the commit below.
+     - **If** exit 0 → the next bullet.
      - **If** this is the second exit 1 → tell the user what `{OUTBOX}/plan-answers-check.md` names, and commit nothing from this round.
      - **If** exit 1 → invoke `@bkit-plan-update` again with Context `"Fix only what '{OUTBOX}/plan-answers-check.md' names; edit only those lines, do not seed the file again."`, Update: `docs/plans/{YYYYMM}/{FID}-plan.md` → re-run this sub-step.
      - **Else** → tell the user what the command printed, and commit nothing from this round.
-   - Commit `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-answers-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` and, when a row was written, `docs/decisions.jsonl` on `dev`, those files only, with the message `docs({FID}): owner answers bkit [skip ci]`. NEVER push.
    - **Skip if** `ISSUE_ID` empty. Comment — this round's answers:
      ```bash
-     cd "{REPO_ROOT}" && "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --workflow=plan --step-number=8 --step-title="Owner Answers" --body-file="{OUTBOX}/plan-answers.md" --session-dir="{SESSION_DIR}"
+     cd "{REPO_ROOT}" && "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --workflow=plan --step-number=8 --step-title="Owner Answers" --body-file="{OUTBOX}/plan-answers.md" --file="{REPO_ROOT}/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
      ```
+   - Commit `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-answers-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` and, when a row was written, `docs/decisions.jsonl` on `dev`, those files only, with the message `docs({FID}): owner answers bkit [skip ci]`. NEVER push.
 
 ### 🔒 Gate 8 — Close Workflow
 

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { tierTimeouts } from "../../../../../vitest.timeout-budget";
 import { requireTsx } from "../../../../../vitest.tsx-bin";
-import { actionHash } from "../../ledgers/status";
+import { actionHash, fold, lastRun, type StatusEvent } from "../../ledgers/status";
 
 const CLI = path.resolve(".bkit/core/engine/cli.ts");
 const DISPATCHER = path.resolve("tests/fixtures/gh/bin/gh");
@@ -784,5 +784,138 @@ describe("workflow comment lifecycle across real CLI processes", () => {
     expect(result.code, result.stderr).toBe(0);
     expect(remote().comments).toHaveLength(1);
     expect(lastBody()).toContain("From worktree");
+  });
+
+  it("keeps one progress comment when the status file moves to the main checkout", () => {
+    const dir = session();
+    const linked = path.join(root, "moved-worktree");
+    git(cwd, "worktree", "add", "-q", "-b", "feat/moved", linked);
+    start(linked, dir);
+    report(linked, "Worktree Setup", { file: REL, number: 2 });
+    write(path.join(cwd, REL), fs.readFileSync(path.join(linked, REL), "utf8"));
+    report(cwd, "Plan Execute", { file: REL, number: 7 });
+    expect(remote().comments).toHaveLength(1);
+    expect(remote().comments[0]?.body).toContain("Worktree Setup");
+    expect(remote().comments[0]?.body).toContain("Plan Execute");
+    const events = rows(cwd).filter((row) => row.type !== "engine-action") as StatusEvent[];
+    expect(lastRun(fold(events), "build")?.status).toBe("IN_PROGRESS");
+  });
+
+  it("keeps one progress comment across checkouts for a run started with no session", () => {
+    const linked = path.join(root, "nosession-worktree");
+    git(cwd, "worktree", "add", "-q", "-b", "feat/nosession", linked);
+    ok(cwd, ["workflows", "start", "--workflow=build", `--fid=${FID}`, `--month=${MONTH}`]);
+    report(cwd, "Worktree Setup", { file: REL, number: 2 });
+    write(path.join(linked, REL), fs.readFileSync(path.join(cwd, REL), "utf8"));
+    report(linked, "Plan Execute", { file: REL, number: 7 });
+    expect(remote().comments).toHaveLength(1);
+    expect(remote().comments[0]?.body).toContain("Worktree Setup");
+    expect(remote().comments[0]?.body).toContain("Plan Execute");
+  });
+
+  function closePlan(at: string, dir: string, post: boolean) {
+    return ok(at, [
+      "workflows",
+      "close",
+      "--workflow=plan",
+      `--fid=${FID}`,
+      `--month=${MONTH}`,
+      "--ending=held",
+      "--publish=false",
+      ...(post ? ["--post", "--number=9", "--title=Completion", "--owner-repo=o/r"] : []),
+      `--session-dir=${dir}`,
+    ]);
+  }
+
+  function answers(at: string, text: string) {
+    const bodyFile = path.join(root, "plan-answers.md");
+    fs.writeFileSync(bodyFile, text);
+    return cli(at, [
+      "issues",
+      "comment",
+      "--post",
+      "--issue=12",
+      "--workflow=plan",
+      "--step-number=8",
+      "--step-title=Owner Answers",
+      `--body-file=${bodyFile}`,
+      `--file=${REL}`,
+    ]);
+  }
+
+  const isWrite = (c: { method: string }) => ["POST", "PATCH"].includes(c.method);
+
+  function answerActions() {
+    return rows(cwd).filter((r) => r.type === "engine-action" && String(r.key).includes("/8/"));
+  }
+
+  function noAssociationNoise(result: { stderr: string }) {
+    expect(result.stderr).not.toContain("invocation association unavailable");
+    const friction = path.join(cwd, ".bkit/friction.jsonl");
+    const text = fs.existsSync(friction) ? fs.readFileSync(friction, "utf8") : "";
+    expect(text).not.toContain("comment-association");
+  }
+
+  it("joins the run's progress comment with the Owner Answers after workflows close", () => {
+    const dir = session();
+    report(cwd, "Start Workflow", { workflow: "plan", sessionDir: dir, number: 1 });
+    start(cwd, dir, "plan");
+    report(cwd, "Plan Draft", { workflow: "plan", file: REL, number: 4 });
+    closePlan(cwd, dir, false);
+    expect(fs.existsSync(dir)).toBe(false);
+    const result = answers(cwd, "Q1: A, as proposed.\n");
+    expect(result.code, result.stderr).toBe(0);
+    noAssociationNoise(result);
+    expect(remote().comments).toHaveLength(1);
+    expect(remote().comments[0]?.body).toContain("Plan Draft");
+    expect(remote().comments[0]?.body).toContain("Owner Answers");
+  });
+
+  it("keeps two Owner Answers rounds in one comment after a terminal close comment", () => {
+    const dir = session();
+    report(cwd, "Start Workflow", { workflow: "plan", sessionDir: dir, number: 1 });
+    start(cwd, dir, "plan");
+    closePlan(cwd, dir, true);
+    const before = remote().comments.length;
+    const first = answers(cwd, "Round one answers.\n");
+    expect(first.code, first.stderr).toBe(0);
+    noAssociationNoise(first);
+    const second = answers(cwd, "Round two answers.\n");
+    expect(second.code, second.stderr).toBe(0);
+    noAssociationNoise(second);
+    expect(remote().comments).toHaveLength(before + 1);
+    expect(lastBody()).toContain("Round one answers.");
+    expect(lastBody()).toContain("Round two answers.");
+    const actions = answerActions();
+    expect(actions).toHaveLength(2);
+    expect(actions[0]?.key).toBe(actions[1]?.key);
+    expect(actions[0]?.hash).not.toBe(actions[1]?.hash);
+    const calls = remote().calls.length;
+    const again = answers(cwd, "Round two answers.\n");
+    expect(again.code, again.stderr).toBe(0);
+    expect(again.out.tracker).toMatchObject({ done: true, deduped: true });
+    expect(remote().comments).toHaveLength(before + 1);
+    expect(answerActions()).toHaveLength(2);
+    expect(remote().calls.slice(calls).filter(isWrite)).toHaveLength(0);
+  });
+
+  it("a --file post whose status file holds no run of the workflow exits 2", () => {
+    const dir = session();
+    start(cwd, dir, "build");
+    const before = remote().calls.length;
+    const result = cli(cwd, [
+      "issues",
+      "comment",
+      "--post",
+      "--issue=12",
+      "--workflow=plan",
+      "--step-number=8",
+      "--step-title=Owner Answers",
+      `--file=${REL}`,
+    ]);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("workflow steps only");
+    expect(remote().comments).toHaveLength(0);
+    expect(remote().calls).toHaveLength(before);
   });
 });

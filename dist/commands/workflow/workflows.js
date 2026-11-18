@@ -43,7 +43,7 @@ import { highestVersion } from "./plan-versions.js";
 import { mergePr, probePr } from "./prs.js";
 import { FEATURE_STATUS } from "./roadmap.js";
 import { EXIT_NO_STATUS, WORKFLOW_FLAG, positiveInt, readRuns, readStatusEvents, readStatusRows, str, } from "./status.js";
-import { COMMENT_FILE_OUTPUT, POST_FLAG, TRACKER_OUTPUT, attempt, commentFileOf, postForVerb, bindRunPublication, issueRef, readLabels, endedRunActionKey, skipOf, trackerTarget, writeLabels, } from "./tracker.js";
+import { COMMENT_FILE_OUTPUT, POST_FLAG, TRACKER_OUTPUT, attempt, commentFileOf, postForVerb, commentDiagnostic, sessionPublication, issueRef, readLabels, runActionKey, skipOf, trackerTarget, writeLabels, } from "./tracker.js";
 import { tipsText } from "../tips.js";
 import { EXIT_NO_RECORD, requireRecordOnShared, writeStepRow } from "./steps.js";
 import { addAllButCopied, removeWorktree } from "./worktrees.js";
@@ -267,7 +267,7 @@ async function failVerb(ctx) {
     if (ctx.flags.post === true && comment === null)
         throw new CommandError(EXIT.USAGE, "--post needs --step-number");
     // Once per run and step: an engine-action row where the run's status.jsonl exists.
-    const key = endedRunActionKey(state.status, workflow, "failure", stepNumber, str(ctx.flags.subStep) || undefined);
+    const key = runActionKey(state.status, workflow, "failure", stepNumber, str(ctx.flags.subStep) || undefined);
     const tracker = ctx.flags.post === true && comment !== null
         ? await postForVerb(ctx, comment, {
             fid,
@@ -1807,11 +1807,19 @@ export const workflowsCommand = {
                     // The run's limits, frozen here: `counters route` reads them for the whole run.
                     const asks = readBkitConfig(where.tree).asks;
                     const limits = Object.fromEntries(ASK_POINTS.filter((p) => p.startsWith(`${workflow}.`)).map((p) => [p, asks[p]]));
+                    let progress;
+                    try {
+                        progress = sessionPublication(ctx.cwd, str(ctx.flags.sessionDir), workflow)?.invocation;
+                    }
+                    catch {
+                        commentDiagnostic({ cwd: ctx.cwd, workflow, log: (line) => ctx.log(line) }, "[bkit-tracker] invocation association unavailable; progress may start fresh", []);
+                    }
                     row = {
                         type: "workflow-started",
                         workflow,
                         at: statusTimestamp(),
                         parentSha: headSha(path.dirname(file)),
+                        ...(progress === undefined ? {} : { progress }),
                         ...(Object.keys(limits).length === 0 ? {} : { limits }),
                     };
                     fs.appendFileSync(file, appendLine(row));
@@ -1819,7 +1827,6 @@ export const workflowsCommand = {
                 recordChat(file, workflow, process.env);
                 const runs = fold(readStatusEvents(file));
                 const run = runNumber(runs, workflow);
-                bindRunPublication(ctx, file, workflow, run);
                 const current = resumed ? lastRun(runs, workflow) : undefined;
                 ctx.emit({
                     lock,

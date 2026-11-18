@@ -381,7 +381,7 @@ export type WorkflowRun = {
 // One appended line of `status.jsonl`. `step-done` carries the full `Step` shape
 // plus the routing `type`/`workflow`; the rest are workflow-level transitions.
 export type StatusEvent =
-  | { type: "workflow-started"; workflow: string; at: string }
+  | { type: "workflow-started"; workflow: string; at: string; progress?: string }
   | ({ type: "step-done"; workflow: string } & Step)
   | ({ type: "workflow-meta"; workflow: string; at: string } & Record<string, unknown>)
   // `parentSha`: HEAD at close, the run's join key (`run.parentSha` on its ledger rows).
@@ -437,7 +437,13 @@ export function fold(events: StatusEvent[]): WorkflowRun[] {
   const runs: WorkflowRun[] = [];
   for (const e of ordered) {
     if (e.type === "workflow-started") {
-      runs.push({ workflow: e.workflow, startedAt: e.at, status: "IN_PROGRESS", steps: [] });
+      runs.push({
+        workflow: e.workflow,
+        startedAt: e.at,
+        status: "IN_PROGRESS",
+        steps: [],
+        ...(typeof e.progress === "string" ? { progress: e.progress } : {}),
+      });
     } else if (e.type === "step-done") {
       const i = lastIndexOfWorkflow(runs, e.workflow);
       if (i < 0) {

@@ -1632,7 +1632,7 @@ describe("plan", () => {
       expect(step).not.toContain("every `kind`");
     }
     expect(update).toContain("**If** exit 0 → sub-step 5.");
-    expect(close).toContain("**If** exit 0 → the commit below.");
+    expect(close).toContain("**If** exit 0 → the next bullet.");
     expect(plan).not.toContain("PLAN_CHECK_REPAIRS");
     expect(plan).not.toContain("PLAN_CHECK_LIMIT");
   });
@@ -2879,5 +2879,30 @@ describe("build gaps-fix source checks", () => {
     expect(in10[0]).toContain("--since-step=build-plan-gaps-remediate-holistic ");
     expect(in10[0]).toContain('--file="{STATUS}"');
     expect(in10[0]).toContain("--code");
+  });
+});
+
+describe("Owner Answers comment posts", () => {
+  const statusFlag = '--file="{REPO_ROOT}/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"';
+
+  it("plan and design post the Owner Answers comment with the run's status file before the round's commit", () => {
+    for (const [name, heading, answers] of [
+      ["plan", /Step 8 — Close Workflow/, "plan-answers.md"],
+      ["design", /Step 12 — Close Workflow/, "design-answers.md"],
+    ] as const) {
+      const lines = stepBody(workflow(name), heading).split("\n");
+      const post = lines.findIndex((l) =>
+        new RegExp(`issues comment --post.*--body-file="\\{OUTBOX\\}/${answers}"`).test(l),
+      );
+      expect(post, `${name}: no Owner Answers post`).toBeGreaterThanOrEqual(0);
+      expect(lines[post]).toContain(statusFlag);
+      expect(lines[post]).not.toContain("--session-dir");
+      const commit = lines.findIndex((l) => l.startsWith("   - Commit `docs/plans/"));
+      expect(commit, `${name}: no round commit bullet`).toBeGreaterThanOrEqual(0);
+      expect(post).toBeLessThan(commit);
+    }
+    const route = stepBody(workflow("plan"), /Step 8 — Close Workflow/);
+    expect(route).toContain("**If** exit 0 → the next bullet.");
+    expect(route).not.toContain("the commit below");
   });
 });

@@ -12,7 +12,7 @@ import { CommandError, EXIT, parseJson, repoRoot, } from "../lib.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { str } from "./status.js";
 import { isCloudOrCi } from "../../checks/before/env.js";
-import { COMMENT_FILE_OUTPUT, GENERATED_MARKER, POST_FLAG, TRACKER_OUTPUT, attempt, classifyFailure, commentDiagnostic, commentFileOf, commentRunProof, endedRunActionKey, fetchIssue, moveOnBoard, postForVerb, readBlockers, readLabels, redact, runActionKey, skipOf, stampMarker, trackerTarget, writeLabels, } from "./tracker.js";
+import { COMMENT_FILE_OUTPUT, GENERATED_MARKER, POST_FLAG, TRACKER_OUTPUT, attempt, classifyFailure, commentDiagnostic, commentFileOf, commentRunProof, fetchIssue, moveOnBoard, postForVerb, readBlockers, readLabels, redact, runActionKey, skipOf, stampMarker, trackerTarget, writeLabels, } from "./tracker.js";
 /** Exit code: an input file is missing or not in the expected shape. */
 export const EXIT_BAD_INPUT = 3;
 function readInput(cwd, file, flag) {
@@ -1114,9 +1114,7 @@ export const issuesCommand = {
                     str(ctx.flags.attempt),
                 ];
                 const workflow = str(ctx.flags.workflow);
-                const key = purpose === "terminal" && workflow !== undefined
-                    ? endedRunActionKey(file, workflow, ...keyParts)
-                    : runActionKey(file, workflow, ...keyParts);
+                const key = runActionKey(file, workflow, ...keyParts);
                 const tracker = await postForVerb(ctx, comment, {
                     fid: str(ctx.flags.fid),
                     issue: str(ctx.flags.issue),

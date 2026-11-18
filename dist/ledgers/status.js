@@ -317,7 +317,13 @@ export function fold(events) {
     const runs = [];
     for (const e of ordered) {
         if (e.type === "workflow-started") {
-            runs.push({ workflow: e.workflow, startedAt: e.at, status: "IN_PROGRESS", steps: [] });
+            runs.push({
+                workflow: e.workflow,
+                startedAt: e.at,
+                status: "IN_PROGRESS",
+                steps: [],
+                ...(typeof e.progress === "string" ? { progress: e.progress } : {}),
+            });
         }
         else if (e.type === "step-done") {
             const i = lastIndexOfWorkflow(runs, e.workflow);

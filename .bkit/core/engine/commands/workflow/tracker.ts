@@ -13,14 +13,7 @@ import * as path from "node:path";
 
 import type { IssueTracker } from "../../install/manifest.js";
 import { appendFrictionRow, frictionRow } from "../../ledgers/journal.js";
-import {
-  actionHash,
-  actionKey,
-  alreadyDone,
-  recordAction,
-  runNumber,
-  type WorkflowRun,
-} from "../../ledgers/status.js";
+import { actionHash, actionKey, alreadyDone, recordAction } from "../../ledgers/status.js";
 import { resolveRepoSlug } from "../../ledgers/telemetry.js";
 import { readBkitConfig, type BkitConfig } from "../../shared/settings.js";
 import { git, parseJson, runGh, type FlagSpec, type GhResult, type RunContext } from "../lib.js";
@@ -1452,14 +1445,10 @@ function progressBinding(t: TrackerTarget, o: OnceOptions): ProgressBinding | "c
   const issue = issueIdOf(fid, t.tracker);
   if (issue !== null && issue !== t.issue) return "conflict";
   if (issue === null) return null;
-  let invocation = actionHash([path.resolve(o.file), workflow, runText, run.startedAt].join("\0"));
-  const association = runPublicationFile(common, o.file, workflow, run.startedAt);
-  if (fs.existsSync(association)) {
-    const parsed = parseJson(fs.readFileSync(association, "utf-8"));
-    const saved = asRecord(parsed.ok ? parsed.value : null);
-    if (saved.version === 1 && saved.workflow === workflow && typeof saved.invocation === "string")
-      invocation = saved.invocation;
-  }
+  const invocation =
+    typeof run.progress === "string" && run.progress !== ""
+      ? run.progress
+      : actionHash([workflow, runText, run.startedAt, fid].join("\0"));
   const at = run.steps.find(
     (row) =>
       row.step === step &&
@@ -2012,7 +2001,7 @@ export function commentRunProof(ctx: RunContext): "session" | "status" | "audit"
       const abs = path.resolve(ctx.cwd, file);
       if (
         fs.statSync(abs).isFile() &&
-        endedRunActionKey(abs, str(ctx.flags.workflow) || undefined, "proof") !== undefined
+        runActionKey(abs, str(ctx.flags.workflow) || undefined, "proof") !== undefined
       )
         return "status";
     }
@@ -2045,83 +2034,25 @@ export function sessionPublication(
   const dir = fs.realpathSync(path.resolve(cwd, session));
   if (path.dirname(dir) !== fs.realpathSync(sessions) || !fs.statSync(dir).isDirectory())
     throw new Error("session association directory unavailable");
-  return { invocation: actionHash(`${dir}\0${workflow}`), workflow };
-}
-
-function runPublicationFile(common: string, file: string, workflow: string, at: string): string {
-  return path.join(
-    common,
-    "bkit-outbox",
-    "invocations",
-    `${actionHash([path.resolve(file), workflow, at].join("\0"))}.json`,
-  );
-}
-
-/** Bind only the exact run opened by workflows start; loss of this cache is harmless. */
-export function bindRunPublication(
-  ctx: RunContext,
-  file: string,
-  workflow: string,
-  run: number,
-): void {
-  try {
-    const publication = sessionPublication(ctx.cwd, str(ctx.flags.sessionDir), workflow);
-    const current = readRunsLenient(file).filter((r) => r.workflow === workflow)[run - 1];
-    const common = git(ctx.cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-    if (!publication || !current || !common) return;
-    const destination = runPublicationFile(common, file, workflow, current.startedAt);
-    if (fs.existsSync(destination)) return;
-    fs.mkdirSync(path.dirname(destination), { recursive: true });
-    fs.writeFileSync(destination, JSON.stringify({ version: 1, ...publication }), {
-      mode: 0o600,
-      flag: "wx",
-    });
-  } catch {
-    commentDiagnostic(
-      { cwd: ctx.cwd, workflow, log: (line) => ctx.log(line) },
-      "[bkit-tracker] invocation association unavailable; progress may start fresh",
-      [],
-    );
-  }
+  const id = fs.readFileSync(path.join(dir, "progress-id"), "utf-8").trim();
+  if (!id) throw new Error("session association id unavailable");
+  return { invocation: actionHash(`${id}\0${workflow}`), workflow };
 }
 
 /**
- * The engine-action key of a comment in `file`'s current run of `workflow` (the
- * latest run's workflow when omitted); undefined with no status.jsonl or no run.
+ * The engine-action key of a comment in `file`'s latest run of `workflow` (the
+ * latest run's workflow when omitted), active or ended; undefined with no status.jsonl or no run.
  */
 export function runActionKey(
   file: string | undefined,
   workflow: string | undefined,
   ...parts: Array<string | number | undefined | null>
 ): string | undefined {
-  return commentKey(file, workflow, runNumber, parts);
-}
-
-/**
- * The same key for the latest run of `workflow` once it has ended (a failure
- * comment written after the workflow-failed row): that run's number, not the next.
- */
-export function endedRunActionKey(
-  file: string | undefined,
-  workflow: string | undefined,
-  ...parts: Array<string | number | undefined | null>
-): string | undefined {
-  const latest = (runs: WorkflowRun[], name: string) =>
-    runs.filter((r) => r.workflow === name).length;
-  return commentKey(file, workflow, latest, parts);
-}
-
-function commentKey(
-  file: string | undefined,
-  workflow: string | undefined,
-  numberOf: (runs: WorkflowRun[], name: string) => number,
-  parts: Array<string | number | undefined | null>,
-): string | undefined {
   if (file === undefined || !fs.existsSync(file)) return undefined;
   const runs = readRunsLenient(file);
   const name = workflow ?? runs.at(-1)?.workflow;
   if (name === undefined) return undefined;
-  const n = numberOf(runs, name);
+  const n = runs.filter((r) => r.workflow === name).length;
   return n === 0 ? undefined : actionKey(name, n, ...parts, "comment");
 }
 

@@ -96,11 +96,11 @@ Adopted project documents and their index rows below the managed block remain pr
 
 ### Tracker reporting boundary
 
-The command layer supplies the run or session identity, the adapter delivers the tracker comment and a private outbox in Git's common directory retains delivery state across linked worktrees. A run's authoritative progress lives in its checkout records. See `.bkit/core/engine/commands/workflow/tracker.ts` and [Data schema](data-schema.md).
+The command layer supplies the run or session identity, the adapter delivers the tracker comment and a private outbox in Git's common directory retains delivery state across linked worktrees. A run's authoritative progress, including its comment link on the `workflow-started` row, lives in its checkout records. See `.bkit/core/engine/commands/workflow/tracker.ts` and [Data schema](data-schema.md).
 
 ### Knowledge / Decisions JSONL Ledgers
 
-The ledger layer owns row encoding, mutation and replay receipts. The checkout holds the shared records, while the Git-common outbox holds private invocation and operation receipts. See `.bkit/core/engine/ledgers/` and [Ledger contracts](../.bkit/jsonl.md).
+The ledger layer owns row encoding, mutation and replay receipts. The checkout holds the shared records, while the Git-common outbox holds private operation receipts. See `.bkit/core/engine/ledgers/` and [Ledger contracts](../.bkit/jsonl.md).
 
 ### Roadmap Ledger & Board
 

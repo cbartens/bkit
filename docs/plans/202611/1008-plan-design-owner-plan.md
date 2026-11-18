@@ -128,6 +128,7 @@ An owner answers a plan's or design's open questions after the run closed, and t
 | `workflows start --session-dir` naming an existing folder with no `progress-id` exits 0, writes the `workflow-started` row without `progress`, prints the "invocation association unavailable" line and records a `tracker-comment/comment-association` friction row | Unit | `.bkit/core/engine/commands/workflow/workflows.test.ts` | 3 |
 | A run's reports stay in one progress comment when its status file moves from the worktree to the main checkout while the run is in progress | Integration | `.bkit/core/engine/commands/workflow/tracker.integration.test.ts` | 3 |
 | A run started with no session keeps one progress comment across two checkouts of its status file | Integration | `.bkit/core/engine/commands/workflow/tracker.integration.test.ts` | 3 |
+| The moved-status-file test proves the run stays in progress from the folded run's status, not the last row's type | Integration | `.bkit/core/engine/commands/workflow/tracker.integration.test.ts` | 7 |
 | `runActionKey` names the latest run of the workflow after that run ended | Unit | `.bkit/core/engine/commands/workflow/tracker.test.ts` | 4 |
 | After `workflows close --session-dir`, the Owner Answers post joins the run's progress comment, writes no `tracker-comment/comment-association` friction row and prints no "invocation association unavailable" line | Integration | `.bkit/core/engine/commands/workflow/tracker.integration.test.ts` | 4 |
 | After a terminal close comment, two Owner Answers rounds share one new comment, write two `engine-action` rows with one key and different hashes, write no association friction, and a same-body re-run prints `deduped: true` and posts nothing | Integration | `.bkit/core/engine/commands/workflow/tracker.integration.test.ts` | 4 |
@@ -451,7 +452,7 @@ Build order: the status fold, the session id, the start row and its readers, the
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** The status fold carries the start row's `progress` link onto its run
+- [x] **TASK 1:** The status fold carries the start row's `progress` link onto its run
   - **UPDATE:** `StatusEvent` in `.bkit/core/engine/ledgers/status.ts`: the `workflow-started` member gains `progress?: string`
   - **UPDATE:** `fold` in `.bkit/core/engine/ledgers/status.ts`: copies a string `progress` from the start row onto the run it pushes
   - **READ:** `.bkit/core/.bkit/workflows.md`: the status row table and the **Fold** rules (Task 6 updates them)
@@ -464,7 +465,7 @@ Build order: the status fold, the session id, the start row and its readers, the
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** A session's link comes from a random id in its folder, never from its path
+- [x] **TASK 2:** A session's link comes from a random id in its folder, never from its path
   - **UPDATE:** `newSessionDir` in `.bkit/core/engine/commands/workflow/repo.ts`: writes a random hex `progress-id` file (mode `0600`) into the folder it creates
   - **UPDATE:** `.bkit/core/engine/commands/workflow/repo.ts`: the `sessionDir` field description (`:164`) says the new folder holds its `progress-id` file instead of being empty
   - **UPDATE:** `sessionPublication` in `.bkit/core/engine/commands/workflow/tracker.ts`: keeps the folder check, and builds `invocation` as `actionHash` of the `progress-id` content and the workflow; a missing or empty `progress-id` throws
@@ -480,7 +481,7 @@ Build order: the status fold, the session id, the start row and its readers, the
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** `workflows start` records the run's link on its start row, and posts that name the status file read it there
+- [x] **TASK 3:** `workflows start` records the run's link on its start row, and posts that name the status file read it there
   - **UPDATE:** `workflowsCommand` in `.bkit/core/engine/commands/workflow/workflows.ts`: the `start` verb adds `progress` from `sessionPublication` to a new run's `workflow-started` row; a `sessionPublication` error goes through `commentDiagnostic` with `[bkit-tracker] invocation association unavailable; progress may start fresh` and the row is written without `progress`; a resumed run writes nothing; the `bindRunPublication` call and import go
   - **UPDATE:** `progressBinding` in `.bkit/core/engine/commands/workflow/tracker.ts`: reads the folded run's `progress`; with none, the invocation is `actionHash` of FID, workflow, run number and `startedAt`
   - **DELETE:** `bindRunPublication` in `.bkit/core/engine/commands/workflow/tracker.ts`: superseded by the start row's `progress`
@@ -501,7 +502,7 @@ Build order: the status fold, the session id, the start row and its readers, the
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** A post after its run ended keeps that run's key and link
+- [x] **TASK 4:** A post after its run ended keeps that run's key and link
   - **UPDATE:** `runActionKey` in `.bkit/core/engine/commands/workflow/tracker.ts`: names the latest run of the workflow, active or ended
   - **UPDATE:** `commentKey` in `.bkit/core/engine/commands/workflow/tracker.ts`: drops its `numberOf` parameter
   - **UPDATE:** `commentRunProof` in `.bkit/core/engine/commands/workflow/tracker.ts`: the status proof calls `runActionKey`
@@ -520,6 +521,20 @@ Build order: the status fold, the session id, the start row and its readers, the
 
 <!-- bkit:task 4 end -->
 
+<!-- bkit:task 7 start -->
+
+- [x] **TASK 7:** The moved-status-file test checks the run's folded status, and the code map matches the code
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.integration.test.ts`: the last assertion of `keeps one progress comment when the status file moves to the main checkout` (`:800`) reads the folded run's status, or the absence of a close row, instead of `rows(cwd).at(-1)?.type`, because the keyed post from the main checkout appends an `engine-action` row after the start row
+  - **UPDATE:** `docs/capabilities.md`: `pnpm bkit:graph:refresh` against the committed engine edits drops the `tracker.ts` to `shared/json` edge that the tree no longer produces
+  - **UPDATE:** `DETAILS.md`: the same refresh rewrites its graph counts
+  - **READ:** `docs/plans/202611/logs/1008-plan-design-owner/build-decision-1-1.md`: Q2 and Q3
+  - **DEPENDS ON:** 3, 4
+  - **DONE WHEN:** the moved-status-file test passes with its one-comment assertions unchanged and a last assertion that the folded run is still `IN_PROGRESS`; `pnpm bkit:test:file` passes on `tracker.integration.test.ts`; `pnpm bkit:graph:check` passes.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/tracker.integration.test.ts` `keeps one progress comment when the status file moves to the main checkout` fails on its last assertion reading the last status row's type instead of the folded run's status
+
+<!-- bkit:task 7 end -->
+
 <!-- bkit:group 1 end -->
 
 <!-- bkit:group 2 start -->
@@ -528,7 +543,7 @@ Build order: the status fold, the session id, the start row and its readers, the
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Plan Step 8 and design Step 12 post the Owner Answers comment with the run's status file, before the round's commit
+- [x] **TASK 5:** Plan Step 8 and design Step 12 post the Owner Answers comment with the run's status file, before the round's commit
   - **UPDATE:** `.bkit/core/workflows/bkit-plan.md`: Step 8 sub-step 8's Owner Answers command passes `--file="{REPO_ROOT}/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"` instead of `--session-dir="{SESSION_DIR}"`, and its tracker block moves above the commit bullet, kept tight with no blank line inside the list item
   - **UPDATE:** `.bkit/core/workflows/bkit-plan.md`: the plan-check route's exit 0 line (`:553`) reads `**If** exit 0 → the next bullet.` instead of `→ the commit below.`, the same word count, so it reaches the comment first and still reads right in the `none` render, where the comment block is stripped. The two stop routes keep their `commit nothing from this round` wording (shared clauses at `.bkit/instructions.md:10743` and `:10745`, pinned by `workflow-shape.test.ts:1579`): they end the round before the comment bullet, so a stop posts nothing
   - **UPDATE:** `.bkit/core/workflows/bkit-design.md`: the flag swap and the block move in Step 12 sub-step 8, which has no plan-check route
@@ -546,7 +561,7 @@ Build order: the status fold, the session id, the start row and its readers, the
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** The docs say where the session id and the run link live
+- [x] **TASK 6:** The docs say where the session id and the run link live
   - **UPDATE:** `.bkit/core/.bkit/trackers.md`: § Workflow comment delivery, second paragraph: the session folder holds its random id, the run's `workflow-started` row holds the run's link, and the Git-common outbox holds the progress source cache only
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: the comment paragraph (line 45); `progress?` on the `workflow-started` row in the status row table; § Comment Lifecycle **Posted once**: a `--file` post after its run ended is keyed to that run
   - **UPDATE:** `docs/architecture.md`: the tracker delivery paragraph (line 27)

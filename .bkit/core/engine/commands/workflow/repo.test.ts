@@ -235,6 +235,18 @@ describe("bkit repo info — the per-run session folder", () => {
     expect(a.json.sessionDir).not.toBe(b.json.sessionDir);
   });
 
+  it("writes a random progress id into each new session folder", async () => {
+    const a = await run([]);
+    const b = await run([]);
+    const ids = [a, b].map((r) => {
+      const file = path.join(r.json.sessionDir, "progress-id");
+      expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+      return fs.readFileSync(file, "utf8").trim();
+    });
+    for (const id of ids) expect(id).toMatch(/^[0-9a-f]{16,}$/);
+    expect(ids[0]).not.toBe(ids[1]);
+  });
+
   it("prunes session folders older than 7 days and keeps newer ones and foreign names", async () => {
     const sessions = path.join(cwd, ".git", "bkit-outbox", "sessions");
     const old = path.join(sessions, "20200101T000000Z-deadbeef");
