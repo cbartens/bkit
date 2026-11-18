@@ -62,8 +62,8 @@
 | `.bkit/templates.md` | — | — | ○ | — | ○ | Copy-and-own templates — what each does, how to install; `bkit install` / `bkit upgrade` never write the templates themselves, except a brand migration that rewrites a copy still byte-equal to the exact text bkit shipped. |
 | `.bkit/instructions.md` | — | ○ | ○ | ○ | ○ | Every shipped agent instruction and the files carrying it — rules, shared clauses, hook text, permissions. |
 | `docs/migrations.md` | ○ | ○ | ○ | ○ | ○ | Register of every upgrade migration in the engine — what it rewrites, release range, where it runs. |
-| `docs/capabilities.md` | ● | ● | ● | — | ○ | Capability ownership & drift — authoritative register, Graphify diagrams, CI freshness checks. |
-| `docs/components.md` | ○ | ○ | ○ | ○ | ○ | Purpose-based overview — repository responsibilities, relationships and main journeys, independent of code layout. |
+| `docs/capabilities.md` | ● | ● | ● | — | ○ | One row per capability, with its owner module, the literal marker that finds every use of it, and whether anything bypasses the owner. |
+| `docs/components.md` | ○ | ● | ○ | ○ | ○ | A purpose-based view of what the repository does, its major responsibilities and how they work together, readable without inspecting the code. |
 | `floorplan/README.md` | ○ | ○ | ○ | ○ | ○ | Architecture walkthrough — onboarding, system boundaries, file & route descriptions, guided flows. |
 | `.bkit/friction.jsonl` | ○ | ○ | ○ | ○ | ○ | Observed workflow friction. Drained by `pnpm harvest`. |
 | `.bkit/stats.jsonl` | ○ | ○ | ○ | ○ | ○ | Run telemetry — `compliance`, `outcome`, `counter`. Append-only. |
@@ -77,13 +77,13 @@
 | `CHANGELOG.md` | — | — | — | ○ | ○ | Release record — notable changes per version. |
 | `.bkit/pipeline.md` | — | — | — | — | — | Pipeline in execution order, every subagent, every audit template. Humans only. |
 | `.bkit/comparison.md` | — | — | — | — | — | Peer-framework + agentic-patterns comparison. Humans only. |
-| `docs/architecture.md` | ● | ● | ● | ○ | ○ | System design — service boundaries, deployment topology, integration sketch. |
-| `docs/technology.md` | ● | ● | ○ | ○ | ○ | Chosen frameworks, libraries, styling systems, coding conventions. Why a choice was made goes in `decisions.jsonl`. |
-| `docs/security.md` | ● | ● | ● | ○ | ○ | The project's authentication, authorization, input validation, rate limiting, secrets management and PII handling. |
-| `docs/data-schema.md` | ○ | ○ | ● | ○ | ○ | The active production database schema: entities / tables, fields, access policies (e.g. RLS), indices and triggers. |
-| `docs/testing.md` | ○ | ● | ● | ● | — | The testing strategy: tier boundaries, framework choices, naming conventions and CI execution. |
-| `docs/deployments.md` | ○ | ○ | ○ | ● | ● | The rules for deployment, environment config and the CI/CD pipeline: secrets sync, branch protection and run-level tiers. |
-| `docs/observability.md` | ○ | ○ | ● | ● | ○ | Logging architecture, correlation tracing, telemetry pipelines, log drains. |
-| `docs/design.md` | ○ | ○ | ○ | — | — | Design system — palette, typography, components, spacing, a11y, layout tokens. |
-| `docs/noise.md` | — | — | ○ | ● | ○ | Registry of intentional signal downgrades — log levels, error-tracker archives / mutes, alert thresholds. |
-| `docs/setup.md` | — | — | — | — | — | Local dev — CLIs, configuration, secrets, troubleshooting. Humans only. |
+| `docs/architecture.md` | ● | ● | ● | ○ | ○ | How the system is built and where it runs: runtimes, package boundaries, file placement and environments. |
+| `docs/technology.md` | ● | ● | ○ | ○ | ○ | Which frameworks, libraries and styling systems the project uses, and the coding conventions a reviewer enforces. Why a choice was made goes in `decisions.jsonl`. |
+| `docs/security.md` | ● | ● | ● | ○ | ○ | Authentication, authorization, input validation, rate limiting, secrets management and PII handling. |
+| `docs/data-schema.md` | ○ | ○ | ● | ○ | ○ | The active production schema: tables, fields, access policies, indices, functions and triggers. |
+| `docs/testing.md` | ○ | ● | ● | ● | — | Testing strategy: tier boundaries, framework choices, naming conventions and the CI lane graph. |
+| `docs/deployments.md` | ○ | ○ | ○ | ● | ● | Deployment and CI/CD: environments, release path, secrets, branch protection, run-level tiers and rollback. |
+| `docs/observability.md` | ○ | ○ | ● | ● | ○ | Logging architecture, correlation tracing, telemetry pipelines, error tracking and alerts. |
+| `docs/design.md` | ○ | ○ | ○ | — | — | The project's design system: tokens, typography, spacing and layout, components and accessibility rules. |
+| `docs/noise.md` | — | — | ○ | ● | ○ | Intentional signal downgrades: log levels, error-tracker archives and mutes, and alert thresholds, each with its trigger and reason. |
+| `docs/setup.md` | — | — | ○ | ○ | — | How a developer sets up and runs the project locally: prerequisites, first-time setup, environment variables, local services, everyday commands and troubleshooting. |

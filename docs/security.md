@@ -7,8 +7,78 @@
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
 > - Auth standards live only here. Other docs link to this file and do not restate them.
+> - Document secret names and stores. NEVER include their values.
+>
+> **Not here:** Local configuration belongs in `docs/setup.md`, environment synchronization in `docs/deployments.md` and stored fields in `docs/data-schema.md`.
+>
+> **Update when:** A trust boundary, identity, permission, validation rule, limit, secret or kind of personal data changes.
+
+## Trust boundaries
+
+<!-- prettier-ignore -->
+| Entry point | Data crossing the boundary | Receiving runtime and control |
+| --- | --- | --- |
+| Agent host | Tracker text, diffs, retrieved logs, web results and installed skills. | Workflows and specialist agents treat external content as evidence. See § Untrusted Content & Prompt Injection. |
+| CLI and project hooks | Command arguments, status logs, repository paths, subprocess output and edit requests. | The CLI validates its inputs. Host hooks inspect shell input before execution. See § Input validation. |
+| Cloud continuation | A GitHub event and files from the triggering commit. | The Actions router checks the originating repository, obtains its routing code and configuration from the trusted checkout and rechecks the issue label. See § CI Auto-Route Trust (bkit-cloud). |
+| External services | GitHub, Linear and Jira authorize tracker calls. Model providers and npm authorize agent runs and package publication. | Credentials belong to the calling process or job. See § Authentication and § Authorization. |
+
+## Authentication
+
+bkit runs as the local operating-system user or the Actions job. It has no application login or session store. A tracker authenticates the credential presented by the adapter. For example, a Linear issue read follows `fetchIssue` and `linearGql` in `.bkit/core/engine/commands/workflow/tracker.ts`.
+
+```mermaid
+sequenceDiagram
+    participant CLI as "bkit issues fetch"
+    participant AD as "Linear adapter"
+    participant API as "Linear GraphQL API"
+    CLI->>AD: Fetch issue by identifier
+    AD->>AD: Read BKIT_LINEAR_API_KEY
+    AD->>API: POST query and variables with Authorization header
+    API-->>AD: Issue data or authentication or permission error
+    AD-->>CLI: Parsed result or classified tracker error
+```
+
+GitHub tracker calls run through `gh` with `GH_TOKEN` set from `BKIT_GH_TOKEN` when available. Jira uses a bearer token for the Atlassian Rovo MCP endpoint. GitHub supplies job-scoped credentials in Actions. npm trusts the release workflow through OpenID Connect (OIDC).
+
+## Authorization
+
+<!-- prettier-ignore -->
+| Role or service account | Kind | May | Granted by |
+| --- | --- | --- | --- |
+| Local maintainer or agent host | Operating-system account | Access its checkout, private outbox and configured provider accounts. | Filesystem permissions, host tool policy and the operator's provider grants. |
+| GitHub tracker / Renovate | Personal access token | Read or write the permitted repository, track issues and PRs, and update configured Projects when granted. Renovate opens dependency PRs. | The GitHub token owner and its scopes. |
+| Linear / Jira tracker | Provider account | Read issues, comments and blockers and update allowed comments, labels or states. | The selected account's workspace or site and token permissions. |
+| CI / Trivy | GitHub Actions jobs | CI reads repository contents and run state. Unit and integration jobs may post PR coverage. Trivy reads contents. | Job permissions in `bkit-ci.yml` and `bkit-trivy.yml`. |
+| Cloud router | GitHub Actions job | Read Actions, PRs and issues, and record a dispatch count on `dev`. | The `context` job in `bkit-cloud.yml`. |
+| Claude / OpenCode / Codex | GitHub Actions agent jobs | Write repository contents, PRs and issues and read Actions. Claude may request an OIDC token for its GitHub App and configured Anthropic federation. | The selected job in `bkit-cloud.yml` and its provider credentials. |
+| Release publisher | GitHub Actions job | Publish the bound npm package, create its GitHub Release and move its sliding major tag. | `release.yml` grants contents and OIDC writes. The npm trusted publisher binds the repository and workflow. |
+| Model providers, Cursor and Tavily | API clients | Run the selected model, call the authorized Cursor endpoint or send a debug search to Tavily. | API keys issued for the operator's provider accounts. |
+| Secrets synchronization | Operator's provider CLI or API identity | Reconcile names and values in the stores selected by the project's config. This checkout selects GitHub. | The stored `gh` login for GitHub Actions secrets. Other store adapters require their own provider grants. |
+
+## Input validation
+
+<!-- prettier-ignore -->
+| Input | Checked in | How |
+| --- | --- | --- |
+| CLI invocation and ledger rows | CLI flag parsing and `.bkit/core/engine/ledgers/telemetry.ts` | The command validates the flags and ledger row kind, writer and required fields before append. |
+| Paths and identities for a comment update | `.bkit/core/engine/commands/workflow/tracker.ts` | Resolve the owning session or run and check provider evidence against private progress state (§ Workflow comment ownership). |
+| Cloud event and feature identifier | `.github/workflows/bkit-cloud.yml` | Check event provenance, parse the identifier with the engine and validate it before constructing a path. |
+| Shell input and Actions expressions | Project commands and host guardrails | Pass variable arguments as argv. Route untrusted Actions values through the step environment. See § Shell Injection and § Shell-Edit Inspection (GateGuard hooks). |
+
+## Rate limiting
+
+bkit exposes no public HTTP route. Providers enforce their own request quotas.
+
+<!-- prettier-ignore -->
+| Route or action | Limit | Keyed by |
+| --- | --- | --- |
+| Tracker progress publication | At most 10 history pages, 3 writes and 60 seconds for a delivery. Provider rate limits surface as a classified failure. | One delivery in `.bkit/core/engine/commands/workflow/tracker.ts`. |
+| Automatic debug dispatch after failed CI on `dev` | The sum of the fix and soak `maxAttempts` settings (four with this checkout's configuration). | Distinct failed commit SHAs per feature, counted from its status log. See § CI Auto-Route Trust (bkit-cloud). |
 
 ## Supply-Chain (GitHub Actions)
+
+> **bkit practice:** Keep this heading. CI templates, advisories and audits cite it.
 
 Action SHA-pinning and the dependency-update pipeline (Renovate / Dependabot, Trivy scan, CVE handling) are described in `deployments.md` § Dependency updaters. This section holds the security invariants only.
 
@@ -22,6 +92,12 @@ Action SHA-pinning and the dependency-update pipeline (Renovate / Dependabot, Tr
 
 **Scanner isolation:** The CI vulnerability scanner (e.g. `bkit-trivy.yml`) runs with `contents: read`, `persist-credentials: false` and no secret. Its image or action is pinned by digest, never by a floating tag. Setup is in `.bkit/templates.md` § Trivy.
 
+The shared untrusted-content contract lives in `.bkit/prompts.md` § Untrusted Content & Prompt Injection.
+
+### This project
+
+Self-hosted Renovate runs with `BKIT_GH_TOKEN`. Its job token has read-only contents permission. The update classes eligible for automatic merge and the major updates that require review are defined in `.github/renovate.json5`. The Trivy workflow uses a digest-pinned scanner. Dependency checks and the advisory register are described in `docs/deployments.md` § Dependency updaters.
+
 **Accepted risk (audit reports and `[skip ci]`):** `docs/audits/**` sits in the files bkit writes (`minPushPathspecs`), so the pre-push hook lets an audit report reach `dev` or `main` under a `[skip ci]` head. No workflow runs on that push, the secret scan included. Audit reports are written from untrusted logs and CI evidence, so a report that quotes a leaked token lands unscanned. The owner accepted this risk; the decision is in `docs/decisions.jsonl`.
 
 ## Untrusted Content & Prompt Injection
@@ -32,7 +108,7 @@ Action SHA-pinning and the dependency-update pipeline (Renovate / Dependabot, Tr
 - it holds a broad write token
 - it can act (commit, push, merge, write files)
 
-When all three are present, an embedded directive executes.
+An agent that mistakes an embedded directive for an instruction can take an action with the workflow's permissions.
 
 **Contract.** Follow `.agents/rules.md` § Security & Data, **External input** and **External skills**. Skill selection and permitted use are defined in `.agents/skills.md` § Activation Rules.
 
@@ -65,17 +141,13 @@ Only explicit session or exact-run ownership authorizes editing an engine progre
 
 Optional progress and invocation files stay under Git-common `bkit-outbox`, outside committed content, with private file permissions. Missing or invalid ownership evidence causes a new comment. MCP fallback is create-only and publishes the existing fallback file verbatim. Reporting diagnostics exclude report bodies, credentials and personal data; see `observability.md` § Tracker reporting diagnostics.
 
-## Scope
-
-No database, server, or user-auth surface. Security concerns: secrets management (tokens), supply-chain (action pinning), shell-injection guards, PII avoidance in logs.
-
-## Secrets Management
+## Secrets
 
 ### `.bkit/.env` scope
 
-`.bkit/.env` (gitignored, auto-loaded via `.envrc` / direnv) holds **bkit and agent-tooling secrets only**: tracker / cloud-agent tokens (`BKIT_GH_TOKEN`, `BKIT_LINEAR_API_KEY`, `BKIT_JIRA_API_KEY`, `BKIT_ANTHROPIC_API_KEY`, `BKIT_CURSOR_API_KEY`), OpenCode provider keys (`BKIT_OPENCODE_API_KEY`, `BKIT_OPENROUTER_API_KEY`, `BKIT_OLLAMA_API_KEY`) and the Codex router key (`BKIT_OPENAI_API_KEY`, never pasted into a cloud env block).
+`.bkit/.env` holds local agent-tooling secrets. It is gitignored and loaded through direnv. Repo Actions secrets are consumed only by the job steps that receive them. The table identifies the expected stores and readers. A configured reader does not prove a secret has been provisioned.
 
-The pre-push gate unsets each of these keys, plus every key `.bkit/.env` names, however they were loaded, so they stay out of the gate's tests and `tmp/pre-push.log` (`.bkit/templates.md` § Git hooks — Husky). A new tooling key goes in this list and in the hook's fixed list together.
+The pre-push gate unsets its fixed list of credential names plus every key named in `.bkit/.env` before tests write `tmp/pre-push.log`. See `.bkit/templates.md` § Git hooks — Husky.
 
 App / stack credentials do not belong here — runtime keys and `/bkit-debug` observability tokens (deploy-host, DB log-read, etc.) live in app env files (e.g. `apps/web/.env.local`, sourced by `.envrc`). Never re-add stack creds to `.bkit/.env`. Runtime-log source config → `.agents/context.md` (see `docs/observability.md`).
 
@@ -84,12 +156,28 @@ App / stack credentials do not belong here — runtime keys and `/bkit-debug` ob
 ### Credential surfaces
 
 <!-- prettier-ignore -->
-| Credential | Scope | Notes |
-| --- | --- | --- |
-| `BKIT_GH_TOKEN` | GitHub MCP server; engine tracker calls (`gh` with `GH_TOKEN` set from it); self-hosted Renovate platform auth | Write PAT. Fine-grained (one owner) when bkit touches a single repo / owner; classic when one token must span owners. Always set an expiry (max 30 days); re-mint before it lapses and update local `.bkit/.env` + the repo Actions secret together (only repo secret). Classic scopes: `repo`, `workflow`, `project`, `read:org`, `notifications`, `gist`, `write:discussion`, `write:packages`, `audit_log`; Renovate minimum → `docs/deployments.md` § Dependency updaters. |
-| npm publish | `.github/workflows/release.yml` | No npm token anywhere. OIDC trusted publishing only; package publishing access = "Require two-factor authentication and disallow tokens". |
-| OpenCode provider keys | OpenCode host model access | Referenced as `{env:KEY}` in `.opencode/opencode.json` — never inlined. In CI the provider's `BKIT_` secret (`BKIT_OPENCODE_API_KEY`, `BKIT_OPENROUTER_API_KEY` or `BKIT_OLLAMA_API_KEY`) reaches the OpenCode job under that same name. |
-| `BKIT_ANTHROPIC_API_KEY` / `BKIT_CURSOR_API_KEY` / `BKIT_LINEAR_API_KEY` / `BKIT_JIRA_API_KEY` | Cloud agents and tracker | Optional; opt-in surfaces only. The engine sends the Linear key to `api.linear.app/graphql` and the Jira key as a bearer to `mcp.atlassian.com/v2/mcp`; it never prints a key, and tracker failure reasons carry no request headers. |
+| Secret name | Store | Who can read it | Rotation |
+| --- | --- | --- | --- |
+| `BKIT_GH_TOKEN` | Local tooling env, configured host or repository Actions secret | GitHub MCP, engine tracker adapter and self-hosted Renovate. | Renew the PAT at GitHub before its expiry (project maximum 30 days). Update the local, host and Actions copies. |
+| `BKIT_LINEAR_API_KEY` | Local tooling env or selected cloud host / Actions secret | Linear tracker adapter, MCP, importer and selected agent. | Replace at Linear and update enabled stores. |
+| `BKIT_JIRA_API_KEY` | Local tooling env or selected cloud host / Actions secret | Jira adapter, Rovo MCP and selected agent. | Replace the Atlassian MCP V2 scoped token and update enabled stores. |
+| `BKIT_ANTHROPIC_API_KEY` | Local tooling env or Actions secret | Cloud router credential checks and Claude job when using API-key authentication. | Replace at Anthropic and update enabled stores. |
+| `BKIT_OPENAI_API_KEY` | Local tooling env or Actions secret | Router credential checks and Codex job. Excluded from generated cloud dashboard blocks. | Replace at OpenAI and update enabled stores. |
+| `BKIT_CURSOR_API_KEY` | Local tooling env or configured host | Cursor cloud tooling and the optional Cursor sync adapter. | Replace at Cursor and update enabled stores. |
+| `BKIT_OPENCODE_API_KEY` | Local tooling env or Actions secret | OpenCode Zen / Go provider and router credential checks. | Replace at OpenCode and update enabled stores. |
+| `BKIT_OPENROUTER_API_KEY` | Local tooling env or Actions secret | OpenRouter through OpenCode and router credential checks. | Replace at OpenRouter and update enabled stores. |
+| `BKIT_OLLAMA_API_KEY` | Local tooling env or Actions secret | Ollama through OpenCode and router credential checks. | Replace at Ollama and update enabled stores. |
+| `BKIT_TAVILY_API_KEY` | Local tooling env or debug host | The Tavily web-evidence block in `.agents/context.md`. | Replace at Tavily and update configured hosts. |
+| `GITHUB_TOKEN` | GitHub Actions runtime | Only the current job, with its declared permissions. Also exposed as `github.token`. | GitHub issues a token for each job. |
+| `GH_TOKEN` | Process environment | `gh` receives the selected tracker PAT locally or the GitHub job token in Actions. | Follows the source token. |
+| `GH_PROJECT_TOKEN` | Operator environment | Optional override for the maintainer's Linear importer. Otherwise the importer reads the stored `gh` login. | Replace the GitHub credential or renew its CLI login. |
+| `ANTHROPIC_API_KEY` | The GitHub store mapping in `scripts/secrets/bkit-secrets.config.mjs` | Sync derives it from the prefixed local key. The current router expects the prefixed Actions name. | Follows the source Anthropic key. Resolve the mapping in § Open questions. |
+| `CURSOR_API_KEY` | Operator environment or env file | Optional Cursor sync adapter. It also accepts the prefixed key. | Replace at Cursor. |
+| `VERCEL_TOKEN` | Operator environment, app env file or stored Vercel CLI login | Optional Vercel sync adapter when that store is enabled. | Replace at Vercel or renew the CLI login. |
+| `SUPABASE_ACCESS_TOKEN` | Operator environment or app env file | Optional Supabase sync adapter when that store is enabled. | Replace at Supabase. |
+| `EXPO_TOKEN` | Operator environment or app env file | Optional EAS sync adapter when that store is enabled. | Replace at Expo. |
+
+Token scopes for GitHub, including Projects and Renovate authorship, are listed in `.bkit/.env.example`. Choose a fine-grained PAT for one owner. The operator guide covers classic tokens for cross-owner use. For Claude federation the repository variables `ANTHROPIC_FEDERATION_RULE_ID` and `ANTHROPIC_ORGANIZATION_ID` identify the rule and organization. GitHub issues short-lived OIDC credentials for eligible jobs. npm publication also uses OIDC. The package's publishing access requires two-factor authentication and disallows tokens.
 
 ### `.claude/bkit-cloud.md` + `.cursor/bkit-cloud.md` + `.codex/bkit-cloud.md` — generated, hold live secrets
 
@@ -140,7 +228,7 @@ Run `npm audit signatures` in a directory with the package installed (`node_modu
 | --- | --- |
 | Access | Owner is the sole collaborator (admin). Write access = publish rights: merge to `main` + push a `v*` tag (§ Release path). New collaborator → re-check every row in this table and § Release path. |
 | `main` | `bkit setup protect-main`: PR only, `bkit-tests-check` required + up to date, applies to admins, linear history, no force-push / deletion. |
-| `dev` | Unprotected; no ruleset. |
+| `dev` | Its effective ruleset prevents deletion. Classic branch protection is absent. The current branch rules are in `docs/deployments.md`. |
 | Publishing | Tag publishes ONLY when its commit is on `main` → `docs/deployments.md` § GitHub Release. |
 | Secret scanning | Push protection on: a push containing a recognised secret is rejected. |
 | Private vulnerability reporting | On; advertised in `.github/SECURITY.md`. |
@@ -150,7 +238,7 @@ Run `npm audit signatures` in a directory with the package installed (`node_modu
 
 Everything committed is public, including history. NEVER commit:
 
-- Secrets: `.bkit/.env`, `.claude/bkit-cloud.md`, `.cursor/bkit-cloud.md`, `.codex/bkit-cloud.md`, any token or key (§ Secrets Management).
+- Secrets: `.bkit/.env`, `.claude/bkit-cloud.md`, `.cursor/bkit-cloud.md`, `.codex/bkit-cloud.md`, any token or key (§ Secrets).
 - Consumer names or consumer data (`harvest/`).
 - Details of an exploitable, unfixed vulnerability in a published version: triage and fix inside a draft GitHub Security Advisory (private fork), not an issue, PR or commit.
 
@@ -200,8 +288,22 @@ The shell hooks read a command, an inline script, a patch or a directly named sc
 
 ## PII
 
-No user PII processed, stored, or transmitted. Log lines use `[bkit-*]` prefix per naming convention. NEVER log consumer repo content verbatim in production output paths.
+bkit has no customer account table. Its developer tools handle contributor identities and records that can be linked to a person. Keep consumer names and paths out of tracked records and use an opaque ID or redacted value in diagnostics. `docs/data-schema.md` identifies the fields below.
+
+<!-- prettier-ignore -->
+| Personal data | Why it is held | Protection | Where stored |
+| --- | --- | --- | --- |
+| Contributor name and email | Git attributes a commit. Renovate can use the configured git author. | Use a bot or noreply identity for automation. A real author address in public Git history is public. | Git author and committer headers. |
+| Tracker author ID, comment source, and optional import attribution | The CLI recognizes its own progress updates. The maintainer importer transfers issues and comments with attribution. | Progress cache files are created with mode `0600`. The destination tracker's permissions govern posted text. The importer can publish an email when both author names are missing. | Private progress `comment.evidence.authorId` and `source`, tracker issue and comment bodies, and the source Linear CSV and comment fields. |
+| Chat session ID, timings, usage and owner waits | Join a workflow to a chat and measure activity on the maintainer's machine. | A committed run log uses a session fingerprint. The harvest metrics stay in the gitignored local store. Prompt text stays out of its chat metrics. | Status event `session`, harvest chat `key`, `session.id`, `time`, `usage` and harvest run `owner`. |
+| Repository owner, work item and local checkout path | Locate a run, attribute a ledger row and resolve a report on the maintainer's machine. | Published invocation rows use relative paths and a worktree fingerprint. Private receipts retain the absolute paths. Only scanned harvest chat and run rows fingerprint project identifiers. Copied ledgers and the local report can contain names. | Ledger `repo` and `references`, invocation `worktree`, `bookRoot` and `statusPath`, harvest `repo`, `issue`, `run.fid`, the consumer path list and local report. |
 
 ## RLS
 
 Not applicable, because bkit has no database.
+
+## Open questions
+
+- Which router secrets should this repository provision and protect during sync? The owner can reconcile the selected cloud jobs with `scripts/secrets/bkit-secrets.config.mjs`. Its only mapped GitHub names are `BKIT_GH_TOKEN` and `ANTHROPIC_API_KEY`. Sync can remove unlisted, unprotected secrets.
+- Which published release lines currently receive fixes? The maintainer's disclosure policy in `.github/SECURITY.md` names 5.x, while `package.json` names 6.2.0.
+- What rotation interval applies to each optional provider key, and what retention period applies to the private outbox and harvest? The provider account and checkout owners control these settings.

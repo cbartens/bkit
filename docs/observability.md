@@ -8,6 +8,70 @@
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
 > - NEVER log PII. Scrub sensitive fields at the source.
 > - Observability never blocks business logic.
+>
+> **Not here:** See `docs/noise.md` for signal downgrades and `.agents/context.md` for the configured sources of failure evidence.
+>
+> **Update when:** A signal, destination, correlation key or alert changes.
+
+## Signal pipeline
+
+```mermaid
+flowchart LR
+    CLI["bkit CLI"] --> Terminal["Terminal or agent"]
+    CLI --> Status["Feature status log"]
+    CLI --> Ledgers["Stats and friction ledgers"]
+    CLI --> Tracker["Configured issue tracker"]
+    Status --> Summary["Workflow summary"]
+    Ledgers --> Report["Project stats or private harvest report"]
+    CI["GitHub Actions"] --> Logs["Job log, summary and test artifacts"]
+    Logs --> Debug["Debug evidence files"]
+    Tracker --> Owner["Owner or reviewer"]
+    Terminal --> Owner
+    Summary --> Owner
+    Report --> Owner
+    Debug --> Owner
+    Logs --> Owner
+```
+
+## Signals
+
+<!-- prettier-ignore -->
+| Signal | Producer | Where to read it |
+| --- | --- | --- |
+| Command result and exit code | CLI dispatcher | Standard output carries the result. Standard error carries diagnostics. |
+| Workflow steps, engine calls, corrections and CI handoff | Workflow commands | The feature's `status.jsonl` and close summary. |
+| Compliance, counters, outcomes and completeness | Grader and workflow close | `.bkit/stats.jsonl` and the project stats report. |
+| Tool failures and tracker reporting failures | Command journal and tracker adapter | `.bkit/friction.jsonl` and the bounded diagnostics described below. |
+| Status-hole sweep | Completeness check | The CI step log contains the sweep summary. |
+| Cloud router verdict | Cloud workflow's context job | Actions annotation and job summary. |
+| Promotion lag | CI scope check on a push to dev | Actions warning and summary naming the stale files. |
+| Trivy finding | `.github/workflows/bkit-trivy.yml` | Filesystem scan job log. |
+| Dependency advisory | Dependency audit in the static lane | CI job log and the repository's dated acceptance file. |
+| Test result | Test runner and CI capstone | JUnit reports and job conclusions. See `docs/testing.md`. |
+
+## Correlation
+
+A feature ID selects the log directory in `docs/plans/`. Within that directory, workflow and run number distinguish attempts. The CI evidence receipt records the GitHub repository, run ID, run attempt and head commit. Match all four before attributing a CI failure to a local run.
+
+## Error tracking
+
+bkit has no hosted error collector. The command reports its failure to the caller. A workflow keeps evidence in its feature log and can record a confirmed bug in `docs/failures.jsonl`. GitHub Actions keeps the failing job's output.
+
+## Alerts
+
+<!-- prettier-ignore -->
+| Signal | Trigger | Who sees it |
+| --- | --- | --- |
+| Status-hole sweep | The expected sweep summary is missing. Reported holes themselves are advisory. | CI reviewer. |
+| Cloud router verdict | The issue or configuration is unreadable. | Maintainer in the Actions summary. |
+| Promotion lag | A dev push differs from the default branch on workflow or Renovate files used from the default branch. | Maintainer in the Actions summary. |
+| Trivy finding | At least one unsuppressed HIGH or CRITICAL finding. | Maintainer on the failed scan. |
+| Dependency advisory | A HIGH or CRITICAL finding has no current acceptance, the registry entry is invalid, expired or stale, or the audit cannot produce a usable report. | Maintainer on the static lane. |
+| Test result | A required lane fails or a planned test tier has no qualifying evidence. | PR author and reviewer at the required check. |
+
+## Where to look
+
+Start at the failing command's stderr locally or the failed job in Actions. For a workflow, match the head commit and run to its status log, then open the step artifact or CI evidence receipt. For trends across runs, read the project stats report. The harvest section describes the additional private maintainer data.
 
 ## Context Fetch
 
@@ -17,7 +81,7 @@ The workflow commits every captured payload inside an untrusted fence (`===== BE
 
 ## Scope
 
-No server-side telemetry pipeline, log drains, or tracing. Observability limited to CLI stdout / stderr — `bkit install` / `bkit check` in consumer environments, and the `bkit <noun> <verb>` workflow commands during agent runs.
+bkit runs in a checkout or a CI job. Its durable signals are files, tracker updates and CI records. It operates no server-side log drain or distributed tracing service.
 
 ## Tracker reporting diagnostics
 
@@ -33,14 +97,7 @@ A `bkit` command that fails before any write prints a structured error with `eff
 
 ## Log Format
 
-All bkit CLI output uses bracketed context prefixes:
-
-```
-console.error("[bkit-install] {Message}", {payload})
-console.error("[bkit-modules] {Message}", {payload})
-console.error("[bkit-comply] {Message}", {payload})
-console.error("[bkit-telemetry] {Message}", {payload})
-```
+`.bkit/core/engine/shared/log-prefix.ts` supplies the install-side prefix. The noun/verb dispatcher in `.bkit/core/engine/commands/lib.ts` uses `logTag(noun)` and separate stdout and stderr writers. A diagnostic identifies the subsystem and the event. Keep credentials, personal identifiers and raw provider payloads out of diagnostics. Private harvest inputs and tracker attribution have separate handling in `docs/security.md` § PII.
 
 `[{Context}]` brackets are load-bearing, because consumer CI log-drain / grep alerting depends on this pattern. NEVER drop the brackets.
 
@@ -204,7 +261,7 @@ Post-install findings via `formatChecklist(ctx.advisories)` (`.bkit/core/engine/
 
 - Blockers (Phase 1) → `stderr`, exit 1 before writes.
 - Advisories (Phase 1 + Phase 3) → numbered checklist after install.
-- `bkit check` (dry-run) → Phase 1 + Phase 3 advisories (read-only); exit 1 on Tier-1 / Tier-2 drift. No writes.
+- `bkit check` reports Phase 1 and Phase 3 findings. It leaves installed files alone, writes the checklist to `.bkit/advisories.md` and exits 1 on Tier-1 or Tier-2 drift.
 
 ## Project documentation advisories
 
@@ -298,3 +355,7 @@ pnpm harvest report      # rewrite harvest/stats.md only
 - Host databases: opened `immutable` or via the host's WAL; WAL without `-shm` → temp copy; nothing written beside them. Node 22.5+ (`node:sqlite`), else those hosts read empty.
 - Growth: ~2 KB a `chat` row; ~450 chats + ~30 runs a month, plus a row per scan for each changing open row and one on settling → `MAX_ROWS_BEFORE_ROLLUP` (5000) in 6 to 9 months.
 - Tests: `pnpm test:harvest` (script), vitest `scripts/harvest/*.test.ts` (ledger step).
+
+## Open questions
+
+None recorded.

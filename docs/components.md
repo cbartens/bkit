@@ -33,7 +33,17 @@ The central idea is a repeatable engineering process: specialist agents do the w
 | Focused, resumable work | Separate working copies isolate features. Fresh agents receive focused briefs, and saved state lets another session or host continue the work. Model choices match each role's reasoning needs. |
 | Improvement beyond passing tests | Audits inspect risks and gaps the test suite may miss. Findings become planned work; measurements and maintenance utilities help improve the process. |
 
-## The development lifecycle
+## Constraints
+
+<!-- prettier-ignore -->
+| Constraint | What it means for a project | Source |
+| --- | --- | --- |
+| Coding assistant | At least one supported host must run the agent roles. The project can install several. | [README quick start](../README.md#quick-start) |
+| Repository and tracker | Code and pull requests live on GitHub. A project can track issues on GitHub, Linear or Jira. Remote operations need access to the chosen service. | [README](../README.md) |
+| Application stack | Node and pnpm run bkit. The application can use another language and provides its own build and test commands. | [README quick start](../README.md#quick-start) |
+| Owner decisions | The owner approves the direction and plan before the work proceeds through the relevant decision points. | [README workflow overview](../README.md#how-it-works) |
+
+## Primary workflows
 
 Design, Plan, Build, Debug and Ship are bkit's five primary workflows. Together they turn an idea into an integrated change, with review, verification and recorded progress along the way. Each workflow has a distinct responsibility and delegates focused work to specialist agents.
 
@@ -48,7 +58,7 @@ Design, Plan, Build, Debug and Ship are bkit's five primary workflows. Together 
 
 Start where the work stands: a settled task can enter Plan or Build, and a failure can enter Debug directly. Debug is a recovery workflow, so a successful build does not need a debugging phase before shipping. Auto routes supported events to the appropriate workflow; it is not a sixth development phase. The [workflow catalog](../.bkit/workflows.md) defines the commands, entry conditions and handoffs.
 
-## Core, shared and templates
+## Delivery and ownership
 
 These three parts explain how bkit delivers the process to a project. They describe ownership and delivery roles; the [architecture](architecture.md) gives the detailed file layout.
 
@@ -230,4 +240,8 @@ Feature proposals and delivery state belong in the tracker and [roadmap](roadmap
 | [Template catalog](../.bkit/templates.md) | Which starter tools can a project adopt, and how? |
 | [Product guide](../DETAILS.md) | What are bkit's core ideas, user benefits and detailed capabilities? |
 
-The capability register and floorplan describe implementation evidence at their own level of detail. For example, installation uses both managed-version markers and tracker-block substitution from the capability register, while development guidance spans responsibilities outside that register. Components need no matching capability row, and a capability may support several components. This document is maintained independently of both generated views.
+Installation and upgrades use the register's **Managed-version marker**. Host and provider adaptation uses **Tracker block substitution** when rendering instructions and **Cursor API access** for provider discovery. Development coordination and review span responsibilities beyond those three registered mechanisms.
+
+## Open questions
+
+The README sets no numeric scale target, live-update deadline or guarantee for disconnected workflow execution.

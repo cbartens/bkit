@@ -1,102 +1,81 @@
 # Technology
 
 > [!CAUTION]
-> **Purpose:** The project's chosen frameworks, libraries, styling systems and coding conventions. Why a choice was made goes in `decisions.jsonl`.
+> **Purpose:** Which technologies bkit uses to deliver its CLI, agent instructions and project tooling, and which conventions reviewers enforce.
 >
 > **Rules:**
 >
-> - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
-> - List each technology and how it is used. Put the reason for a choice in `decisions.jsonl`.
+> - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs.
+> - Name the file that holds each version and list each technology once.
+>
+> **Not here:** Decision rationale belongs in `docs/decisions.jsonl`, service boundaries in `docs/architecture.md` and setup commands in `docs/setup.md`.
+>
+> **Update when:** A dependency, tool, host integration or enforced convention changes.
 
-## Runtime & Language
+## Stack
 
-<!-- prettier-ignore -->
-| Technology | Version | Usage |
-| --- | --- | --- |
-| Node.js | `>=24` (engines field) | Runtime for all CLI scripts |
-| TypeScript | `7.x` | Source language for `.bkit/core/engine/**/*.ts` |
-| ESM | `"type": "module"` in `package.json` | All scripts are native ESM modules |
-| `tsx` | `4.x` | Used by integration tests to spawn `bkit` without a pre-build step |
-
-## Package Management
+For tools supplied by a host, the version column identifies the file that declares the integration and states who supplies the installed version.
 
 <!-- prettier-ignore -->
-| Technology | Version | Usage |
-| --- | --- | --- |
-| pnpm | tracks `package.json#packageManager` (single SoT; Corepack-resolved) | Monorepo / consumer package management |
-| pnpm settings | `pnpm-workspace.yaml` | bkit repo only: `minimumReleaseAge: 10080` (7 days), `trustPolicy: no-downgrade`, `blockExoticSubdeps`, `strictDepBuilds`, `onlyBuiltDependencies: [esbuild]`. `devDependencies` are exact versions (no ranges) |
-| npm registry | `https://registry.npmjs.org` | Distribution target for `@cbartens/bkit` |
+| Layer | Technology | Version from | Chosen for |
+| --- | --- | --- | --- |
+| CLI runtime | Node.js with native ECMAScript modules | `.nvmrc` pins the development runtime. `package.json` declares the engine range and module type. | Runs the CLI, hooks and project utilities. |
+| Engine and coordination | TypeScript and its compiler | `package.json` | Builds the commands that install payloads, coordinate workflows, validate evidence and report outcomes. |
+| Package management | pnpm | `package.json` | Installs the locked toolchain and runs the project's named gates. |
+| Package distribution | npm CLI | `.github/workflows/release.yml` selects the Node distribution that supplies npm. | Publishes the package to the public registry using trusted publishing. |
+| Workflow and review | Markdown workflows, prompts, rules and copy-and-own templates | `package.json` versions the shipped payload. | Defines the five phases, independent reviews, audits and shared instructions. |
+| Host adaptation | Claude Code, Cursor, Codex, Antigravity and OpenCode | `.bkit/core/engine/render/hosts.ts` declares the transforms. The operator supplies the host version. | Renders shared instructions for the selected assistant. |
+| Model configuration | bkit's model registry | `.bkit/core/.bkit/prompts.md` | Selects a model and reasoning effort for each role and gateway. |
+| Source control and tracker access | Git, GitHub CLI and tracker adapters | `.bkit/core/engine/commands/workflow/tracker.ts` declares the integration. The environment supplies the clients. | Isolates worktrees, reads pull requests and synchronizes work items with GitHub, Linear or Jira. |
+| Project memory and reporting | JSON Lines and Markdown | `.bkit/core/.bkit/jsonl.md` declares the record schema. | Stores status, decisions, findings and measurements, then projects them into reports and the roadmap. |
+| Verification and cloud continuation | GitHub Actions | `.github/workflows/bkit-ci.yml` and `.github/workflows/bkit-cloud.yml` pin the actions. | Runs project checks and routes eligible cloud work. |
+| Process launching | cross-spawn | `package.json` | Launches commands from the sleep-prevention wrapper, including Windows command shims. |
+| TypeScript execution | tsx | `package.json` | Runs engine source and fixture CLIs directly. |
+| Engine tests | Vitest and its V8 coverage provider | `package.json` | Runs unit and integration suites and measures coverage by tier. |
+| Test fixture parsing | yaml | `package.json` | Parses workflow and configuration fixtures in tests. |
+| Shell tests | Bats | `package.json` | Exercises shell commands and hooks against temporary repositories and stub binaries. |
+| Formatting | Prettier | `package.json` | Formats code and Markdown using `.prettierrc.json`. |
+| Prose checks | Vale | `.github/workflows/bkit-ci.yml` | Checks agent-read prose with the rules in `.vale.ini`. |
+| Workflow checks | actionlint | `.github/workflows/bkit-ci.yml` | Checks GitHub Actions syntax, expressions and shell bodies. |
+| Test linting | Oxlint and oxlint-tsgolint | `package.json` | Enforces assertions and checks unhandled promises in test files using `.oxlintrc.json`. |
+| Code quality | slop-scan | `package.json` | Detects new findings against the base with `bkit:slop:delta`. |
+| Git hooks | Husky and lint-staged | `package.json` | Runs the staged-file checks and the pre-push gate. |
+| Capability maps | graphify | `scripts/graphify/bkit-graphify.sh` | Generates the capability register and checks it against the code. |
+| Repository artwork | SVG | `scripts/readme/readme-art.mjs` defines the generated art. | Draws the assets embedded in the package overview. |
+| Documentation diagrams | Mermaid | `scripts/graphify/bkit-graphify-rollup.py` emits diagram source. The Markdown viewer supplies the renderer. | Shows relationships and flows in the capability register and project guides. |
+| Security scans | Trivy | `.github/workflows/bkit-trivy.yml` | Scans tracked files against the project's accepted findings. |
+| Dependency upkeep | Renovate | `.github/workflows/bkit-renovate.yml` | Applies the update policy in `.github/renovate.json5`. |
 
-## Build & Output
+### Build & Output
 
-<!-- prettier-ignore -->
-| Technology | Config | Usage |
-| --- | --- | --- |
-| `tsc` (TypeScript compiler) | `tsconfig.json` | Compiles `.bkit/core/engine/**/*.ts` → `dist/**/*.js` (same folders); committed `dist/` is the published artifact |
-| `tsc` (test files) | `tsconfig.test.json` | Type-checks the engine including `*.test.ts` with Vitest's bundler resolution, no emit (`pnpm bkit:typecheck:tests`, run by `pnpm typecheck`) |
-| `bkit:check:dist` npm script | `bkit-tests-static` lane ("Assert Dist Freshness") + source-repo pre-push | Rebuilds and `git diff --exit-code dist/` — fails if committed `dist/` is stale. Source-repo only; not in the consumer `bkit-ci.yml` template |
-| Runtime `dependencies` | `cross-spawn` `7.0.6` | The test sleep-prevention wrapper launches commands across platforms, including Windows package shims. Anything reachable from `dist/` at consumer runtime belongs in `dependencies`, never `devDependencies` |
+`tsconfig.json` compiles the engine to the committed `dist/` tree. `tsconfig.test.json` type-checks tests without emitting files. Runtime packages reachable from the distributed code belong in `dependencies`. The source repository checks the compiled output with `bkit:check:dist`.
 
-## Execution Hosts
+### Execution Hosts
 
-bkit renders agent payload for five IDE / agent-host runtimes. Hosts additive — `--claude` and `--cursor` always-on; Codex, Antigravity and OpenCode opt-in.
+The installer always includes core. Select Claude, Cursor, Codex, Antigravity or OpenCode with its install flag. The host and gateway catalog covers install flags, supported providers, model overrides and the hooks each host can enforce. [Host and provider catalog](../.bkit/providers.md)
 
-<!-- prettier-ignore -->
-| Host | Install flag | Notes |
-| --- | --- | --- |
-| Claude (`.claude/`) | always-on (no flag) | Anthropic first-party agent CLI; `CLAUDE.md` owned by `--claude` module |
-| Codex CLI (`.codex/`) | `--codex` | OpenAI Codex CLI host; `.codex/agents/*.toml` + GateGuard / ReadGuard / guardrails / rules hooks; workflows ship as skills at `.agents/skills/bkit-*/SKILL.md`; project-local hooks load only once `.codex/` is trusted |
-| Antigravity (`.agents/plugins/bkit/`) | `--antigravity` | Antigravity IDE host, installed as a workspace plugin: `plugin.json` + `skills/bkit-*/SKILL.md` + `agents/*.md` + `hooks.json` + `hooks/` + root `GEMINI.md`; one gateway (`google`) |
-| Cursor (`.cursor/`) | always-on (no flag) | Cursor IDE agent runtime |
-| OpenCode (`.opencode/`) | `--opencode=<provider>` | sst/opencode universal agent host; four allowlisted providers (`OPENCODE_PROVIDERS`, strict — no arbitrary-endpoint fallback): `openrouter`, `ollama`, `opencode-zen`, `opencode-go` |
-
-OpenAI-compatible providers: npm `@ai-sdk/openai-compatible`. `opencode-zen` / `opencode-go` = OpenCode built-in gateways (models.dev ids `opencode` / `opencode-go`), auth via `BKIT_OPENCODE_API_KEY` — minimal `provider.<id>` + `{env:BKIT_OPENCODE_API_KEY}` (no npm / `baseURL`; OpenCode routes per-model). `OPENCODE_PROVIDERS` (`.bkit/core/engine/shared/egress.ts`) is the single allowlist; `OPENCODE_PROVIDER_DEFAULTS` (same file) and `GATEWAY_COLUMN` (`.bkit/core/engine/render/models.ts`) must cover every `OpencodeProvider` (typed `Record<OpencodeProvider, …>` / `satisfies`), so a provider missing from either fails `tsc`. Per-agent model pins: `.bkit/prompts.md` § Models, one column per provider.
-
-## Testing
-
-<!-- prettier-ignore -->
-| Technology | Version | Usage |
-| --- | --- | --- |
-| Vitest | `5.x` | Unit (`*.test.ts`) and integration (`*.integration.test.ts`) test runner; mocks are cleared before every test (the v5 `clearMocks` default) |
-| `@vitest/coverage-v8` | `5.x` | Per-tier coverage; branch-threshold gate on the unit run (`test:coverage:unit`) |
-| `yaml` | `2.x` | Test-only YAML parsing (template workflows parsed in-process; no python / ruby) |
-| bats | `1.13.0` (devDependency, patched by `patches/bats@1.13.0.patch` through `pnpm.patchedDependencies`, so a version bump needs the patch remade; `pnpm exec bats`) | Shell tier — `tests/shell/*.bats`, for logic that lives in shell (the bkit-cloud-bootstrap hook's `gh` preflight, the `gh` stub harness) |
-| Real-filesystem fixtures | `os.tmpdir()` scratch dirs | Integration tests spawn `bkit` against temporary consumer directories — no mock `fs` |
-
-See `docs/testing.md` for tier boundaries, CI execution order, and spawning patterns.
-
-## Linting & Formatting
+## Conventions
 
 <!-- prettier-ignore -->
-| Technology | Config | Usage |
+| Convention | Rule | Enforced by |
 | --- | --- | --- |
-| Prettier | `3.x`, `.prettierrc.json` | Code and markdown formatting (`pnpm format:check` in CI) |
-| Vale | `3.26.0`, system-installed locally; CI installs a sha256-verified pinned tarball | Prose linting of `.agents/`, `.bkit/`, `docs/` and root markdown (`pnpm bkit:lint:prose` → `bkit ci prose --glob=…`). Fails when the vale binary is absent; a missing `.vale/styles/write-good` (gitignored, so absent in fresh checkouts and worktrees) self-heals by copying from the main worktree, else `vale sync`, and fails if neither works. CI installs both |
-| actionlint | `1.7.12`, downloaded in-lane on the static and unit lanes (SHA-pinned script) | GitHub-Actions-aware lint of `.github/workflows/*` — expression syntax + shellcheck on `run:` bodies. `pnpm bkit:lint:workflows` guard-skips locally when absent |
-| Oxlint + oxlint-tsgolint | `1.89.0` + `7.0.2004` (exact), `.oxlintrc.json` | Test-file linter; adopted copy of `.bkit/templates/.oxlintrc.json` (bkit-only edits: `*.test.ts` glob, `expectExit`); only these rules enabled (`pnpm lint` → `oxlint --type-aware --tsconfig tsconfig.test.json --deny-warnings .bkit/core/engine`; part of `bkit:gate:static` and the CI static lane). Scope: `**/*.test.ts` (covers `*.integration.test.ts`). Rules, all `error`: `vitest/expect-expect`, `vitest/no-conditional-in-test`, `vitest/no-conditional-expect`, `vitest/valid-expect` (`maxArgs: 2`), `typescript/no-floating-promises` (type-aware via oxlint-tsgolint, built on TypeScript 7; typescript-eslint supports only TypeScript `<6.1`) |
-| slop-scan | `0.3.x`, `slop-scan.config.json` | Detects code-shaped slop in source — empty catches, over-fragmentation, pass-through wrappers. `pnpm lint:slop` reports (never fails); `pnpm bkit:slop:delta` is the gate that fails on net-new findings vs the base |
+| Runtime packages | Declare dependencies used by shipped code and commit the matching lockfile and compiled output. | Dependency audit, frozen install and the static lane's dist freshness check. |
+| Dependency pinning | Pin development dependencies and apply the release-age, trust and build-script policies. | `package.json`, `pnpm-workspace.yaml` and the dependency audit. |
+| Canonical sources | Edit payload sources and regenerate installed mirrors. | `bkit check`, the compliance grader and code review. |
+| Stack independence | Expose consumer checks through named package scripts. | Project rules and review of engine or workflow changes. |
+| Test placement | Name unit tests `*.test.ts` and integration tests `*.integration.test.ts`. | `vitest.config.ts`, tier-specific scripts and code review. |
+| Consumer-facing names | Prefix bkit-owned consumer commands and files as specified by the project naming rules. | `.bkit/core/engine/audits/templates/branding.test.ts`. |
+| Formatting and prose | Format source and Markdown, preserve compact tables and follow the agent-read authoring rules. | `format:check`, `format:tables:check`, `bkit:lint:prose` and review. |
 
-## Git Hooks
+## Not used
 
 <!-- prettier-ignore -->
-| Technology | Config | Usage |
-| --- | --- | --- |
-| husky | `9.x`, `.husky/` | Pre-commit and pre-push hooks |
-| Pre-push hook | `.husky/pre-push` | Loads `.envrc` through `direnv exec .` when the repo has one, `direnv` is on `PATH` and `CI` is unset, and blocks in seconds on an untrusted `.envrc`. Runs `pnpm bkit check`, then `bkit ci push-gate` with the selected script: `bkit:gate:min` for an eligible bookkeeping push, `bkit:gate:static` for a revert, else `bkit:gate:static-unit-integration` when declared or `bkit:gate:static-unit`. A successful full gate records local evidence for later bookkeeping increments. Source-repo full pushes also run `pnpm bkit:check:dist` and `pnpm bkit:lint:workflows`; the consumer template does not. Gate selection and release skips are in `docs/deployments.md` § Pre-push checklist and § Release test runs. |
+| Technology | Use instead |
+| --- | --- |
+| Application server and web framework | The installed CLI and the selected agent host run workflows. |
+| Database or ORM | Versioned files hold shared records. Git's common directory holds private, cross-worktree state. |
+| Monorepo task orchestrator | Package scripts and the GitHub Actions job graph run this single package's checks. |
 
-## CI/CD
+## Open questions
 
-<!-- prettier-ignore -->
-| Surface | Config file | Trigger |
-| --- | --- | --- |
-| Self-gating CI | `.github/workflows/bkit-ci.yml` | Push to `dev` / `main`, PRs into them, `workflow_dispatch` (manual, feat branches) |
-| Release publish | `.github/workflows/release.yml` | Git tag push |
-| Cloud-agent lane | `.github/workflows/bkit-cloud.yml` | Opt-in (`bkit install --auto=…`); dual claude + OpenCode jobs, each secret-gated |
-| Security scan (Trivy) | `.github/workflows/bkit-trivy.yml` | Push to `dev` / `main`, PRs into them, daily cron, `workflow_dispatch`; acceptances in `.trivyignore.yaml` |
-| Dependency updates (Renovate) | `.github/workflows/bkit-renovate.yml` | Daily cron, `workflow_dispatch`; rules in `.github/renovate.json5` |
-
-Single package — no turbo, no affected-graph. CI flat DAG: `bkit-tests-scope` planner → every `bkit-tests-*` lane → `bkit-tests-check` (sole required check). See `docs/testing.md` § CI execution; `docs/deployments.md` for pipeline rules, branch protection, secrets.
-
-## Naming Conventions
-
-See `.agents/rules.md` § Project Rules → Naming Conventions for server actions, deployed functions, migrations, tests, and log format rules.
+None.

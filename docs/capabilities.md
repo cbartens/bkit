@@ -952,3 +952,11 @@ Use this block to rename a node, hide a node or an edge, pin a note, or force no
 ```
 
 <!-- overrides:end -->
+
+## Component responsibilities
+
+Installation and upgrades own the managed-version marker. Host and provider adaptation uses tracker block substitution when rendering instructions and uses the egress registry for Cursor API access. The [component breakdown](components.md#component-breakdown) explains how these responsibilities fit together. The generated register above names the owner module and reports uses outside it.
+
+## Open questions
+
+Should the standalone secrets tool's direct Cursor API call have an explicit budget? The rule file records why that call exists and leaves the proposed budget inactive. The generated status therefore remains visible for review.

@@ -8,98 +8,92 @@
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
 > - Pre-push runs the project's gate set locally (see "Pre-push checklist" below).
 > - Never use `--no-verify`.
+>
+> **bkit practice:** The marked sections describe the CI scaffold available to adopting projects. Project slots describe the bkit package itself. Keep the practice headings stable for their callers.
+>
+> **Not here:** See `docs/architecture.md` for hosting and `docs/security.md` for credential ownership.
+>
+> **Update when:** A release trigger, protected branch, environment, credential route or rollback procedure changes.
+
+## Environments
+
+> **Project slot**
+
+<!-- prettier-ignore -->
+| Environment | Branch or version | Address | What puts code there |
+| --- | --- | --- | --- |
+| Producer checkout | Maintainer's checked-out branch | Local worktree | Git checkout and local build. |
+| GitHub Actions | PR head, push to `dev` or `main`, manual dispatch, or release tag | [Workflow runs](https://github.com/cbartens/bkit/actions) | The corresponding workflow checks out the selected commit. Scheduled maintenance has its own triggers. |
+| Cloud agent workspace | The authorized feature or integration branch | Workspace supplied by the configured host | Cloud dispatch and the host's bootstrap. |
+| npm registry | Version tag on a commit reachable from `main` | [Published package](https://www.npmjs.com/package/@cbartens/bkit) | The release workflow publishes the version in the manifest. |
+| Consumer checkout | Version selected by the project's dependency and lockfile | Local project directory | The project installs the package and runs the bkit installer or upgrader. |
+
+## Release path
+
+> **Project slot**
+
+```mermaid
+flowchart LR
+    Local["Producer checkout"] --> Feature["Feature branch"]
+    Cloud["Cloud agent workspace"] --> Feature
+    Feature --> CI["GitHub Actions: checks"]
+    CI --> Dev["Integration: dev"]
+    Dev --> PR["Release PR and required check"]
+    PR --> Main["main"]
+    Main --> Tag["Version tag on a main commit"]
+    Tag --> Release["GitHub Actions: verify dist and release notes"]
+    Release --> NPM["npm registry"]
+    NPM --> GH["GitHub Release and stable major tag"]
+    NPM --> Consumer["Consumer checkout"]
+```
+
+## Secrets and env config
+
+> **Project slot**
+
+The credential inventory, readers and rotation procedures are in [Security](security.md#secrets). The routes below describe the configuration this checkout actually uses.
+
+<!-- prettier-ignore -->
+| Environment | Route | Verification |
+| --- | --- | --- |
+| Producer and consumer checkouts | direnv reads the local tooling keys from the gitignored `.bkit/.env`. Local `gh` can use its own login. Optional importer and external-store credentials come from the operator's environment. | See [Setup](setup.md#environment-variables) for presence checks. Diagnostic output must omit values. |
+| Cloud agent workspace | The owner provisions the selected host's dashboard from the generated private cloud setup file. Session identifiers are injected at run time. | Inspect the host-specific checklist and run `bkit doctor`. |
+| GitHub Actions | The checked-in sync config maps `BKIT_GH_TOKEN` to the same name and the local Anthropic key to `ANTHROPIC_API_KEY`. The cloud router reads the prefixed tracker and provider names listed in Security. GitHub injects its job token. A Claude job can use federation variables and job OIDC. | Review the config against the workflow and preview `node scripts/secrets/bkit-secrets.mjs sync --dry-run`. An unlisted, unprotected name is a deletion candidate. Resolve the unmapped names before applying a sync. |
+| npm registry | GitHub issues a short-lived OIDC identity to `release.yml`. npm verifies its trusted-publisher binding. | Verify the published package's provenance as described in [Security](security.md#verify-a-published-version). |
+
+## Branch protection
+
+> **Project slot**
+
+<!-- prettier-ignore -->
+| Branch | Required checks | Other rules |
+| --- | --- | --- |
+| `main` | `bkit-tests-check`, on an up-to-date branch | A pull request and linear history are required. Protection applies to administrators. The deletion ruleset also applies. |
+| `dev` | No required status check in the effective branch rules | A repository ruleset forbids deletion. Feature integration follows the project's review and CI procedures. |
 
 ## Production rollback runbook
 
-> Use this runbook when a bad release is live. Move production back to the last good deployment, then fix forward through `dev`. Production moves first, and `main` keeps its history. The steps work on any host. The commands use Vercel as the example.
+> **Project slot**
 
-### Preconditions
+The released artifact is an npm package. Moving a distribution tag affects subsequent resolution. Consumers with an installed or locked version need a dependency change.
 
-- You know the last good deployment id. It is the deployment production served before the bad release, which `bkit-tests-deploy` logs as the deployment it replaced. Without that log, use the host's deployment for a commit that is green on `main` (`gh run list --branch main --status success --limit 5`).
-- `gh auth status` is green.
-
-### Playbook
-
-1. **Move production back** to the last good deployment. Do not rebuild, and make no git change. Move every production host the release moved (the site, and webhook or background-job aliases), never the website alone. With `bkit-tests-deploy` adopted, run the switch from a `workflow_dispatch` rollback workflow in the deploy job's `concurrency:` group (`cancel-in-progress: false`), so a release and a rollback never switch production at once. For example, on Vercel:
-   ```bash
-   vercel ls --meta githubCommitSha=<green-sha>
-   vercel promote <prior-deployment-url>
-   ```
-2. **Mark the bad deployment** when `bkit-tests-deploy` is adopted. `bkit-tests-deploy` refuses the deployment id in repo variable `ROLLED_BACK_DEPLOYMENT_ID` (§ Promote before the lanes), so a "Re-run all jobs" of the bad run cannot promote it again.
-   ```bash
-   gh variable set ROLLED_BACK_DEPLOYMENT_ID --body <bad-deployment-id>
-   ```
-3. **Verify** the rollback with § Post-rollback verification.
-4. **Fix forward through `dev`.** Revert the bad change on a `revert-*` branch off `dev`, or ship the fix. Open a PR into `dev`, then release `dev` → `main` as usual. Hold every other release PR into `main` until it carries the fix, because a release cut from `main`'s tip ships the bad commit again. The release descends from the commit production serves, so `bkit-tests-deploy` promotes it. Never rewind or re-seed the database. Ship a corrective migration instead (§ Applying migrations at deploy time). The rolled-back build must work on the newer schema, so expand first and contract later.
-5. **Reset `main` — last resort.** Do this only when `main` holds commits that a `dev` release cannot undo (for example, a squash that landed on `main` without going through `dev`), and only after step 1. If you reset first, `bkit-tests-deploy` refuses every release until production moves, including the run the reset starts, because production's commit is no longer an ancestor of `main`. The reset is a push to `main`. With `bkit-tests-deploy`, it starts a release run that builds and promotes a fresh deployment of `<green-sha>`. You need `jq`, a local repo on `main` and a clean tree.
-   ```bash
-   # save protection verbatim (GET and PUT shapes differ; raw GET avoids hand-mapping)
-   gh api repos/{OWNER}/{REPO}/branches/main/protection > /tmp/main-protection.json
-   # disable protection so the force-reset is accepted
-   gh api -X DELETE repos/{OWNER}/{REPO}/branches/main/protection
-   # force-reset the ref
-   gh api -X PATCH repos/{OWNER}/{REPO}/git/refs/heads/main -f sha=<green-sha> -F force=true
-   # restore: inspect the saved JSON and PUT the equivalent shape (`required-status-checks` → `required_status_checks`, contexts list, etc.)
-   gh api -X PUT repos/{OWNER}/{REPO}/branches/main/protection --input /tmp/main-protection.json
-   ```
-
-### Revert, not reset
-
-- A reset rewrites the history that every clone, open PR and release record points at, and it runs with branch protection off. A revert keeps `main` equal to what was released.
-- `git revert` on a cross-branch squash (for example, `feat/*` landed on `main`, not `dev`) can delete files that `main` code still references. The tree then fails CI despite its "clean" history. That squash is the step-5 case. Production merges MUST come from `dev` (single-feature squash scope).
-- On `revert-*` branches, pre-push drops only the unit and integration lanes (`bkit:gate:static` in place of the push gate). The static lane and the bkit drift gate still run, so a revert PR can be pushed while the source state is briefly inconsistent.
-
-### Post-rollback verification
-
-- Every production host reports the last good deployment id. Read it back from the host API, or from the `curl -sI https://{prod-alias}` headers.
-- Run the production smoke suite to confirm the rolled-back app behaves as expected.
-- With `bkit-tests-deploy` adopted, `gh variable get ROLLED_BACK_DEPLOYMENT_ID` prints the bad deployment id.
-- After a step-5 reset, `gh api repos/{OWNER}/{REPO}/git/refs/heads/main --jq .object.sha` equals the green SHA.
+1. Identify the affected version, the last good version and their provenance. Inspect `npm view @cbartens/bkit dist-tags --json` and the matching GitHub Releases. If compromise is suspected, use the security incident runbook below.
+2. The owner withdraws the affected version using the **Withdraw the bad version** step in § Security incident runbook. Deprecation warns installers. Repoint `latest` and the sliding Git tag only if they identify the bad version. Preserve the immutable version tag.
+3. For affected checkouts, restore the known-good dependency and lockfile. Review the installed files and any already-applied file migrations against version control before running the pinned CLI. Preserve project-owned sections and records.
+4. Verify the npm tags and deprecation notice, GitHub Release status and package provenance. Install the good version in a fresh checkout and run `pnpm bkit check`. Publish the fix as a new version through the normal release path.
 
 ## Dev rollback runbook
 
-> Use this runbook to unwind a bad commit on `dev` to the prior known-good SHA when the rolled-out range included applied migrations. A code-only rollback leaves the dev DB ahead of the code, so schema-aware tests (schema introspection, access-policy integration) fail on an otherwise clean tree. The steps work with any database. The commands use Supabase as the example.
+> **Project slot**
 
-### Preconditions
-
-- You have a known-good SHA on `dev`. Confirm the target SHA is green with `gh run list --branch dev --status success --limit 5`.
-- The local repo is on `dev`, with a clean tree, and `gh auth status` is green.
-- `bkit-tests-migration` is adopted, because it owns the remote apply (§ Applying migrations at deploy time).
-- The dev DB admin connection string is in your local env (for example, on Supabase: the service-role `SUPABASE_DB_URL`).
-
-### Playbook
-
-1. **Revert the bad range locally.** NEVER `git reset` or force-push `dev` (`.agents/rules.md` § Git, CI & Merges). Push ONLY at step 3, after the dev DB reset in step 2, because CI on the push must meet the reset DB. **If** the range holds a merge commit → revert it with `-m 1`.
-   ```bash
-   git revert --no-edit <green-sha>..HEAD
-   git diff --stat <green-sha> HEAD   # empty = tree matches known-good
-   ```
-2. **Reset the dev DB.** Drop every schema your migrations create (`CASCADE`), then truncate the migration ledger. Name only your own app-managed schemas. For example, on Supabase (`public` is shown; add each schema your migrations create):
-   ```bash
-   psql "$SUPABASE_DB_URL" -c 'DROP SCHEMA IF EXISTS public CASCADE;'
-   psql "$SUPABASE_DB_URL" -c 'TRUNCATE supabase_migrations.schema_migrations;'
-   ```
-3. **Push the revert.** The push run's `bkit-tests-migration` re-applies every migration on the reverted tree, because an empty ledger makes every migration new. NEVER apply by hand. **If** `dev` is protected → push the revert on a `revert-*` branch and merge its PR. The apply then runs on the merge push to `dev`.
-   ```bash
-   git push origin dev
-   ```
-4. **Re-seed fixtures.** **If** the dev DB is seeded:
-   - Once `bkit-tests-migration` is green, re-seed with your seed command (for example, `pnpm db:seed`).
-   - Then re-run the lanes that read seed data: `gh run rerun <run-id> --failed`.
-
-### Why code-only rollback is not enough
-
-- A revert removes the range's migration files from the tree, but their migrations stay applied, because the DB has no "unapply" for code-driven migrations.
-- Schema-introspection tests (columns, access policies such as RLS, table presence) then see structure the code no longer declares, and fail on drift.
-- An apply after the ledger truncate re-applies only the reverted tree's migrations, so the DB lines up with the code.
-
-### Post-rollback verification
-
-- `git diff --stat <green-sha> origin/dev` must print nothing.
-- The migration ledger must match the reverted tree's migration files. For example, on Supabase, compare `psql "$SUPABASE_DB_URL" -c 'SELECT version FROM supabase_migrations.schema_migrations ORDER BY version;'` with `ls supabase/migrations/`.
-- Re-run the schema-aware test suite (e.g. `pnpm test:integration`) to confirm DB and code agree.
+1. Identify the first bad commit on `dev` using its Actions run and the last passing run. Save the failing test or other evidence.
+2. Prepare a revert or corrective commit on a branch from current `dev`. Include the engine source and matching `dist/` when either changes. Restore affected managed sources and regenerate their mirrors together.
+3. Run the reproducing check, the relevant gates and `pnpm bkit:check:dist`. Integrate through the normal review path and verify the `dev` push run at the landed commit.
+4. Check whether a version containing the change was published. If so, use § Production rollback runbook too. A dev revert updates the source tree. Installed packages and consumer-owned files require their own recovery.
 
 ## Commit-message force tags
+
+> **bkit practice**
 
 bkit's `bkit-ci.yml` recognises the tags below. They are case-sensitive and use the literal `[...]` form. A tag may appear anywhere in its source string. Tags compose: several on the same commit or PR title each fire independently.
 
@@ -134,6 +128,8 @@ A direct push to `dev` (no merged PR ancestry) auto-busts the task-runner cache 
 
 ## Autonomous phase-close prerequisites
 
+> **bkit practice**
+
 The design and plan Close Workflow lands docs on `dev` in one of two ways. Every runtime first builds the close commit off `origin/dev` and pushes it straight to `dev`. When that push goes through, no repo setting is required, and no PR is created. When GitHub refuses it (branch protection or a ruleset on `dev`), the close opens a PR and squash-merges it, which adds two repo prerequisites. Neither is pre-flighted, because no admin-scope token is required. Instead, a missing prerequisite shows itself when the close's own merge fails loudly.
 
 - **Branch protection on `dev` permits the autonomous merge**, because no human review is required. The PR-path merge does not wait for checks: its merge subject carries `bkit [skip ci]`, so a docs-only close dispatches no run to wait for. A rule requiring status checks to pass will block it.
@@ -144,6 +140,8 @@ A refused ship FAILED flush (`bkit workflows handover --flush`) opens and merges
 Confirm both before running phase closes from a cloud agent session.
 
 ## Run-level decision matrix
+
+> **bkit practice**
 
 bkit ships a mostly flat, wide scaffold. `bkit-tests-scope` always runs. It reads the markers once, computes `run_level`, the optional `run_migration` and `tenant_target`, and emits the `bkit-test-plan` JSON. It fans out to every lane (`bkit-tests-static` / `-unit` / `-build-web` / `-build-ios` / `-build-android` / `-integration` / `-e2e-web` / `-e2e-ios` / `-e2e-android` / `-live-web` / `-migration` / `-reset` / `-cleanup`), and `bkit-tests-check` joins them. `bkit-tests-deploy` runs on a push to the default branch only, promotes the release before the E2E / `@live` lanes run, and is not required. Static/unit/integration/build wait only on the planner.
 
@@ -167,6 +165,8 @@ Adopt only the lanes this repo has. Lane names and the adopt order are in `testi
 Device lanes follow `plan.run_native_*`, not `run_level`. The same rule holds on a PR, a push (including `partial`), and a dispatch.
 
 ## One run per branch or pull request
+
+> **bkit practice**
 
 ```yaml
 group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
@@ -269,6 +269,8 @@ This is optional. A same-repo promotion PR into the default branch (head `dev`, 
 
 ## Workflow-file limits GitHub does not enforce visibly
 
+> **bkit practice**
+
 **The 21,000-character expression cap.** GitHub compiles every block scalar containing a `${{ … }}` expression as one expression and refuses to compile the workflow past 21,000 characters:
 
 ```
@@ -283,6 +285,8 @@ The cap is undocumented and invisible to the toolchain, because the file stays v
 
 ## Post-merge dev CI auto-routing
 
+> **bkit practice**
+
 `bkit-cloud.yml`'s `workflow_run` trigger fires when CI completes on `feat/**` and `dev`, never on `main`. The per-branch success / failure matrix lives in `.bkit/cloud.md` § Branch-aware routing. The post-merge surfaces add the following on top of it:
 
 - **Trigger scope.** Dispatch jobs gate on `workflow_run.head_repository` being this repo, so a fork PR's CI completion never boots one. On `dev`, the same gate excludes `conclusion == 'success'` outright, so a green post-merge run costs zero runner minutes. The merge already happened, so that run only confirms the regression check passed.
@@ -296,6 +300,8 @@ The cap is undocumented and invisible to the toolchain, because the file stays v
 **Consumer-repo acceptance note:** the full happy-path loop (squash-merge → post-merge CI → `workflow_run` → `/bkit-debug` dispatch → fix PR → re-merge) can only be exercised on consumer repos that have `bkit-cloud.yml` installed and its dispatch secrets wired (see the cloud-agent auth surfaces in `docs/security.md`). A consumer without `bkit-cloud.yml` installed, or without CI running on `push: branches: [dev]`, never emits the `workflow_run` event this trigger depends on. The feature then becomes a silent no-op, not a failure.
 
 ## Ship gate + bookkeeping
+
+> **bkit practice**
 
 `/bkit-ship` first reconciles the feature branch with `origin/{branch}` (`bkit branches sync --reconcile-feature`): it fast-forwards a behind branch, merges a diverged one (never a rebase or force-push) and plain-pushes unpublished code with a CI-running head. Setup and every reconciled candidate refuse inherited unpublished `dev` commits, naming them. It is then keyed on `bkit branches sync --head=<PR head>`, which reports whether `origin/dev` is an ancestor of the PR head (`basePath`). A merged PR is reused only when the branch holds no work past its recorded head; otherwise ship opens a new PR.
 
@@ -352,6 +358,8 @@ Ship's docs sync, summaries, `SHIPPED` roadmap row and skill removals ride the P
 
 ## Smoke trigger plumbing
 
+> **bkit practice**
+
 Smoke runs after the deploy, in its own workflow, off the merge gate (what it actually probes is in `testing.md` § Smoke). When `bkit-tests-deploy` promotes inside CI, that probe is `bkit-health.yml` (`.bkit/templates.md` § Health check): one workflow, not a second smoke file. Pick the trigger by where the deploy happens, not by habit:
 
 - **If** the deploy happens inside CI → key smoke to `workflow_run` (the CI workflow `completed`, any conclusion), and probe only when production serves that run's commit. The deploy promotes before the tenant lanes, so a red run can still have put a release live. Fail, rather than skip, when production's commit cannot be read. Mind the 3-level `workflow_run` chain cap, because a fourth chained workflow will not fire.
@@ -361,6 +369,8 @@ Smoke runs after the deploy, in its own workflow, off the merge gate (what it ac
 - Do not key smoke to `workflow_run` for an externally deployed app, because it then probes the old build.
 
 ## Applying migrations at deploy time
+
+> **bkit practice**
 
 The deploy-time apply and the test-time replay gate are different guarantees. Keep both, preferably in the same always-on lane (`bkit-tests-migration`):
 
@@ -377,7 +387,15 @@ The deploy-time apply and the test-time replay gate are different guarantees. Ke
 - Do not assume the deploy-time apply also validates a clean from-scratch install or the seed, because it does neither.
 - Do not put the remote push inside e2e while live is not gated on e2e.
 
+### This project
+
+> **Project slot**
+
+The release workflow publishes a package. It applies no production database migrations. The installer and upgrader run file migrations when the adopting project invokes them. See [Data schema](data-schema.md) and the [file migration register](migrations.md).
+
 ## Build-vs-migration race
+
+> **bkit practice**
 
 When your host auto-deploys on push (Vercel / Netlify Git integration) while CI applies migrations as a separate, unordered step, the deploy's build and the migration race. A build-time DB read that lands before the migration creates its object makes the first deploy that ships it fail with a hard error. Build-time reads come from any statically rendered or build-generated route. Examples in Next.js: `sitemap.ts` / `robots.ts`, `generateStaticParams` / `generateMetadata`, an OG-image route, a static (non-dynamic) page's server read, or marking a DB route `force-static` / ISR. The missing-object error signatures in Postgres, for example, are `42P01` (relation), `42703` (column), `42704` (type) and `3F000` (schema).
 
@@ -391,6 +409,8 @@ When your host auto-deploys on push (Vercel / Netlify Git integration) while CI 
 The race stays hidden until the first build-time DB read lands, so flag it in review when one is added. `bkit-tests-migration` proves that migrations replay from empty, and on push it owns the remote apply. It still does nothing for the order of build and deploy on the host, because this race is separate from that gate. Serialise migrate → deploy at the host.
 
 ## Promote before the lanes (`bkit-tests-deploy`)
+
+> **bkit practice**
 
 With `bkit-tests-deploy` adopted, the host does not auto-build the default branch. `bkit-tests-build-web` creates this SHA's deployment, polls it until it is ready, and publishes `deployment_url` + `deployment_id`. The production alias still serves the previous release. `bkit-tests-deploy` `needs: [bkit-tests-migration, bkit-tests-build-web]`, runs on a push to the default branch only, and is not a required check. It promotes the exact `deployment_id` the build lane published, without looking the deployment up again by SHA. A `409` counts as success only when the body says this id is already current production. On `main` it runs before the E2E / `@live` lanes. Each of those lanes `needs:` it and starts by proving, by deployment id, that production serves this run's build. A re-run after a rollback therefore refuses, instead of testing the old build and going green. A red deploy job means the release did not happen, and production still serves the previous deployment.
 
@@ -412,12 +432,16 @@ The capstone `needs:` `bkit-tests-deploy`, so on a default-branch push a skipped
 
 ## Disable GitHub Code Quality billing
 
+> **bkit practice**
+
 GitHub Code Quality (coverage-on-PR plus the `Code Quality: CodeQL` runs) bills per active committer, plus Actions minutes, plus AI credits. It is opt-out: a repo with default setup enabled is billed silently until it is turned off.
 
 - **If** your repo has Code Quality default setup enabled → either disable it in repo → **Settings → Code security → Code Quality** (turn off default setup), or accept the per-committer charge.
 - **The bkit coverage stub replaces the coverage-on-PR value only.** `bkit-stub:coverage` gives a free, in-Actions coverage comment with no third-party service (the shipped stub targets Vitest; `testing.md` § Coverage on PRs). It does not replace CodeQL security scanning. If you rely on that scanning, keep it or re-enable it separately, because it is a distinct product and a distinct decision.
 
 ## GitHub Actions pinning
+
+> **bkit practice**
 
 **Pin every third-party dependency to an immutable digest, and pair each pin with an updater.** A floating ref (a `@v{N}` tag, a `ubuntu:26.04` image, an unversioned `curl … | bash`) is mutable, because a compromised maintainer can re-point it, on their next push, to malicious code that runs with your runner token. It is one exposure class across three surfaces:
 
@@ -537,6 +561,8 @@ Renovate's `osvVulnerabilityAlerts: true` opens CVE-driven PRs against `dev` imm
 5. **If** a CVE has no impact on your usage pattern (for example, a dev-server-only vuln in a build tool that you never run as a server) → dismiss it in the GitHub UI with the "Vulnerable code is not actually used" reason and a one-line justification. Do not dismiss an alert without documenting why.
 
 ## Project
+
+> **Project slot**
 
 ### Pre-push checklist
 
@@ -751,7 +777,7 @@ Breaking changes ship as `v2.0.0` and the workflow auto-creates a separate `v2` 
 Owner runs every step by hand; agents propose, never execute. Triggers: compromised or wrongly published npm version, provenance check fails (`docs/security.md` § Verify a published version), leaked token or key, private vulnerability report confirmed. Run only the steps that apply, in this order.
 
 1. **Stop publishing.** npmjs.com → `@cbartens/bkit` → Settings → Trusted publishing → remove the `release.yml` publisher. Check Publishing access is still "Require two-factor authentication and disallow tokens"; `npm owner ls @cbartens/bkit` lists the owner only; `npm token list` → `npm token revoke <id>` for every token.
-2. **Revoke leaked credentials.** `BKIT_GH_TOKEN` → revoke at github.com/settings/tokens → re-mint per `docs/security.md` § Credential surfaces → update `.bkit/.env` + `gh secret set BKIT_GH_TOKEN` together. Any other key in `.bkit/.env` → revoke at its provider, re-mint, update `.bkit/.env`. Revoke first: rewriting git history does not un-publish a pushed secret.
+2. **Revoke leaked credentials.** Revoke the affected credential at its issuer. Follow `docs/security.md` § Credential surfaces to replace it, then reconcile each enabled destination through § Secrets and env config.
 3. **Withdraw the bad version.**
    - `npm deprecate @cbartens/bkit@<bad> "<reason>; upgrade to <fixed or last-good>"`.
    - `latest` points at it → `npm dist-tag add @cbartens/bkit@<last-good> latest`.
@@ -762,3 +788,9 @@ Owner runs every step by hand; agents propose, never execute. Triggers: compromi
 5. **Supersede.** Re-add the trusted publisher (npmjs.com → Trusted publishing → GitHub Actions, `cbartens/bkit`, workflow `release.yml`) → merge the fix to `main` → tag → release per § GitHub Release → verify the new version per `docs/security.md` § Verify a published version.
 6. **Tell consumers.** Publish the advisory (request a CVE in the draft). GitHub reviews it into the Advisory Database → `pnpm audit` / `npm audit` and Dependabot / Renovate alerts flag affected versions in consumer repos.
 7. **Record.** Append a `docs/failures.jsonl` row with `bkit ledgers append` after the advisory is public: key, root cause, references (advisory URL, fixed version).
+
+## Open questions
+
+> **Project slot**
+
+Which cloud credentials should the maintainer add to the sync configuration or explicitly protect there? The current mappings and workflow readers differ as described in § Secrets and env config.

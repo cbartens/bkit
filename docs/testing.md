@@ -12,63 +12,179 @@
 >   - **If** the branch or commit is a revert → pre-push runs `pnpm bkit:gate:static`.
 >   - **If** `pnpm bkit:gate:static-unit-integration` is declared → pre-push runs it.
 >   - **Else** → pre-push runs `pnpm bkit:gate:static-unit`.
-> - Gate scripts are consumer-owned. bkit's default is typecheck + lint + format:check + bkit:lint:prose + bkit:slop:delta + `pnpm test` (unit tier only).
+> - The package scripts own the gate chain. Use `test:coverage:unit` to run only this repository's Vitest unit tests.
 > - A gate runs its tiers one after another, never two at once. A push gate stops at the first red tier. The E2E gate runs every tier after a red one, reports each, and runs the whole E2E suite. Keep parallel work inside a tier. A cached task replay reports the earlier run's result, not a fresh run.
 > - Integration runs at pre-push once its gate is declared. Local services, such as a Docker database, are fine there.
-> - E2E, @live and tests against a deployed service are excluded from pre-push. They run in CI (see below).
+> - E2E, @live and tests against a deployed service are excluded from pre-push. Consumer projects with those tiers run them in CI.
 > - Never bypass the hooks with `--no-verify`.
+>
+> **Not here:** Live signals go in `docs/observability.md`, runner contracts in `.bkit/workflows.md` and branch protection in `docs/deployments.md`.
+>
+> **Update when:** A tier, runner, test folder, shared helper, CI lane or test command changes.
 
-## Local test sleep prevention
+## Stack
 
-`bkit tests run`, `bkit tests changed` and the individual-file runs in `bkit tests red` / `bkit tests green` hold a macOS sleep assertion while the command runs. They use `caffeinate -is`: idle sleep is prevented on battery and AC power, and system-sleep prevention applies on AC power. The assertion ends when the command finishes or is cancelled. Other platforms run the original command.
+> **Project slot:** Test runners and checks used by bkit.
 
-For direct test commands and package scripts, adopt `scripts/ci/bkit-test-awake.mjs` as described in `.bkit/templates.md` § Local test sleep prevention. Wrap every test entry point and the complete gate chain. CI calls those same scripts. A raw runner command outside these entry points needs the wrapper too.
+<!-- prettier-ignore -->
+| Tier | Runner | Framework or tool |
+| --- | --- | --- |
+| Static | `pnpm bkit:gate:static` | TypeScript, Oxlint, Prettier, table checks, Vale and slop-scan. CI also checks workflow syntax, dist freshness, capability maps and installation drift. |
+| Unit | `pnpm test:coverage:unit` | Vitest with V8 coverage and the branch floor in `vitest.unit.config.ts`. |
+| Unit, shell and script checks | `pnpm bkit:test:bats`, `pnpm bkit:test:awake`, `pnpm test:harvest` | Bats exercises shell behavior. Node's test runner exercises command wrappers and maintainer tooling. |
+| Integration | `pnpm test:integration` | Vitest with temporary checkouts, local subprocesses and the source CLI via tsx. |
 
-Keep the existing test timeouts. Keep the Mac's lid open; the assertion does not guarantee protection against lid closure or an explicit sleep request. The display may sleep normally.
+## Tiers this project has
 
-## CI test tiers (the bkit scaffold)
+> **Project slot:** The tier names below match the planning rubric in § Which tier does a behaviour need?
 
-CI runs the tiers through the bkit scaffold as one parallel lane (job) per tier, not as steps in one job. The step-by-step shape is in `.github/workflows/bkit-ci.yml` § "full CI scaffold reference", and the run-level shape is in `deployments.md` § Run-level decision matrix.
+<!-- prettier-ignore -->
+| Tier | Has it | Covers |
+| --- | --- | --- |
+| Static | Yes | Source, test types, lint, generated output, authored text and config drift. |
+| Unit | Yes | One module or script. A Git wrapper can exercise a real Git process inside an isolated temporary checkout. |
+| Integration | Yes | Several modules or a complete CLI invocation against a real temporary consumer filesystem. |
+| @live (golden) | Not applicable | The CI plan disables live service runs. External-command fixtures keep automated checks offline. |
+| E2E | Not applicable | This CLI has no automated browser, mobile or authenticated host lane. Manual host checks are described below. |
+| fresh-DB replay | Not applicable | The package stores shared state in Git and JSONL files. |
+| Smoke | Not applicable | The release publishes an npm package with no deployed service to probe. |
 
-The graph is flat and wide for static / unit / build / integration: scope fans out, and the capstone joins. **One exception:** when `bkit-tests-migration` owns the shared-remote migration apply, e2e / live `needs:` that lane for ordering. Never gate live behind static / unit / build / e2e:
+## Where tests live
 
-Each arrow points from a lane to a lane that waits for it (`needs:`); the dashed arrow marks a wait that is only ordering.
+> **Project slot:** File discovery and shared helpers.
+
+<!-- prettier-ignore -->
+| Tier | Folder | File naming | Shared helpers |
+| --- | --- | --- | --- |
+| Static | Repository root, `scripts/` and `.github/workflows/` | Tool configs, named package scripts and CI checks. | `tsconfig.test.json`, `.oxlintrc.json` and `.prettierrc.json`. |
+| Unit | `.bkit/core/engine/` and `scripts/harvest/` | Colocated `*.test.ts`. Repository and payload checks live under `.bkit/core/engine/audits/`. | `vitest.setup.ts`, `vitest.test-lock.ts` and `vitest.timeout-budget.ts`. |
+| Unit, shell and script checks | `tests/shell/`, `scripts/ci/`, `scripts/gate/` and `scripts/harvest/` | `*.bats` and `*.test.mjs`. Manual hook experiments also use `*.test.mjs` under `tests/experiments/hooks/`. | `tests/shell/setup_suite.bash`, `tests/fixtures/gh/` and `scripts/ci/bkit-test-file.mjs`. |
+| Integration | `.bkit/core/engine/` and `scripts/harvest/` | `*.integration.test.ts`. | `vitest.tsx-bin.ts`, `vitest.gate-fixture.ts`, `vitest.process-group.ts` and `tests/fixtures/`. |
+
+## Test data
+
+> **Project slot:** Fixtures, isolation and seed state.
+
+<!-- prettier-ignore -->
+| Tier or boundary | Initial state | Fixture or helper |
+| --- | --- | --- |
+| Unit | Construct module inputs in memory. A test that calls Git starts its own temporary repository. | `vitest.setup.ts` strips inherited Git environment variables. |
+| CLI integration | Create a fresh temporary consumer with a manifest and the files the scenario needs. Exercise installation, upgrade or uninstall against that tree. | `tests/fixtures/heavy-customised-consumer/` seeds user-owned edits. `vitest.gate-fixture.ts` supplies a minimal gate manifest and offline package runner. |
+| Ledger and harvest | Start with the scenario's JSONL rows and temporary repository or home. Assert the resulting rows and the bytes of files that should survive. | `.bkit/core/engine/ledgers/` tests and `scripts/harvest/ledgers.integration.test.ts`. |
+| Shell and external commands | Give each case an isolated work directory and a test-specific command search path. | `tests/fixtures/gh/` and `tests/shell/`. |
+| Shared UI login or database seed | Not applicable. bkit has no application login, database migration or seed job. | The persistent-file formats are documented in `docs/data-schema.md`. |
+
+## CI lanes
+
+> **Project slot:** Test jobs in `.github/workflows/bkit-ci.yml`.
+
+Each arrow joins a prerequisite job to the job that waits for it.
 
 ```mermaid
 flowchart LR
-    scope["bkit-tests-scope (always on, never skips, ~15s)"] --> static["bkit-tests-static"]
-    scope --> unit["bkit-tests-unit"]
-    scope --> integration["bkit-tests-integration"]
-    scope --> buildweb["bkit-tests-build-web"]
-    scope --> buildios["bkit-tests-build-ios"]
-    scope --> buildandroid["bkit-tests-build-android"]
-    scope --> migration["bkit-tests-migration"]
-    migration --> deploy["bkit-tests-deploy (default-branch push only; promotes)"]
-    buildweb --> deploy
-    migration --> reset["bkit-tests-reset (lease)"]
-    reset --> e2eweb["bkit-tests-e2e-web"]
-    reset --> liveweb["bkit-tests-live-web"]
-    reset --> e2eios["bkit-tests-e2e-ios"]
-    reset --> e2eandroid["bkit-tests-e2e-android"]
-    deploy -.-> reset
-    e2eweb --> cleanup["bkit-tests-cleanup (always(); releases the lease)"]
-    liveweb --> cleanup
-    e2eios --> cleanup
-    e2eandroid --> cleanup
-    cleanup --> check["bkit-tests-check (needs: scope + every lane you have, deploy included)"]
+    SCOPE["bkit-tests-scope"] --> STATIC["bkit-tests-static"]
+    SCOPE --> UNIT["bkit-tests-unit"]
+    SCOPE --> INTEGRATION["bkit-tests-integration"]
+    SCOPE --> CHECK["bkit-tests-check"]
+    STATIC --> CHECK
+    UNIT --> CHECK
+    INTEGRATION --> CHECK
 ```
 
+<!-- prettier-ignore -->
+| Lane | Needs | Runs when |
+| --- | --- | --- |
+| `bkit-tests-scope` | None. | On each configured push, pull request or manual dispatch. Computes the run plan. |
+| `bkit-tests-static` | `bkit-tests-scope` | The plan's `run_level` differs from `none`. |
+| `bkit-tests-unit` | `bkit-tests-scope` | The plan's `run_level` differs from `none`. Runs Vitest unit coverage and Bats. |
+| `bkit-tests-integration` | `bkit-tests-scope` | The plan's `run_level` differs from `none`. Runs the integration suite and reports its coverage separately. |
+| `bkit-tests-check` | The planner and all three test lanes. | The run has not been cancelled. Validates the plan and lane outcomes or mirrors the eligible push run. |
+
+### CI execution
+
+The required check verifies that the planner succeeded and that planned unit and integration jobs each executed tests. A plan that skips testing must account for the skipped jobs. Branch protection, release mirroring and the separate scan, dependency, cloud and publishing workflows are described in [Deployments](deployments.md).
+
+## Test reports
+
+> **Project slot:** Evidence from gate runs, individual files and CI.
+
+<!-- prettier-ignore -->
+| Tier | Report format | Path |
+| --- | --- | --- |
+| Static | Tool output and exit status. | The gate log or GitHub Actions job log. |
+| Unit and integration gates | JUnit XML when the gate receives a report directory. | `$BKIT_TEST_REPORT_DIR/vitest-<pid>.xml` for each Vitest process. |
+| Shell gate | JUnit XML when the gate receives a report directory. | `$BKIT_TEST_REPORT_DIR/report.xml` from Bats. |
+| Individual Vitest, Bats or Node files | JUnit XML when the caller requests it. | `pnpm bkit:test:file <repo-relative-file>` writes to `$BKIT_TEST_REPORT`. A call can name several files handled by the same runner. |
+| CI unit and integration | Vitest execution counts and V8 coverage JSON. | `$RUNNER_TEMP/unit-result.json`, `$RUNNER_TEMP/int-result.json`, `coverage/unit/` and `coverage/integration/`. |
+
+## Running locally
+
+> **Project slot:** Commands from `package.json`. Run checks from the repository root.
+
+<!-- prettier-ignore -->
+| Tier | Command |
+| --- | --- |
+| Static | `pnpm bkit:gate:static` |
+| Unit | `pnpm test:coverage:unit` |
+| Unit, shell and script checks | `pnpm bkit:test:bats`, `pnpm bkit:test:awake` or `pnpm test:harvest` |
+| Integration | `pnpm test:integration` |
+| One named file | `pnpm bkit:test:file .bkit/core/engine/cli.test.ts` |
+| All configured Vitest files | `pnpm test` |
+| Complete local test gate | `pnpm bkit:gate:static-unit-integration` |
+
+## CI test tiers (the bkit scaffold)
+
+> **bkit practice:** Shared guidance for projects adopting the CI scaffold.
+
+CI runs the tiers through the bkit scaffold as one parallel lane (job) per tier, not as steps in one job. The step-by-step shape is in `.github/workflows/bkit-ci.yml` § "full CI scaffold reference", and the run-level shape is in `deployments.md` § Run-level decision matrix.
+
+The graph is flat and wide for static / unit / build / integration: scope fans out, and the capstone joins. **One exception:** when `bkit-tests-migration` owns the shared-remote migration apply, e2e / live `needs:` that lane for ordering. Never gate live behind static / unit / build / e2e.
+
+Each arrow joins a prerequisite to a lane that waits for it. This scaffold includes consumer lanes beyond this repository's five jobs.
+
+```mermaid
+flowchart LR
+    SCOPE["bkit-tests-scope"] --> STATIC["bkit-tests-static"]
+    SCOPE --> UNIT["bkit-tests-unit"]
+    SCOPE --> BWEB["bkit-tests-build-web"]
+    SCOPE --> INTEG["bkit-tests-integration"]
+    SCOPE --> BIOS["bkit-tests-build-ios"]
+    SCOPE --> BAND["bkit-tests-build-android"]
+    SCOPE --> MIG["bkit-tests-migration"]
+    MIG --> DEPLOY["bkit-tests-deploy"]
+    BWEB --> DEPLOY
+    MIG --> RESET["bkit-tests-reset"]
+    DEPLOY --> E2EW["bkit-tests-e2e-web"]
+    DEPLOY --> LIVE["bkit-tests-live-web"]
+    DEPLOY --> E2EI["bkit-tests-e2e-ios"]
+    DEPLOY --> E2EA["bkit-tests-e2e-android"]
+    RESET --> E2EW
+    RESET --> LIVE
+    RESET --> E2EI
+    RESET --> E2EA
+    E2EW --> CLEAN["bkit-tests-cleanup"]
+    LIVE --> CLEAN
+    E2EI --> CLEAN
+    E2EA --> CLEAN
+    CLEAN --> CHECK["bkit-tests-check"]
+    STATIC --> CHECK
+    UNIT --> CHECK
+    INTEG --> CHECK
 ```
-  static/unit/integration/build-*: needs:[bkit-tests-scope]; if: run_level != 'none'
-  bkit-tests-migration:            needs:[bkit-tests-scope]; no job-level if (always-on)
-  bkit-tests-deploy:               needs:[bkit-tests-migration, bkit-tests-build-web]; default-branch push only
-  bkit-tests-reset:                needs:[scope, migration]; if: tenant_target != ''
-  e2e-web / live-web / e2e-ios / e2e-android:
-                                   needs:[scope, migration, deploy, reset, <build>];
-                                   if: !cancelled() && scope==success && <own gate>
-                                   && migration != 'failure' && deploy != 'failure'
-                                   && reset != 'failure'
-```
+
+Each lane's `needs:` and `if:` are in this table.
+
+<!-- prettier-ignore -->
+| Lane | `needs:` | `if:` |
+| --- | --- | --- |
+| `bkit-tests-scope` | none | always on; never skips (~15s) |
+| `bkit-tests-static` / `-unit` / `-integration` / `-build-*` | `bkit-tests-scope` | `run_level != 'none'` |
+| `bkit-tests-migration` | `bkit-tests-scope` | no job-level `if:` (always on) |
+| `bkit-tests-deploy` | `bkit-tests-migration`, `bkit-tests-build-web` | default-branch push only |
+| `bkit-tests-reset` | scope, migration | `tenant_target != ''` |
+| `-e2e-web` / `-live-web` / `-e2e-ios` / `-e2e-android` | scope, migration, deploy, reset, the lane's build | `!cancelled() && scope == success && <own gate> && migration != 'failure' && deploy != 'failure' && reset != 'failure'` |
+| `bkit-tests-cleanup` | the lanes that use the lease | `always()`; releases the lease |
+| `bkit-tests-check` | scope and every lane you have, deploy included | always |
 
 Adopt only lanes your repo has. Add a lane the moment its tier exists, because a tier with no lane is a tier nothing gates. The jobs above the reference in `bkit-ci.yml` are the starter: `bkit-tests-static` and `bkit-tests-unit`, joined by the `bkit-tests-check` capstone `/bkit-ship` merges on. Every lane you add joins the capstone's `needs:` and its assert. The reference is the target. A starter stub that still sits inside `bkit-tests-unit` is the pre-split shape.
 
@@ -136,7 +252,7 @@ CI branches on the event in a few places. Each one is a deliberate, recorded div
 | `human-confirmation` | A laptop reset of a remote tenant needs an explicit yes. The CI run is the approval. |
 | `revert-recovery` | A revert push skips the pre-push unit and integration tiers. CI still runs every tier. |
 | `output-channel` | CI prints annotations and job summaries. A terminal prints lines. |
-| `ci-strict-time-limits` | Time limits stay strict under `CI` (5s / 10s unit, 30s integration); locally they are a fixed 6 times that (30s / 60s / 180s) that only catches a hang, with no load reading. |
+| `ci-strict-time-limits` | Time limits stay strict under `CI`; locally they are a fixed multiple of the CI limit that only catches a hang, with no load reading. |
 | `playwright-outcomes` | Same retries, traces, and flake handling on every machine. A pass on retry is a failure. The target comes from `TEST_URL` alone. No spec is filtered by tag. |
 
 ### Which resources may each lane touch?
@@ -284,6 +400,8 @@ Two further axes share the same root cause:
 
 ## Which tier does a behaviour need?
 
+> **bkit practice:** Shared guidance for projects adopting the CI scaffold.
+
 Assign every behaviour its **lowest sufficient tier(s)**: the lowest tier that actually exercises it. A behaviour may need more than one. Never substitute a lower or mocked tier for a boundary that a higher tier validates. **Under-tiering** is a defect, not a shortcut. It means using a lower or mocked tier where the rubric demands a higher or `@live` one, for example a user-visible flow with no E2E row, an external-API behaviour tested only against a local fixture, or a migration with no fresh-DB replay.
 
 <!-- prettier-ignore -->
@@ -301,54 +419,9 @@ Assign every behaviour its **lowest sufficient tier(s)**: the lowest tier that a
 
 A plan's `Derived Test Matrix` (`docs/templates/bkit-plan.md`) applies this rubric to one feature: one row per behaviour, each mapped to a build + verify task. Boundary rows carry the rigor above: reach the boundary, assert a signal only it can produce, and use no `as unknown as` at the call-site.
 
-## Test first
-
-`/bkit-build` writes each group's tests before its code and proves them: one subagent writes the planned tests and may touch nothing else, the engine records each one failing (red), and only then does another subagent write the code, which may touch no planned test, until each passes (green). This covers the unit and integration tiers only. E2E and `@live` rows run in CI and stay planned in the `Derived Test Matrix`. Each plan task names its tests on a `**TEST FIRST:**` field, one sub-bullet per test, or `n/a — {reason}`.
-
-- **Declare `bkit:test:file`:** it runs the one test file bkit appends as its argument (a repo-relative path), and writes a JUnit XML report to the path in `$BKIT_TEST_REPORT`. Vitest: `vitest run --reporter=default --reporter=junit --outputFile.junit="$BKIT_TEST_REPORT"`. pytest: `pytest --junitxml="$BKIT_TEST_REPORT"`. jest: `jest --runTestsByPath` with the `jest-junit` reporter and `JEST_JUNIT_OUTPUT_FILE="$BKIT_TEST_REPORT"`. Node: `node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination="$BKIT_TEST_REPORT"`; write Node tests with `node:test` (`test` / `describe` + `it`).
-  - **Node case names:** a `node:test` file reports one case per `test()` call, named by the leaf `test` / `it` name only (the junit reporter drops the enclosing `describe` names, so the plan names the leaf, never `suite > test`). A file that does not use `node:test` (a plain script) reports one case named after the file path as passed to the command, so the plan names that test by the same path.
-  - **If** jest gets the path without `--runTestsByPath` → it reads the path as a regex, so a folder such as `(tabs)` matches no file and no report is written.
-  - **If** it is undeclared → the build reports test-first as not enforced.
-  - **If** the test files belong to more than one runner (for example, `.bats` and `node:test`) → point it at a script that picks the runner by file type.
-  - **If** `$BKIT_TEST_REPORT` is unset → pass no report flag. An empty `--outputFile.junit=` takes the next argument, the test file, as the report path, and overwrites it.
-- **Declare `bkit:lint:file`:** it lints the one test file bkit appends (a repo-relative path) with the static gate's linter config, and exits 0 when clean. ESLint: `eslint --max-warnings=0`. Ruff: `ruff check`.
-  - **If** the linter does not cover the test file (for example, `.bats`) → exit 0 (Oxlint: `--no-error-on-unmatched-pattern`).
-  - The build lints each planned test file before running it for its red. **If** `bkit:lint:file` is undeclared → the red is recorded unlinted, and a lint rewrite after it changes a frozen test file, which the code step's finish refuses.
-- **Call the runner directly:** a task runner that caches results, or runs dependent packages' suites first, breaks the one-file contract. A monorepo routes the path to the package and config that own it. An integration file gets the same environment setup that the integration suite gets.
-- **Judged by the report, never the exit code:** a misspelled path, a syntax error and an import of unwritten code all exit non-zero, just like a real failure. A red counts when the named test ran and failed, or when its file failed to load: no case carries the planned name, and the report holds no case, or only non-passing cases whose name contains the file's stem (the tests step writes no source, so an import of unwritten code is the expected shape of a red); a green only when it ran and passed.
-- **Test name:** use the name as the runner reports it, or its last segment (`clamp > keeps a value inside the range` → `keeps a value inside the range`).
-- **The red test stays:** after the red, the test may gain tests or formatting. A weakened, removed or rewritten assertion fails the build's verify. A code step that must change a planned test (for example new setup lines a correct code change forces) keeps the edit and logs a `BLOCKED` line naming the test and why; `steps finish` lets it through only when the change adds lines and removes none (a removed or rewritten line is refused even under a `BLOCKED` line), verify reads the added lines of that change and raises `test-loosened` for one that disables or loosens the test (an early `return`, a skip, a reassignment), and the owner answers the change, shown as a diff, at the end of the build.
-- **A later task can take a test over:** when a later task changes what an earlier task's planned test asserts, its `TEST FIRST` names that same test, and the tests step rewrites it to fail until the later task's code exists. The red records it with the earlier task as `from`; one that passes after the rewrite is `taken-over`, listed under `takenOver`, never a gap. When a code step finds the contradiction mid-build, its `steps finish` adds the takeover task itself, and the build records the task's test before the next verify, with no owner pause.
-
-## Tests lock
-
-Wrap each test-running `bkit:gate:*` script with the adopted machine lock (`.bkit/templates.md` § Machine lock). The wrapped script holds the `tests` lock for the whole gate, across repositories, up to the hold limit (`LOCAL_STACK_LOCK_HOLD_S`, default 3600 seconds), where the script stops the gate and exits 124. An unwired repository takes no lock.
-
-- `bkit tests run` and `bkit tests changed` pass `--lock-wait-s` as `LOCAL_STACK_LOCK_WAIT_S`, their run name as `LOCAL_STACK_LOCK_WHO` and a fresh temp file as `LOCAL_STACK_LOCK_STATUS_FILE`; they run the declared gate without executing the lock script itself.
-- `bkit branches push` passes the same wait budget, its run name and its own status file to Git, and the pre-push hook inherits them. Git collapses a failing hook's exit status, so the file alone decides. A file that says the hook's gate gave up on the tests lock → exit 81 with `lockHolder`, nothing pushed, and the workflow ends the turn and re-runs the block. A file that says the lock was refused or the hold limit stopped the gate → exit 4. An empty file → a push failure.
-- The lock script's `run` writes the status file when it exits 75 (the wait gave up), 73 (the lock could not be taken) or 124 (the hold limit stopped the gate): `lock=<name>`, `outcome=gave-up`, `outcome=refused` or `outcome=held-too-long`, and `holder=<who and checkout>`. A nested wrapper never writes it. The outcome comes from the exit code and this file, never from the lines the script prints, so rewording a printed line changes no result.
-- Exit 75 with `lock=tests` and `outcome=gave-up` becomes exit 81 with `lockHolder` from `holder=`. Exit 73 with `lock=tests` and `outcome=refused`, or exit 124 with `lock=tests` and `outcome=held-too-long`, becomes exit 4: a `test-run` row with a null verdict, never `FAIL`. A lock wait writes no `test-run` status row. Any other result is a gate failure (exit 1): exit 75, 73 or 124 with no file, an empty file or a file for another lock. A raw gate caller sees exit 75 and the printed holder line. A consumer copy of the script that never writes the file therefore reads a give-up as a gate failure.
-- Agents' own runs, before a commit and while working, name each test file (`Local pre-commit` in `.agents/rules.md`); a `/bkit-*` step's named command is the only wider run, so only those commands queue for the lock.
-- Light runs (`bkit tests red`, `green` and `bkit:test:file`) take no tests lock. Nested wraps reuse the live parent's tests lock. `CI=true` / `CI=1` bypasses locking.
-- `BKIT_TEST_SLOTS` sets the number of tests slots. The default is 2 slots on 8 or more cores for a local run, else 1; every other runtime defaults to 1 slot. A run is not local when `BKIT_RUNTIME` is set to anything but `LOCAL`; with it unset, when `.bkit/.runtime-cursor` exists in the main checkout or `CLAUDE_CODE_REMOTE` is truthy. An invalid value falls back to that default. Set it per machine, never per repo. The value is per process: set it in every place runs start from (the shell profile and each host's user-level settings) or nowhere, because runs that read different values can hold `tests` slots at once. The lock exports `BKIT_TEST_WORKERS`, which follows the chosen slot count, for the consumer to pass to its runner. Live load never decides the count.
-- `bash scripts/ci/bkit-machine-lock.sh slots` prints `slots=N workers=N` from that same rule without taking a lock, so anything that must size itself before it takes the lock asks the script.
-- The CLI wait defaults to `BKIT_LOCK_WAIT_S`, else 60 seconds; `--lock-wait-s=0` tries once. Claude Code ships `BKIT_LOCK_WAIT_S=1200`; other hosts use the shorter wait and re-run on exit 81 (`.bkit/providers.md` § Long-running shell commands); a re-run within 120 seconds keeps its place in line.
-- The human can move a waiting gate to the front of the line with `bkit tests jump <run>`; every use needs their approval. The verb asks the template's copy of the script (`jump --lock tests`), so a consumer's older copy cannot break it: exit 0 moved, 1 no single run matched (it lists the queue), 3 the script could not read the queue or write the marker.
-- The script's `queue [--lock <name>]` prints one `<who> — <checkout>` line per waiting run and held place in queue order, and nothing when nobody waits. `jump [--lock <name>] <who> [<checkout>]` writes the marker that moves that run to the front: exit 0 printing its line, 1 none matches, 3 several match (printing them), 73 the marker cannot be written. Both default to the `tests` lock.
-- The script defaults to 60 seconds without a TTY when no wait is set. Waiting runs take the lock in arrival order, and waiting notes name the holders, their checkouts' earlier run times and the run's place in line.
-- Each ticket in the queue records the slots its run asks for. A waiter may take slot `k` only while no live ticket ahead of it asks for `k` or more slots, so waiters with the same ask keep arrival order, a 1-slot waiter at the head never blocks a 2-slot waiter while slot 2 is free, and a ticket with no slot count asks for every slot.
-
-## JUnit reports for bkit
-
-`bkit tests run` counts a gate's failures from JUnit XML, not from its log. It empties a report folder before each run and passes its absolute path to the gate as `$BKIT_TEST_REPORT_DIR`.
-
-- **Every runner in a gate writes JUnit there** when the variable is set: one file per runner or per run, `*.xml`, with any name. Two runs in one gate never write the same file name.
-- **Counted:** failing plus erroring test cases across every file. Skipped cases do not count.
-- **No reports:** `failures` is `null` (count unknown), and a hint says to turn the reporters on. The verdict still comes from the gate's exit code.
-- **Unset variable:** the runner behaves as it always does, so a gate run by hand writes nothing extra.
-- **CI rounds:** a `source: ci` round has no reports. Its count is the selected run's failed CI jobs, the capstone left out.
-
 ## What each tier must do
+
+> **bkit practice:** Shared guidance for projects adopting the CI scaffold.
 
 Each tier lists the rule to follow, then a **Not:** line naming the failure the rule prevents. Stack tools (Vitest / Playwright / a Supabase-style local stack / a Vercel-style preview) appear only as worked examples, because the rule is the principle. Implement it for your stack.
 
@@ -415,7 +488,30 @@ Each tier lists the rule to follow, then a **Not:** line naming the failure the 
 - It is an observability gate, not a merge gate. It has its own workflow and is never in branch protection. When `bkit-tests-deploy` promotes inside CI, this probe is the health workflow, not a second file (`deployments.md` § Smoke trigger plumbing, § Promote before the lanes).
 - **Not:** a smoke suite wired into branch protection, or one so heavy that it cannot run on every deploy.
 
+## Test first
+
+> **bkit practice:** Shared guidance for projects adopting the CI scaffold.
+
+`/bkit-build` writes each group's tests before its code and proves them: one subagent writes the planned tests and may touch nothing else, the engine records each one failing (red), and only then does another subagent write the code, which may touch no planned test, until each passes (green). This covers the unit and integration tiers only. E2E and `@live` rows run in CI and stay planned in the `Derived Test Matrix`. Each plan task names its tests on a `**TEST FIRST:**` field, one sub-bullet per test, or `n/a — {reason}`.
+
+- **Declare `bkit:test:file`:** it runs the one test file bkit appends as its argument (a repo-relative path), and writes a JUnit XML report to the path in `$BKIT_TEST_REPORT`. Vitest: `vitest run --reporter=default --reporter=junit --outputFile.junit="$BKIT_TEST_REPORT"`. pytest: `pytest --junitxml="$BKIT_TEST_REPORT"`. jest: `jest --runTestsByPath` with the `jest-junit` reporter and `JEST_JUNIT_OUTPUT_FILE="$BKIT_TEST_REPORT"`. Node: `node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination="$BKIT_TEST_REPORT"`; write Node tests with `node:test` (`test` / `describe` + `it`).
+  - **Node case names:** a `node:test` file reports one case per `test()` call, named by the leaf `test` / `it` name only (the junit reporter drops the enclosing `describe` names, so the plan names the leaf, never `suite > test`). A file that does not use `node:test` (a plain script) reports one case named after the file path as passed to the command, so the plan names that test by the same path.
+  - **If** jest gets the path without `--runTestsByPath` → it reads the path as a regex, so a folder such as `(tabs)` matches no file and no report is written.
+  - **If** it is undeclared → the build reports test-first as not enforced.
+  - **If** the test files belong to more than one runner (for example, `.bats` and `node:test`) → point it at a script that picks the runner by file type.
+  - **If** `$BKIT_TEST_REPORT` is unset → pass no report flag. An empty `--outputFile.junit=` takes the next argument, the test file, as the report path, and overwrites it.
+- **Declare `bkit:lint:file`:** it lints the one test file bkit appends (a repo-relative path) with the static gate's linter config, and exits 0 when clean. ESLint: `eslint --max-warnings=0`. Ruff: `ruff check`.
+  - **If** the linter does not cover the test file (for example, `.bats`) → exit 0 (Oxlint: `--no-error-on-unmatched-pattern`).
+  - The build lints each planned test file before running it for its red. **If** `bkit:lint:file` is undeclared → the red is recorded unlinted, and a lint rewrite after it changes a frozen test file, which the code step's finish refuses.
+- **Call the runner directly:** a task runner that caches results, or runs dependent packages' suites first, breaks the one-file contract. A monorepo routes the path to the package and config that own it. An integration file gets the same environment setup that the integration suite gets.
+- **Judged by the report, never the exit code:** a misspelled path, a syntax error and an import of unwritten code all exit non-zero, just like a real failure. A red counts when the named test ran and failed, or when its file failed to load: no case carries the planned name, and the report holds no case, or only non-passing cases whose name contains the file's stem (the tests step writes no source, so an import of unwritten code is the expected shape of a red); a green only when it ran and passed.
+- **Test name:** use the name as the runner reports it, or its last segment (`clamp > keeps a value inside the range` → `keeps a value inside the range`).
+- **The red test stays:** after the red, the test may gain tests or formatting. A weakened, removed or rewritten assertion fails the build's verify. A code step that must change a planned test (for example new setup lines a correct code change forces) keeps the edit and logs a `BLOCKED` line naming the test and why; `steps finish` lets it through only when the change adds lines and removes none (a removed or rewritten line is refused even under a `BLOCKED` line), verify reads the added lines of that change and raises `test-loosened` for one that disables or loosens the test (an early `return`, a skip, a reassignment), and the owner answers the change, shown as a diff, at the end of the build.
+- **A later task can take a test over:** when a later task changes what an earlier task's planned test asserts, its `TEST FIRST` names that same test, and the tests step rewrites it to fail until the later task's code exists. The red records it with the earlier task as `from`; one that passes after the rewrite is `taken-over`, listed under `takenOver`, never a gap. When a code step finds the contradiction mid-build, its `steps finish` adds the takeover task itself, and the build records the task's test before the next verify, with no owner pause.
+
 ## Design assertions are a dimension, not a lane
+
+> **bkit practice:** Shared guidance for projects adopting the CI scaffold.
 
 **Never add a design lane.** The lane axis is **resource profile** (a millisecond file read vs a booted app + browser), not subject matter, because design assertions span both. A `bkit-tests-design` job (or a design-only browser project) splits one concern across two profiles and buys nothing that the existing lanes do not already provide. Fold each assertion into the tier that already fits it. The CI topology, the capstone's `needs:` and the browser-project partition all stay unchanged. A real consumer's full design-system rollout landed with `bkit-ci.yml` byte-unchanged.
 
@@ -446,6 +542,8 @@ Each tier lists the rule to follow, then a **Not:** line naming the failure the 
 
 ## Schema-invariant DB checks (e.g. RLS coverage)
 
+> **bkit practice:** Shared guidance for projects adopting the CI scaffold.
+
 Access-policy coverage is stack-specific. bkit ships the pattern (the two routes below), not a drop-in test. Supabase / PostgREST is the worked example. Implement it for your backing store by swapping the catalog source and the anon probe for your stack's equivalent.
 
 Assert DB-level invariants (for example, "every public table has RLS enabled", with no hardcoded list) in one of two co-equal ways. Pick by deploy topology, not by whether you can run a local DB-test runner (for example, pgTAP):
@@ -457,6 +555,8 @@ Assert DB-level invariants (for example, "every public table has RLS enabled", w
 An auto-discovering access-policy suite belongs in `bkit-tests-live-web`. For RLS it checks RLS-enabled, anon-reads-`[]` and cross-tenant-denial with no hardcoded table list, so it catches the next table too.
 
 ## Provision backing services fresh
+
+> **bkit practice:** Shared guidance for projects adopting the CI scaffold.
 
 A tier that needs a stateful backing service (database, cache, queue, search index) must run against a freshly-provisioned instance, not a long-lived shared one. Green against a shared environment carrying accumulated state is not evidence of reproducibility. A migration that never re-applies cleanly, a seed that aborts on an empty store, or a row another run left behind all stay invisible until the service is rebuilt from scratch. Prove that a fresh provision + seed succeeds in CI: for example, an ephemeral per-PR database started fresh each run (Supabase: `supabase db reset` + seed). Reserve the shared remote / dev instance for the `@live` tier and push-side E2E, because they validate the real deployed schema. It is never the integration tier's source of truth.
 
@@ -486,6 +586,8 @@ bkit's `bkit-tests-migration` lane (`bkit-stub:bkit-tests-migration`) is the rea
 
 ## Optional hardening (adopt when the cost is justified)
 
+> **bkit practice:** Shared guidance for projects adopting the CI scaffold.
+
 Beyond the gates above, three practices raise confidence further. They are opt-in, not baseline.
 
 - **Mutation testing** (for example, StrykerJS over a Vitest suite) automates the "executed != exercised" intent. It injects bugs into production code and fails when no test catches them.
@@ -496,6 +598,8 @@ Beyond the gates above, three practices raise confidence further. They are opt-i
 - **Bounded flaky-retry with tracking.** A capped retry on the flake-prone E2E tier is low-risk only when it is paired with explicit flake tracking. An auto-retry that silently passes hides a real regression, which is the inverse of "validated != didn't fail".
 
 ## Coverage on PRs
+
+> **bkit practice:** Shared guidance for projects adopting the CI scaffold.
 
 Shipped stubs target Vitest (`bkit-stub:coverage`) and Playwright (`bkit-stub:e2e-coverage`). On another runner, keep the rules (per-tier, report-only, ratchet from current) and swap the tooling.
 
@@ -543,7 +647,9 @@ The E2E tier (`bkit-stub:e2e-coverage`) reports Playwright coverage in the same 
 
 ## CI verbosity (`[verbose ci]`)
 
-See `deployments.md` § Commit-message force tags for the marker mechanics. That covers where to put it: the PR title for feature-branch pushes, and the commit message for a direct push to `dev` / `main`. This section covers the testing-specific knobs.
+> **bkit practice:** Shared guidance for projects adopting the CI scaffold.
+
+See `.bkit/workflows.md` § Test and release mechanics (Commit-message force tags) for the marker mechanics. That covers where to put it: the PR title for feature-branch pushes, and the commit message for a direct push to `dev` / `main`. This section covers the testing-specific knobs.
 
 **Knobs flipped under the marker.** The shipped stub flips turbo / Node / Vercel / Supabase / Playwright knobs. Add your stack's equivalents.
 
@@ -561,13 +667,51 @@ See `deployments.md` § Commit-message force tags for the marker mechanics. That
 
 **Artifact paths** (already in `.gitignore` via the bkit template): `test-results/`, `playwright-report/`, `blob-report/`, `playwright/.auth/`. Never commit these, because traces alone run 1-50MB each.
 
-## Stack
+## Repository test patterns
+
+> **Project slot:** Runner behavior, fixture contracts and checks for existing subsystems.
+
+### Local test sleep prevention
+
+`bkit tests run`, `bkit tests changed` and the individual-file runs in `bkit tests red` / `bkit tests green` hold a macOS sleep assertion while the command runs. They use `caffeinate -is`: idle sleep is prevented on battery and AC power, and system-sleep prevention applies on AC power. The assertion ends when the command finishes or is cancelled. Other platforms run the original command.
+
+Direct test commands and package scripts use `scripts/ci/bkit-test-awake.mjs` as described in `.bkit/templates.md` § Local test sleep prevention. Wrap every test entry point and the complete gate chain. CI calls those same scripts. A raw runner command outside these entry points needs the wrapper too.
+
+Keep the existing test timeouts. Keep the Mac's lid open; the assertion does not guarantee protection against lid closure or an explicit sleep request. The display may sleep normally.
+
+### Tests lock
+
+Wrap each test-running `bkit:gate:*` script with the adopted machine lock (`.bkit/templates.md` § Machine lock). The wrapped script holds the `tests` lock for the whole gate, across repositories, up to the hold limit (`LOCAL_STACK_LOCK_HOLD_S`, default 3600 seconds), where the script stops the gate and exits 124. An unwired repository takes no lock.
+
+- `bkit tests run` and `bkit tests changed` pass `--lock-wait-s` as `LOCAL_STACK_LOCK_WAIT_S`, their run name as `LOCAL_STACK_LOCK_WHO` and a fresh temp file as `LOCAL_STACK_LOCK_STATUS_FILE`; they run the declared gate without executing the lock script itself.
+- `bkit branches push` passes the same wait budget, its run name and its own status file to Git, and the pre-push hook inherits them. Git collapses a failing hook's exit status, so the file alone decides. A file that says the hook's gate gave up on the tests lock → exit 81 with `lockHolder`, nothing pushed, and the workflow ends the turn and re-runs the block. A file that says the lock was refused or the hold limit stopped the gate → exit 4. An empty file → a push failure.
+- The lock script's `run` writes the status file when it exits 75 (the wait gave up), 73 (the lock could not be taken) or 124 (the hold limit stopped the gate): `lock=<name>`, `outcome=gave-up`, `outcome=refused` or `outcome=held-too-long`, and `holder=<who and checkout>`. A nested wrapper never writes it. The outcome comes from the exit code and this file, never from the lines the script prints, so rewording a printed line changes no result.
+- Exit 75 with `lock=tests` and `outcome=gave-up` becomes exit 81 with `lockHolder` from `holder=`. Exit 73 with `lock=tests` and `outcome=refused`, or exit 124 with `lock=tests` and `outcome=held-too-long`, becomes exit 4: a `test-run` row with a null verdict, never `FAIL`. A lock wait writes no `test-run` status row. Any other result is a gate failure (exit 1): exit 75, 73 or 124 with no file, an empty file or a file for another lock. A raw gate caller sees exit 75 and the printed holder line. A consumer copy of the script that never writes the file therefore reads a give-up as a gate failure.
+- Agents' own runs, before a commit and while working, name each test file (`Local pre-commit` in `.agents/rules.md`); a `/bkit-*` step's named command is the only wider run, so only those commands queue for the lock.
+- Light runs (`bkit tests red`, `green` and `bkit:test:file`) take no tests lock. Nested wraps reuse the live parent's tests lock. `CI=true` / `CI=1` bypasses locking.
+- `BKIT_TEST_SLOTS` sets the number of tests slots. The default is 2 slots on 8 or more cores for a local run, else 1; every other runtime defaults to 1 slot. A run is not local when `BKIT_RUNTIME` is set to anything but `LOCAL`; with it unset, when `.bkit/.runtime-cursor` exists in the main checkout or `CLAUDE_CODE_REMOTE` is truthy. An invalid value falls back to that default. Set it per machine, never per repo. The value is per process: set it in every place runs start from (the shell profile and each host's user-level settings) or nowhere, because runs that read different values can hold `tests` slots at once. The lock exports `BKIT_TEST_WORKERS`, which follows the chosen slot count, for the consumer to pass to its runner. Live load never decides the count.
+- `bash scripts/ci/bkit-machine-lock.sh slots` prints `slots=N workers=N` from that same rule without taking a lock, so anything that must size itself before it takes the lock asks the script.
+- The CLI wait defaults to `BKIT_LOCK_WAIT_S`, else 60 seconds; `--lock-wait-s=0` tries once. Claude Code ships `BKIT_LOCK_WAIT_S=1200`; other hosts use the shorter wait and re-run on exit 81 (`.bkit/providers.md` § Long-running shell commands); a re-run within 120 seconds keeps its place in line.
+- The human can move a waiting gate to the front of the line with `bkit tests jump <run>`; every use needs their approval. The verb asks the template's copy of the script (`jump --lock tests`), so a consumer's older copy cannot break it: exit 0 moved, 1 no single run matched (it lists the queue), 3 the script could not read the queue or write the marker.
+- The script's `queue [--lock <name>]` prints one `<who> — <checkout>` line per waiting run and held place in queue order, and nothing when nobody waits. `jump [--lock <name>] <who> [<checkout>]` writes the marker that moves that run to the front: exit 0 printing its line, 1 none matches, 3 several match (printing them), 73 the marker cannot be written. Both default to the `tests` lock.
+- The script defaults to 60 seconds without a TTY when no wait is set. Waiting runs take the lock in arrival order, and waiting notes name the holders, their checkouts' earlier run times and the run's place in line.
+- Each ticket in the queue records the slots its run asks for. A waiter may take slot `k` only while no live ticket ahead of it asks for `k` or more slots, so waiters with the same ask keep arrival order, a 1-slot waiter at the head never blocks a 2-slot waiter while slot 2 is free, and a ticket with no slot count asks for every slot.
+
+### JUnit reports for bkit
+
+`bkit tests run` counts a gate's failures from JUnit XML, not from its log. It empties a report folder before each run and passes its absolute path to the gate as `$BKIT_TEST_REPORT_DIR`.
+
+- **Every runner in a gate writes JUnit there** when the variable is set: one file per runner or per run, `*.xml`, with any name. Two runs in one gate never write the same file name.
+- **Counted:** failing plus erroring test cases across every file. Skipped cases do not count.
+- **No reports:** `failures` is `null` (count unknown), and a hint says to turn the reporters on. The verdict still comes from the gate's exit code.
+- **Unset variable:** the runner behaves as it always does, so a gate run by hand writes nothing extra.
+- **CI rounds:** a `source: ci` round has no reports. Its count is the selected run's failed CI jobs, the capstone left out.
+
+### Runner configuration
 
 Manual host-hook compatibility experiments live in [`tests/experiments/hooks/`](../tests/experiments/hooks/bkit-hook-probe.md), alongside the compression experiments in `tests/experiments/compression/`. The [2026-11-03 report](../tests/experiments/hooks/reports/bkit-hook-probe-report-2026-11-03.md) links the preserved results. Run the collector's local integration checks with `node --test tests/experiments/hooks/bkit-hook-probe.test.mjs`. Live host runs require normal project trust and authenticated sessions, so they remain outside normal CI.
 
-- **Runner:** Vitest 5 (`pnpm test` → `vitest run`). Shell: bats (`pnpm bkit:test:bats`). Harvest: `node:test` (`pnpm test:harvest`).
 - **Raw Vitest:** `vitest.test-lock.ts` makes heavy root runs queue for the machine-wide `tests` lock in global setup; runs filtered entirely to existing files, watch mode, CI and nested runs with a live owner bypass acquisition. The lock script keeps its 60-second default wait without a TTY and honours an inherited wait budget. When the config loads, `testWorkers` sets `maxWorkers` from an inherited `BKIT_TEST_WORKERS`, else no limit under `CI=true` / `CI=1`, else the `workers` value of `bash scripts/ci/bkit-machine-lock.sh slots`, so the script is the only place that holds the slot rule (for example 4 workers on 10 local cores). The global setup then asks the lock for the same slot count and takes whichever slot is free, so a raw run and a gate hold both slots at once; it waits only while every slot is held. `BKIT_TEST_SLOTS=1` gives one slot at full width.
-- **One test file:** `pnpm bkit:test:file {file}` → `scripts/ci/bkit-test-file.mjs` picks the runner by file type (`.bats` → bats, `.mjs` → `node --test`, else Vitest); JUnit report only when `$BKIT_TEST_REPORT` is set.
 - **Time limits:** under `CI` the Vitest per-test and per-hook budgets (`vitest.timeout-budget.ts`) are strict (5s / 10s unit, 30s integration); off CI each is a fixed 6 times that (30s / 60s / 180s), a hang limit with no load reading. A limit a test file sets itself goes through `localLimit(ms)`, including one held in a named constant, so it stays as written under `CI` and is 6 times that off CI; `vitest.setup.ts` records the factor in `BKIT_LIMIT_FACTOR` before it clears `CI`, so a test file still reads the CI factor. The budgets also cap synchronous child calls (`vitest.child-deadline.ts`): a call with no `timeout` gets, from a test body, the test's timeout counted from when the body starts (`beforeEach` time is not taken off it; time the body spent before the call is), and, from a file's own `beforeEach` / `afterEach` hook (read from the hook state Vitest records on the running test, so it holds across an `await`), the test's remaining time but never less than the hook timeout so cleanup is not cut short, and is ended with SIGKILL (unless the caller sets `killSignal`) so a child that ignores SIGTERM cannot outlast it. From a `beforeAll` / `afterAll` hook, the call gets the hook timeout. No child limit reads a hook's own timeout, so a hook given a longer limit of its own, such as `beforeAll(fn, localLimit(120_000))`, passes `timeout` to the child processes it starts. `node --test` runs get `--test-timeout` and `--test-force-exit` from `scripts/ci/bkit-test-limits.mjs`, derived from the integration budget (30s under CI); `pnpm bkit:test:awake` runs its test file through `scripts/ci/bkit-test-file.mjs`, so it gets them too. Bats gets `BATS_TEST_TIMEOUT` from the same source, or from `tests/shell/setup_suite.bash` for `pnpm bkit:test:bats`. A limit kills only the direct child, so a grandchild it started can outlive the run. `patches/bats@1.13.0.patch` fixes two bats 1.13.0 defects: `bats-exec-test` declared the watchdog pid with `declare -r` inside a function, so a failing test could not stop its watchdog and waited out the whole limit; `bin/bats` ran `env` on a path that pnpm's patched-package directory name makes look like an assignment.
 - **Changed files:** `pnpm bkit:gate:changed {file}...` holds the `tests` lock through `scripts/ci/bkit-machine-lock.sh` and passes the file arguments to `scripts/gate/bkit-gate-changed.mjs`, which `bkit tests changed` calls for build and debug agents and `bkit tests run --changed-since=<sha>` calls for the build group gate: `vitest related --run` on the changed files, every test file that names a changed path (Vitest, `node --test` or bats by file type) plus the text ceiling test when a changed path is under `.bkit/core/workflows/` or `.bkit/core/prompts/` or is `scripts/gate/bkit-text-ceiling.json`, Oxlint on changed engine `.ts`, Prettier on every changed file, and `pnpm typecheck` when a `.ts` file changed. Runs every stage, and exits 1 when any fails.
 - **Test gates:** `bkit:gate:static-unit`, `bkit:gate:static-unit-integration` and `bkit:gate:install-static-unit-build` hold the same `tests` lock for their whole run. A nested gate inherits its parent's live lock owner and runs unlocked.
@@ -582,17 +726,7 @@ Manual host-hook compatibility experiments live in [`tests/experiments/hooks/`](
 - **Package-runner fixtures:** Use `useGateRunner` from `vitest.gate-fixture.ts` for landing and gate tests. It links the stable `tests/fixtures/gates/pnpm.cjs` executable into the test's PATH, executes consumer scripts and local file dependencies, and keeps Corepack and registry downloads outside the test. The runner sets `BKIT_TEST_GATE_RUNNER=1` in child scripts so a fixture can assert that boundary.
 - **Long-running children:** Start a child that outlives a test body, such as a lock holder or a background CLI run, with `spawnGroup` from `vitest.process-group.ts`, and end it in `afterEach` with `stopGroup` before removing the test's temp folder. `stopGroup` kills the child's whole process group and waits until the group is gone. A plain `child.kill` ends only the direct child: a machine-lock holder's background perl process then writes `{lock}.last` into the cache folder while `fs.rmSync` removes it, and the cleanup fails with `ENOTEMPTY`.
 
-## Tiers
-
-<!-- prettier-ignore -->
-| Tier | Suffix | Scope | Where it runs |
-| --- | --- | --- | --- |
-| Unit | `*.test.ts` | One module's logic. May `chdir` into an `os.tmpdir()` and drive real `git` / `bash` / `node` subprocesses against that throwaway folder (`commands/**` are thin wrappers over git; label such files `Unit (boundary: real temp git repo)`). No network, no backing service, no state outside the folder. Driving the `bkit` CLI via `tsx` or a wired multi-module flow is Integration. | Pre-push + CI `bkit-tests-unit` lane; only `*.test.ts` files count toward the `test:coverage:unit` branch floor |
-| Integration | `*.integration.test.ts` | Multi-module wiring inside a process. May use `os.tmpdir()` + `process.chdir()`. May spawn `bkit` via `tsx`. | Pre-push (`test:integration` in `bkit:gate:static-unit-integration`) + CI `bkit-tests-integration` lane |
-| E2E | (none yet) | Full end-to-end against a real consumer repo. | Out of scope for bkit |
-| @live | (none) | Endpoint tests against a deployed URL (`test:live`). | `bkit-tests-live` job — N/A for bkit (no deploy) |
-
-## Live-test gates in the agent workflows
+### Live-test gates in the agent workflows
 
 `/bkit-debug` gates on declared live tier (`test:live` / `test:integration:live` / `test:e2e:live`) when consumer declares one — appended to Run-Tests (`[live=off]` opt-out); recorded in `TEST_SCOPE`. **`/bkit-build` does not run live tier**, because @live needs deployed URL; validated post-merge by push-only `bkit-tests-live` + reproduced via `/bkit-debug` (never purely local).
 
@@ -602,7 +736,7 @@ Manual host-hook compatibility experiments live in [`tests/experiments/hooks/`](
 
 No live tier (or `[live=off]`) → Debug degrades to CONCERNS + `testsLiveSkipped` in status.jsonl / close comment — green != "works." bkit has no deploy → CONCERNS by design. Build records no `testsLiveSkipped` — @live out of scope, not skipped.
 
-## Debug CI evidence verification
+### Debug CI evidence verification
 
 CI evidence, reproduction and local verification have separate purposes:
 
@@ -615,7 +749,7 @@ CI evidence, reproduction and local verification have separate purposes:
 
 Run the focused integration file with `pnpm bkit:test:file .bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts`, then the complete `pnpm bkit:gate:static-unit-integration` and `pnpm bkit check`. Release dogfood also installs the built package into a scratch consumer under `tmp/` and inspects its metadata, artifacts and host files. Historical run replay is reported separately as available or unavailable; missing history or expired logs are never a passing smoke result.
 
-## Consumer-runtime parity rule
+### Consumer-runtime parity rule
 
 CI must catch every consumer `pnpm bkit install` hard-fail. Same `.bkit/core/engine/**` code in repo + consumers, so release must not ship untested install paths.
 
@@ -627,7 +761,7 @@ CI must catch every consumer `pnpm bkit install` hard-fail. Same `.bkit/core/eng
 4. **Phase 3 blocker** — Scenario 6 (exit 1 + recovery) + 7 (`--auto-revert` → `runUninstall`).
 5. **Mid-failure rollback** — Scenario 9: post-first-module failure → `discardAllStaging`, byte-identical consumer.
 
-## Heavy-customised consumer fixture
+### Heavy-customised consumer fixture
 
 `tests/fixtures/heavy-customised-consumer/` is committed and consumed by:
 
@@ -636,7 +770,7 @@ CI must catch every consumer `pnpm bkit install` hard-fail. Same `.bkit/core/eng
 
 When adding bkit-managed file types or scope keys, extend fixture — single source of truth for real consumer surface; do not mock.
 
-## Pre-release consumer shapes
+### Pre-release consumer shapes
 
 `utility-pre-release-check` dogfoods the packed tarball in each consumer shape bkit ships to. bkit's own repo (single-package, marker-free `bkit-ci.yml`) is not one of them.
 
@@ -646,7 +780,7 @@ When adding bkit-managed file types or scope keys, extend fixture — single sou
 | Single-package repo | Every verb, drift gate, option matrix, uninstall symmetry; `bkit upgrade --to=<v>` self-bump runs `pnpm add -D` without `-w` |
 | pnpm workspace root, bkit as root devDependency | `bkit upgrade --to=<v>` self-bump runs `pnpm add -D -w` and succeeds against the real registry |
 
-## Counter derivation test coverage
+### Counter derivation test coverage
 
 `*_ATTEMPT` counters **derived** from `status.jsonl` at use — never carried across Bash calls (§ Attempt counters, `.bkit/workflows.md`). Shell state does not persist between fenced blocks → value crosses only via `status.jsonl`, read by `bkit counters` / `bkit status`.
 
@@ -658,7 +792,7 @@ When adding bkit-managed file types or scope keys, extend fixture — single sou
 | `commands/workflow/summary.test.ts` | Unit | `bkit workflows summary` verdict from status rows: unticked build task / last test FAIL / a build with no plan file (`No plan file`) → FAIL; a FAIL a later step answers, a CONCERNS row, a Decision Pause accept or a new deferral → CONCERNS; a verify pause's `Fix now` group resolved by its verified fix tasks, an `Accept`-only pause's group resolved by the pause, an all-`Accept` holistic pause (its `Holistic verify` loop item answered `Decide`) settling the last holistic verify / remediate FAIL before it while a `Fix now` item or a `Try again` loop answer settles nothing, an all-`Accept` pause whose `Source changed` header is present and not `false` settling nothing, a red `build-holistic-gate` resolved by a later passing Step 12 run, a test-fix FAIL resolved by a later same-scope passing run, and a build diagnose FAIL answered by one reported as a concern (a different or missing scope still counts, and a `debug-failure-diagnose` or `debug-failure-soak` FAIL is never cleared); next step per workflow and verdict; issue ref per tracker; the `## Challenge` line naming a skipped challenge-1 from the latest `challenge-gate` row; `Publish: held` and `Docs: not synced` lines on a held build (`Publish: pr` otherwise), with the verdict and next step unchanged by `publish`; a documentation warning whose fields hold line breaks, tabs or a backtick in the path rendered as one capped line per field |
 | `.bkit/core/engine/audits/workflows/counter-prose-audit.test.ts` | Unit (markdown-invariant) | No prose `Init` / `Increment`, no bare `*_ATTEMPT` comparison outside fenced blocks; counters derived in the block that routes on them, or by the routing / writing command itself (`steps finish --attempt=next` / `--attempt-of`, `counters route --of`); each derived counter maps to the right step; counted steps commit in-block or are exempted |
 
-## Deterministic bookkeeping test coverage
+### Deterministic bookkeeping test coverage
 
 <!-- prettier-ignore -->
 | File | Tier | Scope |
@@ -670,11 +804,11 @@ When adding bkit-managed file types or scope keys, extend fixture — single sou
 | `tools/instructions.test.ts` | Unit | One recovery precedence contract across hosts and tracker adapters |
 | `install/modules/core.integration.test.ts` | Integration | Fresh install and upgrade of consumers with the bookkeeping contracts; the `bkit.workflows.build.holistic` seed (an existing block kept as written); the one-time lowering of `build.verify.maxAttempts` above 2 to 2 (2 or less, and a value set after that upgrade, kept); the machine-lock copy migration (an unedited shipped copy replaced, an edited copy without `LOCAL_STACK_LOCK_STATUS_FILE` left with a warning, one that names it left without that warning, an edited copy without `LOCAL_STACK_LOCK_HOLD_S` left with one hold-limit warning, a missing `bkit-test-awake.mjs` written beside the lock copy in a dry run and a real run, a shipped 6.1.1 copy replaced in a dry run and a real run, and an edited one without `--hold-s` left with one warning that tests-lock runs are refused with exit 73) |
 
-## Worktree-copy commit exclusion test coverage
+### Worktree-copy commit exclusion test coverage
 
 A `bkit.workflows.worktree.copy` entry copied into a worktree is never committed, gitignored or not (`addAllButCopied`, `commands/workflow/worktrees.ts`). The helper excludes each entry by `:(exclude)`, except one git already ignores: naming an ignored file in a pathspec trips git's ignored-paths guard and fails the whole `add`, so an ignored entry is left out of the exclude list (`git add -A` skips it anyway, `isIgnoredPath` in `commands/lib.ts`). `commands/workflow/worktrees.test.ts` pins the helper (a gitignored entry plus a non-ignored one commits the tracked change and neither copied file); `commands/workflow/steps.test.ts` runs `bkit steps finish --commit=auto` in a worktree whose copy list names a gitignored entry and asserts exit 0, the source committed, the ignored entry not; `commands/workflow/branches.test.ts` asserts `bkit branches push --commit` leaves a copied `.env` out of the marker commit and the pushed branch; `commands/workflow/ledgers.test.ts` asserts `bkit ledgers commit --path` and `commitOwnSet` name a gitignored path in the error instead of leaking git's guard message.
 
-## Runtime detection + gh-preflight test coverage
+### Runtime detection + gh-preflight test coverage
 
 `bkit runtime detect` maps detection primitives (`BKIT_RUNTIME` override, `.bkit/.runtime-cursor` marker, `CLAUDE_CODE_REMOTE`, `GITHUB_ACTIONS`/`CI`) to `runtime` in `LOCAL|GITHUB_ACTION|CLOUD_CLAUDE|CLOUD_CURSOR|UNKNOWN` and a capability table (`runtimeWorktrees` / `runtimeDevPushes` / `runtimeGithubCli`, plus `runtimeHeadless` derived from `runtime` and never stored on the row), so workflow headers branch on the `RUNTIME_*` values instead of re-deriving runtime logic per call site. `runtimeGithubCli` is the one live probe (`gh auth status`, once, loud); `runtimeDevPushes` is deliberately never probed, because a `--dry-run` push probe fails dangerously. No `CAN_SLEEP` / `RUNTIME_SLEEPS` row exists, because sleeping is measured inside `bkit runs wait` / `bkit runs dispatch` (`blocked`, exit 81 → the agent turn loop). `commands/workflow/runtime.test.ts` runs each scenario against a fake `gh` on `PATH` — covers the table mapping (incl. `UNKNOWN` → least-capable, never LOCAL; `runtimeHeadless` per runtime), explicit-falsy vs unset primitives, `worktreePath` mint-vs-adopt, re-derivation per call (no state leaks between calls), `runtimeGithubCli` round-tripping through the `runtime-resolved` row, `runtime assert` re-deriving `runtimeHeadless` from the row's `runtime`, and `runtime assert` on a missing / malformed row.
 
@@ -702,11 +836,11 @@ The same file's `fingerprint:` cases cover the allowlist-fingerprint compare: a 
 | `.bkit/core/engine/audits/templates/template-no-userpath.test.ts` | Unit | No leaked `/Users/<name>`\|`/home/<name>` absolute path in the shipped plan and audit templates or their repo copies. bkit's own `bkit:gate:min` runs it, because a min push can edit an audit template's `Project Instructions` section. |
 | `.bkit/core/engine/audits/workflows/runtime-prose-audit.test.ts` | Unit | Every runtime capability key a workflow acts on (`runtimeWorktrees` / `runtimeGithubCli` / `runtimeHeadless`; `runtimeDevPushes` is read by `bkit branches land`, not prose) has >=1 reader in `.bkit/core/workflows/`; `CAN_SLEEP` absent; one identical `gh MCP fallback` header line whose `transport-row` passes `--file`; no raw call-site CI-wait `sleep` — presence, not behaviour |
 
-## Ship merge-gate + bookkeeping test coverage
+### Ship merge-gate + bookkeeping test coverage
 
 The ship gate + bookkeeping is a **tiered carrier**: the rule whose failure is unrecoverable is an executable command, `bkit runs gate` (Tier 1, vitest against a stubbed `gh`); the prose invariants are enforced by a vitest markdown-invariant test (Tier 2); the status.jsonl step-set hole detector is a fail-open advisory (Tier 3). The three tiers trade confidence for cost: the merge gate is a gate (a wrong merge is unrecoverable); the prose invariants are a hard CI gate (a regression is a one-line fix); the hole detector is advisory (a noisy day-one gate on a 25-65% holey corpus is muted within a week — decision `384-tier3-promotion`).
 
-### Reusable external-command stub harness (`tests/fixtures/gh/` + `PATH` shim)
+#### Reusable external-command stub harness (`tests/fixtures/gh/` + `PATH` shim)
 
 The merge gate shells out to `gh api` against the GitHub Actions REST surface. Tests cannot call the real GitHub from CI. The reusable pattern (lift it for any command that shells out to a network CLI):
 
@@ -715,7 +849,7 @@ The merge gate shells out to `gh api` against the GitHub Actions REST surface. T
 
 `commands/workflow/runs.test.ts` covers every gate exit code (0/2/10/11/12/13/14/15/16/17/20/80), the `--validated` carry-forward (bookkeeping-only commits on a green head → pass; source change past it → code 17; validated SHA's own CI must be green; non-ancestor → 17), the `--event` filter (a `pull_request` run at the head never counts toward `--event push`, and a newer green PR run cannot mask a red push run), the `BKIT_SHIP_GATE_OVERRIDE=<refused-head>` honoured-vs-ignored split (audit row to `--file`, else stderr), and the `bkit.testing.ciCapstone` / `bkit.testing.ciWorkflow` / `bkit.testing.ciRequired` package.json config resolution. Code 16's opt-in contract has its own block: a skipped lane alone exits 0, the skip is still reported on stderr (never silent), a lane named in `bkit.testing.ciRequired` exits 16, an unrelated declaration does not refuse, and an absent or malformed `bkit.testing.ciRequired` degrades to the empty list. `commands/workflow/ledgers.test.ts` covers the bookkeeping staging (allow-list per scope, empty-pathspec refusal, `--squash-of`, `union` never carrying `.bkit/issues.jsonl`, `only-bookkeeping`) and `append` (minted `ts`, all-or-nothing refusal, writer check); `commands/workflow/worktrees.test.ts` + `worktrees.integration.test.ts` cover the worktree-ownership marker in the outbox; `commands/workflow/workflows.test.ts` covers ship's run opening in the shipped worktree with its lock in the main checkout, the Failure Path state (lock release, sentinel clearing in the run's worktree, `handoverNeeded`, labels, failure comment, nothing changed without `--token`), the handover push / ship flush (one throwaway-checkout commit on `dev`; `--push` on `dev` lands only the record and hands it back), the ship close landing then removing the worktree, the close's commit / outbox / comment, `promote` and `links`; `--pr` / `--squash-of` / `--snapshot` / `--record` and `prs merge` are in `runs.test.ts` / `prs.test.ts`. The prose contract (no `git add -A`, staging only through `bkit ledgers`, `{STATUS}` status writes, the merge pinned to the gate's head, canonical 12 step keys, pre-merge pushes confined to Steps 2, 3, 4, Commit + Push Bookkeeping and 10, none forced, no fence checks out, commits to or pushes `dev` by hand — `branches sync-dev`, the close and the flush do) is asserted by `.bkit/core/engine/audits/workflows/ship-invariants.test.ts` — Tier 2, a regression is a one-line fix.
 
-### Tier-3 fail-open advisory channel
+#### Tier-3 fail-open advisory channel
 
 The run-completeness check (`.bkit/core/engine/checks/status-holes.ts`) is **advisory, fail-open**: its CLI MUST exit 0 with a delta report on stdout (never non-zero), even on a known-holey fixture. A day-one blocking gate on a corpus that is 25-65% holey is noise that gets disabled, and once disabled it stays disabled (decision `384-tier3-promotion`). Promotion to a blocking gate is gated on one release of fail-open signal without muting — recorded in `docs/decisions.jsonl`, cross-linked from deferral `384-promote-status-hole-detector-from-advisory-to-gate`. The check covers all five workflows (design, plan, build, debug, ship): it derives each workflow's expected steps and `"{BKIT}"` commands from `.bkit/core/workflows/bkit-{workflow}.md` at runtime, never a hand-maintained table. The contract also names the step rows a workflow writes outside its numbered steps by design, so a run's rows for them are never `unexpected`: `pauseRows` (the Decision Pause row of `DECISION_ROUTES`, `build-decision`) and `subRows` (rows an engine verb a step calls writes itself, `tests red` → `build-tests-red`, which stays inside the calling step's visit). Any other row key written outside a numbered step is an `orphanSteps` entry. A row key belongs to the first step that writes it; a later step that also writes it (build Step 9 rewrites `build-plan-tests`) charges the row to whichever of the two has the visit open, else to the one that also writes the next row. A call is optional, never required, when it sits under a `- **If**` / `- **Else**` bullet or a `N. **If**` sub-step, in a sub-step an **If** line names as its target, in a `**Name:**` block an **If** line routes to, or written in the same sentence after an inline `**If** … →`. A call in the block below an inline **If** line stays required, because there the condition may only change the call (build Step 11 sub-step 5 drops one `--report` when `CHALLENGE_SIZE` = small). A call written below a step's last `steps finish` / `steps done --step=` line outside any arm counts after the step's row. `anywhereCalls` holds the calls the workflow's `**Contract:**` block lets the orchestrator run at any point (`bkit ledgers append`, named in the **Friction** bullet); like a workflow-level call, a journaled one is never `unexpected` and never required. The CI sweep and `bkit completeness check` both check each run on its own (each `workflow-started` row to the next of that workflow), and `bkit completeness check` renders the contract for the tracker of the repo holding the `--file`. Fixtures: a per-workflow corpus in `checks/status-holes.test.ts`, plus `tests/fixtures/status-holes/status.jsonl` (a closed design run with step holes) for the sweep-liveness bats case.
 
@@ -731,7 +865,7 @@ Replay a stored verdict: each `completeness` row carries `sourceSha` (the sha256
 | `.bkit/core/engine/commands/workflow/worktrees.integration.test.ts` | Integration with real remote refs and worktrees | Landed-work proof for squash merges, independent index and working-tree content, modes, types and deletions; expected-tip deletion of the local ref, lease-guarded deletion of the remote ref at its proved tip (kept and reported when origin refuses), and preservation when evidence is missing or a ref moves. |
 | `.bkit/core/engine/checks/status-holes.test.ts` | Unit | Expected steps and commands derived from each of the five workflow mds (no parallel table); step / evidence / unexercised / unexpected classification; no orphan rows in any workflow, build's pause and sub-rows named by the contract; a fix agent's gate label `{key}-fix` left out of the step universe when a step names `{key}`, and kept when none does; verdict metadata; advisory exit 0 on holey fixture; sweep summary line counting holey runs |
 
-## Project documentation lifecycle coverage
+### Project documentation lifecycle coverage
 
 - `install/project-docs.test.ts` and the install and upgrade integration tests cover template refresh, the ownership migration, index registration and uninstall preserving adopted documents.
 - `checks/after/tools.test.ts` and `checks/after/index.test.ts` cover `detectProjectDocs` states, equivalents, unsafe paths, suppression and the advisory-only severity.
@@ -739,7 +873,7 @@ Replay a stored verdict: each `completeness` row carries `sourceSha` (the sha256
 - `commands/workflow/summary.test.ts` and `commands/workflow/workflows.integration.test.ts` cover warning aggregation for the active run through the real `workflows summary` command.
 - `audits/repo/shipped-docs-refs.test.ts` covers the responsibility inventory in the workflow and prompt catalogs, the named references and the warning contracts. It also fails when the shipped `authoring.md` names a command that exists only in the bkit repo.
 
-## Key test files
+### Key test files
 
 Workflow progress has focused Unit coverage for position math and command output, Integration coverage for real saved status/plan files and completion producers, and renderer coverage for each supported host. The external Claude app's 375px layout is an owner-run check: `docs/plans/202611/logs/825-show-progress-bar/phone-verification.md` records its procedure, screenshots and explicit outcome. A character-count assertion does not verify app typography.
 
@@ -860,13 +994,13 @@ Tests that compare against text an older bkit shipped read it from `tests/fixtur
 | `.bkit/core/engine/tools/instructions-coverage.test.ts` | Unit | `.bkit/instructions.md` covers the corpus both ways: every standing line of a prompt, workflow, utility agent, audit template, the plan template and `AGENTS.md` matches a clause, a rule text (one sentence for a `partial` carrier) or a `## Local Instructions` entry, and the failure prints the entry to add; every local entry and shared-line carrier is still in its file; every `verbatim` / `partial` carrier holds the rule text or its clause; every `condensed` / `specialised` / `applies` / `cites` carrier has a local line tagged with the rule; every drift item's `file:line` holds its quoted excerpt, and sync renumbers moved lines; sync rewrites a local entry whose line was reworded in place, keeping its tags, and leaves a deleted line, an unrelated new line or a line outside the same unchanged neighbours as findings; rules and clauses 0.8 or more alike carry a `- distinct-from:` line; every prompt holds, word for word and in `.agents/rules.md` order, each rule its `- carry:` line names, no prompt holds a bkit rule no carry line names, every prompt carries at least one, and sync rewrites a copy still in a retired wording; every `fit` tag and drift item is resolved or carries a reason. |
 | `.bkit/core/engine/tools/instructions-sources.test.ts` | Unit | The store's copy sections equal their masters: `## Rules` / `## Project Rules` text and order against the `.agents/rules.md` bullets (a reworded bullet fails until sync retires the old text; every `refs` path and § exists); `## Hook Text` against every message the GateGuard, ReadGuard and Guardrails hook sources emit, both ways; `## Permissions` groups against the shipped Claude `deny` / `ask` / `allow` and OpenCode `permission` sets; `## Special Behaviors` / `## Authoring Rules` against `.bkit/core/.bkit/prompts.md` and `workflows.md`; no shipped rule, prompt or clause instructs a `next:*:lite` label. |
 
-## Routine tracker reporting coverage
+### Routine tracker reporting coverage
 
 `commands/workflow/tracker.integration.test.ts` runs the real CLI against real Git repositories, linked worktrees and persistent provider stand-ins. It covers session-to-run ownership, independent and resumed invocations, routine append, terminal summaries, source loss and nonfatal transport failures. Tracker unit tests cover bounded provider reads, local-source reconstruction, capacity rollover and redacted friction. Rendered workflow audits check all five hosts and all four tracker settings for explicit association, create-only verbatim fallback and attempted-report gates.
 
 Live provider probes are opt-in and use disposable issues or tickets under an explicitly authorized account. Verify newest-created pagination, update semantics, provider body counting and capacity rejection, and cleanup before recording a verified ceiling. Local stand-ins establish application behavior, not a live provider limit. Keep unresolved provider limits conservative and record unverified assumptions with the probe evidence.
 
-## Roadmap fold test coverage
+### Roadmap fold test coverage
 
 `docs/roadmap.md` is a generated artifact over one input: the canonical `.bkit/issues.jsonl` feature ledger. `bkit roadmap fold` rewrites the whole generated region and runs at every phase close. `commands/workflow/roadmap.test.ts` exercises it over fixture ledgers in a temp checkout (no mocks at the boundary); a real workflow close is the runtime ground-truth.
 
@@ -876,7 +1010,7 @@ Live provider probes are opt-in and use disposable issues or tickets under an ex
 | `commands/workflow/roadmap.test.ts` | Unit (real fixture ledgers) | Ledger projection under `tracker: none`; deterministic / idempotent regenerate; status projection incl. `ABANDONED` hidden; fail-open exit 0 (malformed line skips only its row; absent ledger bootstraps; unwritable board left as-is); consumer text byte-unchanged; duplicate-line collapse; `## Shipped` capped at 10; marker repair; no tracker block rendered. |
 | `.bkit/core/engine/audits/workflows/ship-verdict.integration.test.ts` | Integration | Ship Step 6 `roadmap feature --strict` line run verbatim: the `SHIPPED` row lands in the worktree ledger; an unwritable ledger or a crashed command stops the step. Deferred landing of a held build: the no-PR push and `prs open` against `dev`, then the CI gate and the head-pinned merge. |
 
-## Compliance grader test coverage
+### Compliance grader test coverage
 
 **Boundary: git diff** — `.bkit/core/engine/commands/comply.integration.test.ts` uses temp git repo + real `git diff parentSha..HEAD`; no mocks at boundary. Canonical pattern for git-diff validation.
 
@@ -904,7 +1038,7 @@ const violations = runGrader({ parentSha, phase: "ship", gitAdapter: realGitAdap
 | `.bkit/core/engine/checks/after/managed.integration.test.ts` | Integration (boundary: real git) | `isOnProtectedBranch` reads the target repo's branch while git hook variables point at another repo. |
 | `.bkit/core/engine/audits/workflows/comply-gate-wiring.test.ts` | Integration (boundary: workflow files) | Grep-based audit: one committing `workflows close` per phase, `--outbox` telemetry embedded in the close comment, no direct `bkit comply`. |
 
-## OpenCode host test coverage
+### OpenCode host test coverage
 
 <!-- prettier-ignore -->
 | Matrix row | Test location | Signal |
@@ -920,7 +1054,7 @@ const violations = runGrader({ parentSha, phase: "ship", gitAdapter: realGitAdap
 | legacy substring fetch grants detector | `.bkit/core/engine/checks/before/files.test.ts` | `opencode-substring-fetch-grants` lists each substring `curl` / `wget` allow with its removal action; grants are reported, never rewritten |
 | end-to-end (manual) | `e2e-verdict.md` (Task 5.1) | § Manual recipe — OpenCode E2E |
 
-## Manual recipe — OpenCode E2E (Task 5.1)
+### Manual recipe — OpenCode E2E (Task 5.1)
 
 Run once a live provider (OpenRouter or an OpenCode gateway) is available:
 
@@ -934,7 +1068,7 @@ Run once a live provider (OpenRouter or an OpenCode gateway) is available:
 
 Smoke test is load-bearing — catches `Missing model lookup for {agent}` before publish. Add Scenario per new consumer input shape. **If consumer can hit it, CI must hit it first.**
 
-## Manual recipe — Codex key-read deny
+### Manual recipe — Codex key-read deny
 
 Run on a machine with an authenticated `codex` CLI. Layout and rule follow `tests/experiments/hooks/bkit-hook-probe.md`: do not infer support from a generated hook response alone.
 
@@ -947,7 +1081,7 @@ Run on a machine with an authenticated `codex` CLI. Layout and rule follow `test
 
 The status phrase in the `codex-setup` advisory, `providers.md` and `prompts.md` follows the recorded outcome. Only `denied` allows "denied (verified on codex-cli {version}, {date})".
 
-## Spawning `bkit` from tests
+### Spawning `bkit` from tests
 
 Use project-local `tsx` binary through `requireTsx()` (`vitest.tsx-bin.ts`): it throws when `node_modules/.bin/tsx` is missing, so the test fails. NEVER check for `tsx` per file or `return` without it. Do not `node --import tsx/register`, because `ERR_MODULE_NOT_FOUND` exit 1 passes vacuous exit-code checks. Pattern:
 
@@ -965,7 +1099,7 @@ expect(result.status, `install crashed:\n${result.stdout}\n${result.stderr}`).to
 
 Assert >=1 positive signal (`[bkit-install]` prefix, exit 0 with reason, or file exists), else binary-not-found exit 1 passes vacuously.
 
-## Filesystem consumer-repo boundary pattern
+### Filesystem consumer-repo boundary pattern
 
 Harvest boundary tests: real `os.tmpdir()`, `fs.stat`/`fs.readFileSync` ground truth — no mocks.
 
@@ -983,20 +1117,14 @@ Pruning makes store sole copy until commit — property-test destructive half: s
 
 Any read-only filesystem invariant: step 6 = `fileUnchanged` (not mtime). `afterEach(() => fs.rmSync(tmpDir, { recursive: true }))`.
 
-## What not to test
+### What not to test
 
 - `.claude/` / `.cursor/` mirror contents — generated at install; test transforms (`applyT1`/`applyT2`/`applyT3`) + `dispatchModules`, not snapshot regen.
 - Real `gh`/`vercel` CLIs — stub via `process.env`.
 - Network — isolate `.bkit/core/engine/install/placeholders.ts` behind injectable resolvers.
 
-## CI execution
+## Open questions
 
-`.github/workflows/bkit-ci.yml` is the template `.bkit/templates/.github/workflows/bkit-ci.yml` with the adaptations `.bkit/core/engine/audits/repo/dogfood-templates.test.ts` lists. It runs a 5-job scaffold on every push to `dev` / `main` and PRs into them — a **flat DAG**: `bkit-tests-scope` fans out to every lane, the capstone joins them, so wall-clock == the slowest single lane. One run per branch or PR: a newer run cancels the older one, except on `main`, which queues (template `concurrency`). bkit has no browser / DB / deploy, so there is no `bkit-tests-build` / `-e2e` / `-migration` / `-live`:
+> **Project slot:** Unresolved testing facts.
 
-1. **`bkit-tests-scope`** (always-on planner; no `if:`, never skips) — reads markers, computes `run_level` (`[skip ci]` → none, a hard veto over any force marker; `[force build]` / `[force full]` / PR / `workflow_dispatch` / push-to-`main` / every `dev` push → full; push to any other branch → light), emits the `bkit-test-plan` JSON via `steps.scope.outputs.plan` and a `$GITHUB_STEP_SUMMARY` table. Markers are read from the commit message (push) or the PR title (`pull_request`) only, so **none** of them apply on a `workflow_dispatch` — steer that path with workflow inputs (`deployments.md` § Commit-message force tags). It is the planner, not a test lane, but it lives in the `bkit-tests-*` namespace, so any guard treating every `bkit-tests-*` job as a lane must exempt it by name.
-2. **`bkit-tests-static`** (`if: run_level != 'none'`) — static-analysis lane, run on a clean tree (no test artifacts): `pnpm typecheck` → `pnpm lint` → `pnpm format:check` → vale prose lint → `pnpm lint:slop` → slop delta (PR-only) → actionlint → `pnpm bkit check` (drift gate) → `pnpm bkit:check:dist` (`scripts/gate/bkit-check-dist.mjs`: compiles the staged tree in `tmp/check-dist-*` and fails when the staged `dist/` differs; never touches the working tree's `dist/`) → `pnpm bkit:audit:status` (Tier-3 run-completeness sweep over `docs/plans/*/logs/*/status.jsonl`). The sweep step is the lane's only non-blocking-on-holes step — the sweep exits 0 even when it finds holes (`|| true`), so a hole never fails `bkit-tests-static`; the step fails only when the sweep printed no `[bkit-status-holes] sweep:` summary line (a silent no-op), pinned by `tests/shell/bkit-status-holes-sweep.bats`. Keep it wired: promotion to a blocking gate is gated on accruing fail-open signal, which requires a live caller (contract: § Tier-3 fail-open advisory channel). Checks out at `fetch-depth: 0` so slop delta can materialise the PR base as a worktree. Vale is installed in-lane (pinned tarball, sha256-verified before extract, then `vale sync`) — the runner has none and `.vale/styles/` is gitignored, so without it `pnpm bkit:lint:prose` fails with an unavailable-tool result. Also carries the non-blocking promotion-lag warning on `dev` pushes (see `docs/deployments.md` § Promotion-lag warning).
-3. **`bkit-tests-unit`** (`if: run_level != 'none'`) — unit-test lane: installs `zsh` and `actionlint` (same SHA-pinned download as the static lane, put on `PATH`) so the tests that skip without them run, then runs `pnpm test:coverage:unit`, then the bats shell tier (`pnpm bkit:test:bats` — the bkit-cloud-bootstrap gh preflight, the `gh` stub harness and the release-PR mirror script, logic vitest cannot reach because it lives in shell). The gate command itself lives in the `test:coverage:unit` **package.json script** — unit suite (`--exclude '**/*.integration.test.ts'`), `--coverage.include` scoped to the logic surface (the files its flags list plus every `.bkit/core/engine/commands/**/*.ts`; `install/modules/` is measured on the integration lane only), and `-c vitest.unit.config.ts`, which carries the branch-coverage floor `coverage.thresholds.branches` (currently `80`, set just below current and ratcheted up; it lives on the unit run only — vitest coverage is per-run, so a `vitest.config` block would gate both lanes). **Single source:** `/bkit-build`'s pre-PR gate runs the same script, so a coverage drop fails in the worktree before this lane sees it — bump the floor in `vitest.unit.config.ts` and both callers move together. The CI step only appends the JSON reporter emitting `tests_ran`. `Report Unit Coverage` (`davelosert/vitest-coverage-report-action`, `vite-config-path: vitest.unit.config.ts`) runs on every event, including a red unit run, and writes the coverage table with the floor as its target to the job summary; it posts a `name: unit` PR comment on same-repo PRs only (fork PRs get `comment-on: none`, because the token is read-only). The action reads that file as raw text and regex-matches `<metric>: <number>`, so the floor stays on one unquoted line and no other metric name followed by a colon and a number appears in the file — a broken match drops the target silently while the gate keeps passing. Needs the job-level `permissions:` block (`contents: read` and `pull-requests: write`) — job-level permissions replace the workflow-level block, so `contents: read` must be re-declared for the checkout. **`.bkit/core/engine/cli.ts` reads low on this gate on purpose** — `.bkit/core/engine/commands/install/install.integration.test.ts` spawns `tsx` dozens of times against its un-exported `main()` dispatch (real CLI process per scenario), which in-process v8 coverage cannot see; only the handful of pure decision functions pulled out of `main()` for direct unit testing (e.g. `validateModuleFlagsForVerb` in `cli.ts`, `validateCloudTrackerMatch` in `commands/install/install.ts`) register here. A low `cli.ts` % on this lane is a spawn-tested blind spot, not evidence of missing coverage: the integration lane's executed-count + the Consumer-runtime parity rule (below) are the CLI dispatch's real gate.
-4. **`bkit-tests-integration`** (`if: run_level != 'none'`) — integration-test lane (parallel sibling): installs `zsh` (the snippet tests skip without it), then `vitest run --coverage` over `*.integration.test.ts`, scoped via `--coverage.include` to the engine surface (`modules` / `install` / `upgrade` / `uninstall`), emitting its own `tests_ran`. **Report-only** (no threshold, because a whole-repo integration % is denominator-noise and punishes the pyramid shape); posts a `name: integration` coverage comment. A separate lane per tier — mirrors how consumer repos run it and dogfoods the shipped scaffold. Own job-level `permissions:`.
-5. **`bkit-tests-check`** (capstone, `if: !cancelled()`) — asserts `bkit-tests-scope` succeeded and, when `run_level != none`, `bkit-tests-static` and `bkit-tests-unit` and `bkit-tests-integration` all succeeded **and unit and integration each executed > 0 tests** (per-lane `assert_ran` over each lane's `tests_ran`; `run_level=none` asserts nothing). This is the sole branch-protection required check (`bkit setup protect-main`, which requires `bkit.testing.ciCapstone` = `bkit-tests-check`) — green here means the planned suite actually ran, not merely "nothing failed".
-
-Release workflow (`.github/workflows/release.yml`, tag-triggered) re-runs no test or lint step: it publishes only a commit already on `main`, and `main` ran the suite on its PR and on the merge push. Before `npm publish` it checks the tagged commit is on `origin/main`, runs `bkit:check:dist` (`dist/` is the code npm ships) and requires the `CHANGELOG.md` tag block. The job sets `HUSKY=0` so `pnpm install` installs no git hooks and the sliding `v{N}` tag push runs no pre-push gate. Locally, bkit's own `.husky/pre-push` skips the gates for a push of tags alone on commits `origin` already holds, and for a push to a branch other than `dev` / `main` whose files equal `origin/dev` or `origin/main` (the `release/X` push); neither skip is in the shipped template. Where the suite runs in a release: `docs/deployments.md` § Release test runs.
+None.
