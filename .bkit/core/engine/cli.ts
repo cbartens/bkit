@@ -808,7 +808,8 @@ ${classicUsage()}
 Core (implicit — no flag; installed/upgraded on every install):
   AGENTS.md (cross-host dispatch router), .agents/rules.md + .agents/context.md +
   .agents/docs.md + .agents/skills.md managed blocks, .gitignore +
-  .gitattributes managed blocks, docs/, .bkit/*.md, .bkit/version, the template copies in
+  .gitattributes managed blocks, docs/, .bkit/*.md, .bkit/.env.example (token
+  placeholders), .bkit/version, the template copies in
   .bkit/templates/, and the bkit:gate:* / bkit:deps:* package.json scripts every workflow
   runs (added when missing, never overwritten, left by uninstall). The tool scripts those
   gates chain (typecheck, lint, format:check, bkit:lint:prose, bkit:slop:delta) and their devDeps are
@@ -817,7 +818,7 @@ Core (implicit — no flag; installed/upgraded on every install):
 Module flags (composable; symmetric install ↔ uninstall):
   --claude        .claude/agents/ + .claude/commands/ (byte-identical mirror) + CLAUDE.md
                   (root redirect to .agents/rules.md) + .claude settings/hooks + the
-                  tracker entry in .mcp.json + .bkit/.env.example.
+                  tracker entry in .mcp.json.
   --cursor        .cursor/agents/ + .cursor/commands/ (T1/T2/T3 transforms) +
                   .cursor/rules/bkit-rules.mdc + .cursor settings.
   --opencode=<provider>

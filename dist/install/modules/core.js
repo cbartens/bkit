@@ -96,11 +96,13 @@ export function removeOrphans(destDir, sourceNames, dryRun, prefix, options = {}
 }
 /** The markered-text `.agents/*.md` blocks core owns. */
 const CORE_AGENT_FILES = ["context.md", "docs.md", "rules.md", "skills.md"];
-// The two shared-root files core writes: stored in `shared/`, owned by the core
-// manifest, written as html-comment managed blocks.
+// The shared-root files core writes: stored in `shared/` and owned by the core manifest.
+// `.bkit/.env.example` is whole-file owned (consumer edits are overwritten; real values
+// go in `.bkit/.env`); the rest are html-comment managed blocks.
 const CORE_SHARED_FILES = [
-    ["gitignore", ".gitignore"],
-    [".gitattributes", ".gitattributes"],
+    ["gitignore", ".gitignore", "block"],
+    [".gitattributes", ".gitattributes", "block"],
+    [path.join(".bkit", ".env.example"), path.join(".bkit", ".env.example"), "whole"],
 ];
 // ---------------------------------------------------------------------------
 // guardCoreRoot — fail-loud guard for the resolved core payload root.
@@ -146,15 +148,15 @@ export function listCoreTemplateFiles(root = getCoreRoot()) {
 }
 /**
  * The shared payload files core writes, sourced from `root` (defaults to the
- * resolved shared root): the two shared-root files the core manifest owns. The ten project
+ * resolved shared root): the shared-root files the core manifest owns. The ten project
  * documents are copy-and-own starters under `templates/docs/`, never written here.
  */
 export function listSharedTemplateFiles(root = getSharedRoot()) {
     const out = [];
-    for (const [rel, dst] of CORE_SHARED_FILES) {
+    for (const [rel, dst, scope] of CORE_SHARED_FILES) {
         const src = path.join(root, rel);
         if (fs.existsSync(src))
-            out.push({ src, dst, scope: "block", marker: "html-comment" });
+            out.push({ src, dst, scope, marker: "html-comment" });
     }
     return out;
 }

@@ -2,7 +2,7 @@
 // allows, and the tracker entry in the MCP config files (`.mcp.json`, `.cursor/mcp.json`).
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { writeTier1, writeTier2, writeTier2JsonContained, ensureDir, mergeTrackerEntry, trackerEntryInSync, } from "../write.js";
+import { writeTier2, writeTier2JsonContained, ensureDir, mergeTrackerEntry, trackerEntryInSync, } from "../write.js";
 import { readBkitVersion, stampManagedVersion } from "../version-file.js";
 import { readJsonFile } from "../../shared/json.js";
 import { applyEffortRemap } from "../../render/hosts.js";
@@ -142,20 +142,6 @@ export function runClaudeModule(ctx) {
             reconcileMcpJson(mcpSrc, mcpDst, issueTracker, dryRun, ws);
             if (ws.writes.length > prevLen) {
                 console.log(`${logPrefix} ${tag}claude: ${mcpDst}`);
-            }
-        }
-    }
-    // .bkit/.env.example — owned (Tier 1): the token-placeholder reference, overwritten on
-    // every install. Real values go in `.bkit/.env`. Not claude-specific, but the claude
-    // module is the default-runs-everywhere module.
-    {
-        const envExampleSrc = path.join(getSharedRoot(), ".bkit", ".env.example");
-        const envExampleDst = path.join(".bkit", ".env.example");
-        if (fs.existsSync(envExampleSrc)) {
-            const prevLen = ws.writes.length;
-            writeTier1(envExampleSrc, envExampleDst, tokens, dryRun, ws);
-            if (ws.writes.length > prevLen) {
-                console.log(`${logPrefix} ${tag}claude: ${envExampleDst}`);
             }
         }
     }

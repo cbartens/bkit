@@ -294,6 +294,7 @@ Block updates keep the comment prefixes (`# `, `// `) before the markers.
 | `docs/{architecture,technology,security,data-schema,testing,deployments,observability,design,noise,setup}.md` | project | starters in `.bkit/templates/docs/` | Never written by install or upgrade. Copy a starter into `docs/` and add its row to `Project Documents` in `.agents/docs.md`; install and upgrade register present documents, and remove the ownership wrapper from a copy an older release installed. |
 | `docs/templates/bkit-*.md` | core | `.bkit/core/docs/templates/` | Tier 2 html-comment |
 | `.gitattributes` | core | `.bkit/shared/.gitattributes` | Tier 2 html-comment (`merge=union` for the append-only ledgers) |
+| `.bkit/.env.example` | core | `.bkit/shared/.bkit/.env.example` | Tier 1 (fully managed). Token placeholders for every host. Real values go in `.bkit/.env`. |
 | `.bkit/templates/**` | — | the whole `.bkit/templates/` root | Raw copies, refreshed on every install and upgrade; never hashed. Upgrade prints the changed paths. |
 | `.bkit/{core,shared}` | core | symlink into `node_modules/@cbartens/bkit/.bkit/{core,shared}` | View link, not a copy — browse the payload in-repo; always the installed version. Gitignored (dangles on a fresh clone / CI; install recreates). A real directory is never clobbered; `bkit uninstall` removes the link. |
 | `.bkit/{authoring,cloud,comparison,install,jsonl,LICENSE,pipeline,providers,prompts,router,trackers,workflows,README}.md` | core | `.bkit/core/.bkit/` | Tier 1 (canonical-overwrite); `prompts.md` Tier 2 html-comment. The reference docs agents read at runtime (`router.md`: the workflow router `AGENTS.md` sends `bkit-{command}` prompts to), plus `LICENSE.md`: the MIT text and copyright notice that travel with every file bkit writes. |
@@ -305,7 +306,6 @@ Block updates keep the comment prefixes (`# `, `// `) before the markers.
 | `.claude/hooks/bkit-readguard.cjs` | claude | `.bkit/core/.claude/hooks/` | Tier 2 slash-comment. Repeat-read advisory. |
 | `.claude/hooks/bkit-guardrails.cjs` | claude | `.bkit/core/.claude/hooks/` | Tier 2 slash-comment. Refuses the shell deny tier; advises on curl / wget hosts and shell edits. |
 | `.mcp.json` | claude | `.bkit/shared/.mcp.json` | Shared JSON: bkit owns `mcpServers.<tracker>` only; absent file → the tracker-filtered render |
-| `.bkit/.env.example` | claude | `.bkit/shared/.bkit/.env.example` | Tier 1 (fully managed). Real values go in `.bkit/.env`. |
 | `.cursor/commands/bkit-*.md` | cursor | `.bkit/core/workflows/` (T1+T2 transforms) | Host pass — always overwrite |
 | `.cursor/agents/bkit-*.md` | cursor | `.bkit/core/prompts/` (T3 transforms) | Host pass — always overwrite |
 | `package.json#scripts.bkit:gate:format` / `bkit:gate:min` / `bkit:gate:static` / `bkit:gate:static-unit` / `bkit:gate:install-static-unit-build` | core | hardcoded defaults | Seeded (add-if-missing; install and upgrade). What hooks, workflows and prompts run; the name states which tiers. The tool scripts the defaults chain (`typecheck`, `lint`, `format:check`, `bkit:lint:prose`, `bkit:slop:delta`) and their devDeps are templates: `.bkit/templates.md`. |

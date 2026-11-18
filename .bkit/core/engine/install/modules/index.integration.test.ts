@@ -184,6 +184,53 @@ describe("module dispatch: --core alone seeds no host or tooling file", () => {
   });
 });
 
+describe("module dispatch: .bkit/.env.example reaches every host install", () => {
+  const envExample = path.join(".bkit", ".env.example");
+  const promptsMd = path.join(getBkitDocsRoot(), "prompts.md");
+  const hostCtx = (ws: WriteSet): ModuleContext =>
+    makeCtx({
+      ws,
+      modelLookup: parseModelLookup(promptsMd),
+      opencodeProvider: "openrouter",
+      opencodeModelLookup: buildOpencodeModelLookup(promptsMd, "openrouter"),
+      codexModelLookup: buildOpencodeModelLookup(promptsMd, "openai"),
+      antigravityModelLookup: buildAntigravityModelLookup(promptsMd),
+      effortMap: parseEffortMap(promptsMd),
+    });
+
+  for (const host of [null, "claude", "cursor", "opencode", "codex", "antigravity"] as const) {
+    it(`${host === null ? "core alone" : `--${host}`} writes .bkit/.env.example`, () => {
+      const ws = makeWriteSet();
+      dispatchModules(new Set(host === null ? ["core"] : ["core", host]), hostCtx(ws));
+      expect(ws.writes.map((w) => w.path)).toContain(envExample);
+      const content = fs.readFileSync(path.join(tmpDir, envExample), "utf-8");
+      expect(content).toContain("BKIT_GH_TOKEN=");
+      expect(content).toContain("BKIT_LINEAR_API_KEY=");
+      expect(content).toContain("BKIT_JIRA_API_KEY=");
+    });
+  }
+
+  it("re-install overwrites a consumer-edited copy (owned), in dry-run and live alike", () => {
+    dispatchModules(new Set(["core"]), hostCtx(makeWriteSet()));
+    const abs = path.join(tmpDir, envExample);
+    const original = fs.readFileSync(abs, "utf-8");
+    const modified = `${original}\n# custom consumer token\nMY_API_KEY=\n`;
+    fs.writeFileSync(abs, modified, "utf-8");
+
+    // `bkit check` reports the pending overwrite without touching the file...
+    const dry = makeWriteSet();
+    dispatchModules(new Set(["core"]), makeCtx({ ws: dry, dryRun: true }));
+    expect(fs.readFileSync(abs, "utf-8")).toBe(modified);
+    expect(dry.writes.map((w) => w.path)).toContain(envExample);
+
+    // ...and the next install puts the package bytes back.
+    const live = makeWriteSet();
+    dispatchModules(new Set(["core"]), hostCtx(live));
+    expect(fs.readFileSync(abs, "utf-8")).toBe(original);
+    expect(live.writes.map((w) => w.path)).toContain(envExample);
+  });
+});
+
 describe("module dispatch: the network allowlist reaches every host whose hook reads it", () => {
   const promptsMd = path.join(getBkitDocsRoot(), "prompts.md");
   const hostCtx = (ws: WriteSet): ModuleContext =>

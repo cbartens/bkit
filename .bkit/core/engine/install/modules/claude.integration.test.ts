@@ -414,28 +414,7 @@ function makeClaudeContext(dryRun: boolean): ModuleContext {
   };
 }
 
-describe("Scenario: .bkit/.env.example (owned) and .envrc (template)", () => {
-  it("first install writes .bkit/.env.example when template exists", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "test-consumer" }),
-      "utf-8",
-    );
-    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
-
-    const ctx = makeClaudeContext(false);
-    // Change to tmpDir so relative paths resolve correctly in runClaudeModule
-    process.chdir(tmpDir);
-    runClaudeModule(ctx);
-
-    const envExamplePath = path.join(tmpDir, ".bkit", ".env.example");
-    expect(fs.existsSync(envExamplePath)).toBe(true);
-    const content = fs.readFileSync(envExamplePath, "utf-8");
-    expect(content).toContain("BKIT_GH_TOKEN=");
-    expect(content).toContain("BKIT_LINEAR_API_KEY=");
-    expect(content).toContain("BKIT_JIRA_API_KEY=");
-  });
-
+describe("Scenario: .envrc (template) and the .bkit/.env gitignore entry", () => {
   it("install never writes .envrc (a template the consumer copies)", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -448,38 +427,6 @@ describe("Scenario: .bkit/.env.example (owned) and .envrc (template)", () => {
     runClaudeModule(makeClaudeContext(false));
 
     expect(fs.existsSync(path.join(tmpDir, ".envrc"))).toBe(false);
-  });
-
-  it("re-install overwrites a consumer-edited .bkit/.env.example (owned), in dry-run and live alike", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "test-consumer" }),
-      "utf-8",
-    );
-    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
-
-    // First install
-    const ctx1 = makeClaudeContext(false);
-    process.chdir(tmpDir);
-    runClaudeModule(ctx1);
-
-    // Consumer modifies .env.example (adds a custom token)
-    const envExamplePath = path.join(tmpDir, ".bkit", ".env.example");
-    const original = fs.readFileSync(envExamplePath, "utf-8");
-    const modified = original + "\n# custom consumer token\nMY_API_KEY=\n";
-    fs.writeFileSync(envExamplePath, modified, "utf-8");
-
-    // `bkit check` reports the pending overwrite without touching the file...
-    const dry = makeClaudeContext(true);
-    runClaudeModule(dry);
-    expect(fs.readFileSync(envExamplePath, "utf-8")).toBe(modified);
-    expect(dry.ws.writes.map((w) => w.path)).toContain(path.join(".bkit", ".env.example"));
-
-    // ...and the second install puts the package bytes back.
-    const ctx2 = makeClaudeContext(false);
-    runClaudeModule(ctx2);
-    expect(fs.readFileSync(envExamplePath, "utf-8")).toBe(original);
-    expect(ctx2.ws.writes.map((w) => w.path)).toContain(path.join(".bkit", ".env.example"));
   });
 
   it(".gitignore marker block contains .bkit/.env after first install", () => {

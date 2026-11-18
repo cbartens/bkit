@@ -285,7 +285,7 @@ describe("buildDecisionTable — markered-text format", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildDecisionTable — byte-equal-text hash guard", () => {
-  // `.bkit/.env.example` is an owned byte-equal-text file (claude module).
+  // `.bkit/.env.example` is an owned byte-equal-text file (core module).
   const OWNED = ".bkit/.env.example";
   const version = (canonicalHashes: Record<string, string>): BkitVersion => ({
     pinnedVersion: "5.0.0",
@@ -296,7 +296,7 @@ describe("buildDecisionTable — byte-equal-text hash guard", () => {
   it("byte-equal-text file: no recorded hash → skip-unknown", () => {
     writeFile(OWNED, "BKIT_GH_TOKEN=\n");
     // No .bkit/version file → no hash recorded
-    const table = buildDecisionTable(["claude"], makeCtx());
+    const table = buildDecisionTable(["core"], makeCtx());
     expect(table.find((r) => r.file === OWNED)!.decision).toBe("skip-unknown");
   });
 
@@ -304,21 +304,21 @@ describe("buildDecisionTable — byte-equal-text hash guard", () => {
     const content = "BKIT_GH_TOKEN=\n";
     writeFile(OWNED, content);
     writeBkitVersionFile(version({ [OWNED]: sha256(content) }));
-    const table = buildDecisionTable(["claude"], makeCtx());
+    const table = buildDecisionTable(["core"], makeCtx());
     expect(table.find((r) => r.file === OWNED)!.decision).toBe("delete");
   });
 
   it("byte-equal-text file: hash mismatch (consumer modified) → skip-modified", () => {
     writeFile(OWNED, "BKIT_GH_TOKEN=consumer\n");
     writeBkitVersionFile(version({ [OWNED]: sha256("BKIT_GH_TOKEN=\n") }));
-    const table = buildDecisionTable(["claude"], makeCtx());
+    const table = buildDecisionTable(["core"], makeCtx());
     expect(table.find((r) => r.file === OWNED)!.decision).toBe("skip-modified");
   });
 
   it("byte-equal-text with --force → decision=delete regardless of hash", () => {
     writeFile(OWNED, "BKIT_GH_TOKEN=consumer\n");
     writeBkitVersionFile(version({ [OWNED]: sha256("BKIT_GH_TOKEN=\n") }));
-    const table = buildDecisionTable(["claude"], makeCtx({ force: true }));
+    const table = buildDecisionTable(["core"], makeCtx({ force: true }));
     const entry = table.find((r) => r.file === OWNED)!;
     expect(entry.decision).toBe("delete");
     expect(entry.reason).toContain("--force");
@@ -329,8 +329,18 @@ describe("buildDecisionTable — byte-equal-text hash guard", () => {
     const versionFilePath = path.join(tmpDir, ".bkit", "version");
     fs.mkdirSync(path.dirname(versionFilePath), { recursive: true });
     fs.writeFileSync(versionFilePath, "0.6.0\n", "utf-8");
-    const table = buildDecisionTable(["claude"], makeCtx());
+    const table = buildDecisionTable(["core"], makeCtx());
     expect(table.find((r) => r.file === OWNED)!.decision).toBe("skip-unknown");
+  });
+
+  it("a targeted host uninstall leaves the core-owned file out of the table", () => {
+    const content = "BKIT_GH_TOKEN=\n";
+    writeFile(OWNED, content);
+    writeBkitVersionFile(version({ [OWNED]: sha256(content) }));
+    for (const host of ["claude", "cursor"]) {
+      const table = buildDecisionTable([host], makeCtx());
+      expect(table.find((r) => r.file === OWNED)).toBeUndefined();
+    }
   });
 
   it("an adopted template is never in the table, whatever its content", () => {
@@ -499,7 +509,7 @@ describe("runUninstall — round-trip", () => {
 
   it("preserves byte-equal-text file when hash unknown", async () => {
     writeFile(".bkit/.env.example", "BKIT_GH_TOKEN=\n");
-    await runUninstall(["claude"], makeCtx());
+    await runUninstall(["core"], makeCtx());
     expect(fileExists(".bkit/.env.example")).toBe(true);
   });
 
@@ -511,7 +521,7 @@ describe("runUninstall — round-trip", () => {
       canonicalHashes: { ".bkit/.env.example": sha256(content) },
       claudeAllowDerived: [],
     });
-    await runUninstall(["claude"], makeCtx());
+    await runUninstall(["core"], makeCtx());
     expect(fileExists(".bkit/.env.example")).toBe(false);
   });
 
@@ -522,7 +532,7 @@ describe("runUninstall — round-trip", () => {
       canonicalHashes: { ".bkit/.env.example": sha256("BKIT_GH_TOKEN=\n") },
       claudeAllowDerived: [],
     });
-    await runUninstall(["claude"], makeCtx());
+    await runUninstall(["core"], makeCtx());
     expect(readFile(".bkit/.env.example")).toBe("BKIT_GH_TOKEN=consumer\n");
   });
 });

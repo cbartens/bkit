@@ -78,6 +78,9 @@ const CORE_MANIFEST = [
     // Append-only ledger union-merge rules live in a managed block; consumers may add
     // their own attributes outside the block, so this is markered-text (not whole-file).
     { path: ".gitattributes", format: "markered-text", module: "core" },
+    // Token placeholders for every host's MCP servers and agent tooling. Owned (writeTier1):
+    // consumer edits are overwritten. Real values go in `.bkit/.env`.
+    { path: ".bkit/.env.example", format: "byte-equal-text", module: "core" },
     { path: ".bkit/version", format: "byte-equal-text", module: "core" },
     // Curl/wget host allowlist read at runtime by every host's bkit-guardrails.cjs (Claude,
     // Cursor, Codex, Antigravity). No template backs it — `writeNetworkAllowlist`
@@ -146,8 +149,6 @@ const CLAUDE_MANIFEST = [
     // bkit owns only its tracker entry under `mcpServers` (reconcileMcpJson); every other
     // key is the consumer's.
     { path: ".mcp.json", format: "json", module: "claude" },
-    // Owned (writeTier1): consumer edits are overwritten. Real values go in `.bkit/.env`.
-    { path: ".bkit/.env.example", format: "byte-equal-text", module: "claude" },
     // Mirrors from .agents/ — managed dynamically, not listed individually here (the set
     // depends on the bkit-prefix prompt/workflow files at install time). The uninstall
     // logic handles these via the BKIT_PREFIX filter.
