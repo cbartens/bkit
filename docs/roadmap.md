@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-18T00:43:57Z)_
+_(refreshed 2026-11-18T03:59:28Z)_
 
 ### Design
 
@@ -40,6 +40,7 @@ _(refreshed 2026-11-18T00:43:57Z)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 1008-plan-design-owner | 1008-plan-design-owner | 1794974368689 |
 | 504-example-project | 504-example-project | 1791870640742 |
 | 546-knowledge-store-ledger | 546-knowledge-store-ledger | 1793687664562 |
 | 651-sops-env-backup | 651-sops-env-backup | 1792633642892 |
