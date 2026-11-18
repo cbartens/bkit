@@ -1202,6 +1202,50 @@ describe("bkit worktrees remove", () => {
       expect(r.err).toContain(`remote origin/feat/${FID} not deleted — preserved`);
     });
 
+    /** dev carries the branch's change in one commit, then edits the same file again. */
+    function landThenEdit(cwd: string, origin: string) {
+      fs.writeFileSync(path.join(cwd, "shared.txt"), "base\n");
+      git(cwd, "add", "shared.txt");
+      git(cwd, "commit", "-qm", "base file");
+      git(cwd, "push", "-q", "origin", "dev");
+      const wt = linked(cwd, FID, true);
+      fs.writeFileSync(path.join(wt, "shared.txt"), "base\nbranch change\n");
+      git(wt, "add", "shared.txt");
+      git(wt, "commit", "-qm", "branch change");
+      git(wt, "push", "-q", "origin", `feat/${FID}`);
+      fs.writeFileSync(path.join(cwd, "shared.txt"), "base\nbranch change\n");
+      git(cwd, "commit", "-qam", "dev carries branch change");
+      fs.writeFileSync(path.join(cwd, "shared.txt"), "base\nbranch change\nlater dev edit\n");
+      git(cwd, "commit", "-qam", "later dev edit");
+      git(cwd, "push", "-q", "origin", "dev");
+      expect(origin).toBeTruthy();
+      return wt;
+    }
+
+    it("removes the worktree and local branch when a later dev commit changed the branch's file", async () => {
+      const cwd = repo();
+      const origin = withOrigin(cwd);
+      const wt = landThenEdit(cwd, origin);
+      const r = await remove(cwd, `--branch=feat/${FID}`);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ removed: true, branchDeleted: true, branchBlockedBy: null });
+      expect(r.json.reason).not.toBe("not-landed");
+      expect(fs.existsSync(wt)).toBe(false);
+      expect(git(cwd, "branch", "--list", `feat/${FID}`)).toBe("");
+    });
+
+    it("deletes the remote branch when a later dev commit changed the branch's file", async () => {
+      const cwd = repo();
+      const origin = withOrigin(cwd);
+      landThenEdit(cwd, origin);
+      expect(remoteHas(origin)).toBe(true);
+      const r = await remove(cwd, `--branch=feat/${FID}`);
+      expect(r.code).toBe(0);
+      expect(r.json.reason).not.toBe("remote-not-landed");
+      expect(r.json).toMatchObject({ removed: true, remoteDeleted: true });
+      expect(remoteHas(origin)).toBe(false);
+    });
+
     it("an unmarked worktree holding the branch blocks BOTH deletes and is named", async () => {
       const cwd = repo();
       const origin = withOrigin(cwd);

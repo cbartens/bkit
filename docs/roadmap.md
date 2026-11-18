@@ -23,6 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
+_(refreshed 2026-11-18T13:01:33Z)_
 _(refreshed 2026-11-18T12:02:45Z)_
 _(refreshed 2026-11-18T11:47:23Z)_
 
@@ -64,6 +65,7 @@ _(refreshed 2026-11-18T11:47:23Z)_
 | 1030-later-scope-passing | 1030-later-scope-passing | 1794972956727 |
 | 1035-ledger-commit-outbox | 1035-ledger-commit-outbox | 1795003365889 |
 | 1039-ledger-query-status | 1039-ledger-query-status | 1794984068525 |
+| 1055-worktree-removal-says | 1055-worktree-removal-says | 1795006893761 |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
 | 811-publish-dev-refused | 811-publish-dev-refused | 1794974015158 |
 | 812-keep-steps-placeholder | 812-keep-steps-placeholder | 1795002443754 |

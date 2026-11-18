@@ -3626,6 +3626,46 @@ describe("shared landed comparison", { timeout: GIT_TIMEOUT }, () => {
     const comparison = await import("./worktrees");
     expect(comparison.notOnDev(clone, "feat/1-x")).toContain("src.txt");
   });
+
+  it("a later dev commit on the same file does not turn a landed branch back into unlanded", async () => {
+    const { origin, clone } = withOrigin("land-later");
+    git(clone, "switch", "-q", "-c", "feat/1-x");
+    commit(clone, { "src.txt": "code v1\n" }, "feat: change src");
+    landOnDev(origin, { "src.txt": "code v1\n" }, "dev carries the branch change");
+    landOnDev(origin, { "src.txt": "later dev edit\n" }, "later dev edit");
+    expect(git(clone, "fetch", "-q", "origin").ok).toBe(true);
+    expect(sha(clone, "HEAD:src.txt")).not.toBe(sha(clone, "origin/dev:src.txt"));
+    const comparison = await import("./worktrees");
+    expect(comparison.notOnDev(clone, "feat/1-x")).toEqual([]);
+  });
+
+  it("names only the file whose branch version never reached dev", async () => {
+    const { origin, clone } = withOrigin("land-partial");
+    git(clone, "switch", "-q", "-c", "feat/1-x");
+    commit(clone, { "a.txt": "a one\n", "src.txt": "branch only\n" }, "feat: two files");
+    landOnDev(origin, { "a.txt": "a one\n" }, "dev carries a.txt");
+    landOnDev(origin, { "a.txt": "a later\n" }, "later dev edit of a.txt");
+    expect(git(clone, "fetch", "-q", "origin").ok).toBe(true);
+    const comparison = await import("./worktrees");
+    expect(comparison.notOnDev(clone, "feat/1-x")).toEqual(["src.txt"]);
+  });
+
+  it("a deleted file that dev deleted and a later commit re-added counts as landed", async () => {
+    const { origin, clone } = withOrigin("land-deleted");
+    git(clone, "switch", "-q", "-c", "feat/1-x");
+    expect(git(clone, "rm", "-q", "src.txt").ok).toBe(true);
+    expect(git(clone, "commit", "-qm", "feat: delete src").ok).toBe(true);
+    const other = tmp("other-del");
+    git(other, "clone", "-q", "-b", "dev", origin, ".");
+    expect(git(other, "rm", "-q", "src.txt").ok).toBe(true);
+    expect(git(other, "commit", "-qm", "dev deletes src").ok).toBe(true);
+    expect(git(other, "push", "-q", "origin", "dev").ok).toBe(true);
+    landOnDev(origin, { "src.txt": "re-added\n" }, "later re-add");
+    expect(git(clone, "fetch", "-q", "origin").ok).toBe(true);
+    expect(git(clone, "ls-tree", "origin/dev", "src.txt").out).not.toBe("");
+    const comparison = await import("./worktrees");
+    expect(comparison.notOnDev(clone, "feat/1-x")).toEqual([]);
+  });
 });
 
 describe("branches land", { timeout: GIT_TIMEOUT }, () => {

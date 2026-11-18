@@ -126,7 +126,7 @@ flowchart LR
   subgraph gn_bkit_core_engine[".bkit/core/engine"]
     n_bkit_core_engine_checks["checks<br/>265 symbols · 18 files"]
     n_bkit_core_engine_cli["cli<br/>33 symbols · 1 files"]
-    n_bkit_core_engine_commands["commands<br/>1965 symbols · 58 files"]
+    n_bkit_core_engine_commands["commands<br/>1966 symbols · 58 files"]
     n_bkit_core_engine_install["install<br/>366 symbols · 21 files"]
     n_bkit_core_engine_ledgers["ledgers<br/>241 symbols · 6 files"]
     n_bkit_core_engine_render["render<br/>63 symbols · 4 files"]
@@ -303,7 +303,7 @@ flowchart LR
         n_bkit_core_engine_commands_workflow_tests_changed["tests-changed<br/>10 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_tracker["tracker<br/>94 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_workflows["workflows<br/>85 symbols · 1 files"]
-        n_bkit_core_engine_commands_workflow_worktrees["worktrees<br/>65 symbols · 1 files"]
+        n_bkit_core_engine_commands_workflow_worktrees["worktrees<br/>66 symbols · 1 files"]
       end
     end
     subgraph gn_bkit_core_engine_install[".bkit/core/engine/install"]

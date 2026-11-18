@@ -801,6 +801,22 @@ function committedLines(root: string, rev: string, file: string): string[] {
   return result.stdout.split("\n").filter(Boolean);
 }
 
+/** True when some origin/dev commit since the merge base holds the branch's tree entry for the file. */
+function devHeldEntry(root: string, base: string, file: string, entry: string | null): boolean {
+  const log = cleanupRead(root, [
+    "rev-list",
+    "--full-history",
+    `${base}..${ORIGIN_DEV}`,
+    "--",
+    file,
+  ]);
+  if (!log.ok) throw new Error(`cannot inspect ${base}..${ORIGIN_DEV} for ${file}: ${log.stderr}`);
+  return log.stdout
+    .split("\n")
+    .filter(Boolean)
+    .some((commit) => treeEntry(root, commit, file) === entry);
+}
+
 /** Branch changes absent from dev, including deletions and tree-entry mode/type. */
 export function notOnDev(root: string, branch: string): string[] {
   const base = git(root, ["merge-base", ORIGIN_DEV, branch]);
@@ -815,6 +831,7 @@ export function notOnDev(root: string, branch: string): string[] {
         const feature = treeEntry(root, branch, file);
         const dev = treeEntry(root, ORIGIN_DEV, file);
         if (feature === dev) return false;
+        if (devHeldEntry(root, base, file, feature)) return false;
         if (
           feature === null ||
           dev === null ||
