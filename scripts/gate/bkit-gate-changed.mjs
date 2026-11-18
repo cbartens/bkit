@@ -4,7 +4,8 @@
  * bkit-gate-changed.mjs — bkit's own `bkit:gate:changed`: checks only the files named as
  * arguments (repo-relative, from `bkit tests changed`). Every stage runs, failing or not:
  *   related  → vitest related --run: the Vitest tests that import a changed file
- *   named    → each test file that names a changed path, by runner (vitest / node --test / bats)
+ *   named    → each test file that names a changed path, by runner (vitest / node --test / bats);
+ *              also the text ceiling test when a changed path is under .bkit/core/workflows/ or .bkit/core/prompts/, or is the ceiling record
  *   lint     → oxlint on the changed engine .ts files (the `lint` script's scope)
  *   format   → prettier --check on every changed file it knows, symlinks excluded
  *   types    → pnpm typecheck when a .ts file changed (tsc checks whole projects only)
@@ -67,11 +68,18 @@ stage(
   run("related", bin("vitest"), ["related", "--run", "--passWithNoTests", ...files]),
 );
 
+const CEILING_TEST = ".bkit/core/engine/audits/repo/agent-text-ceiling.test.ts";
+const touchesCeiling = (f) =>
+  f.startsWith(".bkit/core/workflows/") ||
+  f.startsWith(".bkit/core/prompts/") ||
+  f === "scripts/gate/bkit-text-ceiling.json";
+
 const isTest = (f) => TEST_GLOBS.some((g) => f.endsWith(g.slice(1)));
 const named = testsNaming(files);
 if (named === null) stage("named", 1);
 else {
-  const tests = [...new Set([...named, ...files.filter(isTest)])].sort();
+  const ceiling = files.some(touchesCeiling) ? [CEILING_TEST] : [];
+  const tests = [...new Set([...named, ...files.filter(isTest), ...ceiling])].sort();
   const byKind = (k) => tests.filter((f) => kindOf(f) === k);
   if (byKind("vitest").length > 0)
     stage("named", run("named", bin("vitest"), ["run", "--passWithNoTests", ...byKind("vitest")]));

@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-18T00:43:57Z)_
+_(refreshed 2026-11-18T02:04:00Z)_
 
 ### Design
 
@@ -57,6 +57,7 @@ _(refreshed 2026-11-18T00:43:57Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 1020-two-small-check | 1020-two-small-check | 1794962637613 |
+| 1028-gate-fails-workflow | 1028-gate-fails-workflow | 1794967440896 |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
 | 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1794438325395 |
 | 864-move-project-docs | 864-move-project-docs | 1794355539739 |

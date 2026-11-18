@@ -27,6 +27,13 @@ describe("package.json manifest invariants (BAR-138)", () => {
     );
   });
 
+  it("bkit:text:ceiling runs scripts/gate/bkit-text-ceiling.mjs", () => {
+    const manifest = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf-8")) as {
+      scripts: Record<string, string>;
+    };
+    expect(manifest.scripts["bkit:text:ceiling"]).toBe("node scripts/gate/bkit-text-ceiling.mjs");
+  });
+
   const pkgPath = path.resolve("package.json");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let pkg: Record<string, any>;

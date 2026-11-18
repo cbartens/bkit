@@ -1,7 +1,7 @@
 // bkit's own checkout only; never shipped. Run: node --test scripts/gate/bkit-gate-changed.test.mjs
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -50,4 +50,13 @@ test("passes the limit args to the node --test stage", (t) => {
   const out = res.stdout + res.stderr;
   assert.match(out, /named: node --test .*--test-timeout=\d+/, out);
   assert.match(out, /named: node --test .*--test-force-exit/, out);
+});
+
+test("a changed workflow or prompt file runs the text ceiling test", () => {
+  for (const dir of [".bkit/core/workflows", ".bkit/core/prompts"]) {
+    const file = readdirSync(join(root, dir)).find((f) => f.endsWith(".md"));
+    const res = gate(`${dir}/${file}`);
+    const out = res.stdout + res.stderr;
+    assert.match(out, /named: vitest run .*agent-text-ceiling\.test\.ts/, out);
+  }
 });

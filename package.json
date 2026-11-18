@@ -77,6 +77,7 @@
     "bkit:lint:prose": "bkit ci prose --glob='.agents/*.md' --glob='.bkit/core/.bkit/*.md' --glob='.bkit/core/workflows/**/*.md' --glob='.bkit/core/prompts/**/*.md' --glob='.bkit/core/.agents/*.md' --glob='.bkit/core/docs/**/*.md' --glob='.bkit/templates/**/*.md' --glob='docs/*.md' --glob='*.md'",
     "lint:slop": "slop-scan scan .",
     "bkit:slop:delta": "bkit ci slop",
+    "bkit:text:ceiling": "node scripts/gate/bkit-text-ceiling.mjs",
     "bkit:lint:workflows": "bash -c 'if command -v actionlint >/dev/null 2>&1; then actionlint; else echo \"[bkit] actionlint missing — skipping workflow lint (install actionlint to enable)\"; fi'",
     "test": "node scripts/ci/bkit-test-awake.mjs vitest run",
     "harvest": "tsx scripts/harvest/bkit-harvest.mjs",

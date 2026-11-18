@@ -88,7 +88,8 @@ cbartens/bkit (this repo)
 ├── scripts/ci/             # Adopted copy of `.bkit/templates/scripts/ci/`, plus bkit-repo-only
 │                           #   bkit-test-file.mjs (`bkit:test:file`: runner picked by test file type)
 ├── scripts/gate/           # bkit-repo-only bkit-gate-changed.mjs (`bkit:gate:changed`: checks on
-│                           #   the changed files bkit passes it)
+│                           #   the changed files bkit passes it) and bkit-text-ceiling.mjs with its record
+│                           #   bkit-text-ceiling.json (word ceilings for the workflow and prompt folders)
 ├── dist/                   # Compiled output (committed; published in tarball)
 ├── vitest.*.ts             # Repo-only test configuration and shared fixture support;
 │                           # gate-fixture runs consumer scripts with local dependencies.
