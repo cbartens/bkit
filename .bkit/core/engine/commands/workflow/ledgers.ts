@@ -70,6 +70,7 @@ import {
   type RunContext,
 } from "../lib.js";
 import { CORRECTION_LIMIT, spendCorrection, type CorrectionSpend } from "./counters.js";
+import { FID_PATTERNS } from "./fids.js";
 import { readStatusRows, str } from "./status.js";
 import {
   NO_MARKERS_REASON,
@@ -220,6 +221,33 @@ const required = (ctx: RunContext, name: string): string => {
   return v;
 };
 
+/**
+ * The shape check every bookkeeping path is built from: a six-digit month and a lowercase slug
+ * FID, so neither can widen a pathspec or climb out of the log folder. `commitBookkeeping` and
+ * `checkOnlyBookkeeping` run it themselves, so every caller is covered; `month` = `*` is the
+ * one exemption, for the CI hook. `FID_PATTERNS` is read at call time only, because `fids.ts`
+ * imports this module through `locks.ts`.
+ */
+export const checkMonthFid = (month: string, fid: string, anyMonth = false): void => {
+  if (!(anyMonth && month === "*") && !/^[0-9]{6}$/.test(month)) {
+    throw new CommandError(EXIT.USAGE, `--month must be six digits (YYYYMM), got '${month}'`);
+  }
+  if (!FID_PATTERNS.none.test(fid)) {
+    throw new CommandError(
+      EXIT.USAGE,
+      `--fid must be a lowercase slug (letters, digits, hyphens), got '${fid}'`,
+    );
+  }
+};
+
+/** `--month` and `--fid` after `checkMonthFid`. */
+export const monthAndFid = (ctx: RunContext): { month: string; fid: string } => {
+  const month = required(ctx, "month");
+  const fid = required(ctx, "fid");
+  checkMonthFid(month, fid);
+  return { month, fid };
+};
+
 const rootOf = (ctx: RunContext) => path.resolve(ctx.cwd, str(ctx.flags.root) ?? ".");
 
 const ROOT_FLAG: FlagSpec = {
@@ -231,9 +259,14 @@ const MONTH_FLAG: FlagSpec = {
   name: "month",
   type: "string",
   required: true,
-  help: "YYYYMM bucket of the feature's logs",
+  help: "YYYYMM bucket of the feature's logs (six digits)",
 };
-const FID_FLAG: FlagSpec = { name: "fid", type: "string", required: true, help: "feature id" };
+const FID_FLAG: FlagSpec = {
+  name: "fid",
+  type: "string",
+  required: true,
+  help: "feature id (lowercase slug)",
+};
 
 /** Tracked files with uncommitted changes (`git status --porcelain` minus untracked). */
 function dirtyTracked(root: string): string[] {
@@ -1181,6 +1214,7 @@ export function commitBookkeeping(
   log: (m: string) => void,
 ): BookkeepingResult {
   const { root, month, fid, scope, mode, message, squashOf } = o;
+  checkMonthFid(month, fid);
   if (o.path !== undefined) {
     if (mode === "stage" || !MODES.includes(mode)) {
       throw new CommandError(EXIT.USAGE, "--path needs --mode=commit or commit-allow-empty");
@@ -1280,13 +1314,23 @@ export function commitBookkeeping(
     );
   }
   let paths = nulList(listed.stdout);
+  const removed = gitRaw(root, ["ls-files", "-z", "--deleted", "--", ...specs]);
+  if (removed.status !== 0) {
+    throw new CommandError(
+      EXIT_ROOT,
+      `'git ls-files --deleted' failed while building the pathspec: ${removed.stderr}`,
+    );
+  }
+  const removedLocks = nulList(removed.stdout).filter((p) => p.endsWith(".bkit-lock"));
   let ledgerRows: OwnSet["ledgers"] = [];
   if (rec !== null) {
     // Throws EXIT_FOREIGN_PATH when a recorded path in the allow-list changed.
     ledgerRows = ownSet(root, rec, paths).ledgers;
     const recorded = new Set(rec.paths.map((p) => p.path));
     paths = paths.filter((p) => !recorded.has(p));
+    removedLocks.splice(0, removedLocks.length, ...removedLocks.filter((p) => !recorded.has(p)));
   }
+  for (const p of removedLocks) if (!paths.includes(p)) paths.push(p);
   let squashPaths: string[] = [];
   if (squashOf !== undefined) {
     const diff = gitRaw(root, ["diff", "--name-only", "-z", "--no-renames", `HEAD...${squashOf}`]);
@@ -1652,6 +1696,7 @@ function correctionBook(
   if (dir === null) return null;
   const file = path.join(dir, `${invocation.id}.corrections.jsonl`);
   fs.appendFileSync(file, "", { mode: 0o600 });
+  fs.chmodSync(file, 0o600);
   return { file, ...key };
 }
 
@@ -2345,6 +2390,7 @@ export function checkOnlyBookkeeping(
   root: string,
   o: { month: string; fid: string; from: string; to: string },
 ): BookkeepingCheck {
+  checkMonthFid(o.month, o.fid, true);
   for (const ref of [o.from, o.to]) {
     if (gitRaw(root, ["cat-file", "-e", `${ref}^{commit}`]).status !== 0) {
       return { kind: "unknown-commit", ref };
@@ -2396,8 +2442,7 @@ export function changedOutside(
 }
 
 function onlyBookkeeping(ctx: RunContext): number {
-  const month = required(ctx, "month");
-  const fid = required(ctx, "fid");
+  const { month, fid } = monthAndFid(ctx);
   const from = required(ctx, "from");
   const to = required(ctx, "to");
   const root = rootOf(ctx);

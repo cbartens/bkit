@@ -20,6 +20,7 @@ import { COMPACT_LEDGERS, compactLedgers } from "../../ledgers/compact.js";
 import { CORRECTION_REJECTED_ROW, CORRECTION_SUCCEEDED_ROW, actionHash, appendHeld, appendLine, correctionScope, ledgerEffect, ledgerIntent, ledgerOperation, ledgerOperationsFile, pendingLedgerIntentsFor, recordLedgerIntent, recordLedgerOperation, statusTimestamp, withTargetLock, writePrepared, } from "../../ledgers/status.js";
 import { CommandError, CorrectionExhausted, EXIT, INVOCATION_FLAG, invocationDir, isIgnoredPath, isSharedBranch, NoWriteRejection, parseJson, UncertainEffect, wholeNumber, } from "../lib.js";
 import { CORRECTION_LIMIT, spendCorrection } from "./counters.js";
+import { FID_PATTERNS } from "./fids.js";
 import { readStatusRows, str } from "./status.js";
 import { NO_MARKERS_REASON, outOfScope, parsePlanBlocks, reuseInventory, } from "./plan-blocks.js";
 /** Root is not a directory or repo, git is too old, or a ref does not resolve. */
@@ -118,6 +119,28 @@ const required = (ctx, name) => {
         throw new CommandError(EXIT.USAGE, `--${name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)} is required`);
     return v;
 };
+/**
+ * The shape check every bookkeeping path is built from: a six-digit month and a lowercase slug
+ * FID, so neither can widen a pathspec or climb out of the log folder. `commitBookkeeping` and
+ * `checkOnlyBookkeeping` run it themselves, so every caller is covered; `month` = `*` is the
+ * one exemption, for the CI hook. `FID_PATTERNS` is read at call time only, because `fids.ts`
+ * imports this module through `locks.ts`.
+ */
+export const checkMonthFid = (month, fid, anyMonth = false) => {
+    if (!(anyMonth && month === "*") && !/^[0-9]{6}$/.test(month)) {
+        throw new CommandError(EXIT.USAGE, `--month must be six digits (YYYYMM), got '${month}'`);
+    }
+    if (!FID_PATTERNS.none.test(fid)) {
+        throw new CommandError(EXIT.USAGE, `--fid must be a lowercase slug (letters, digits, hyphens), got '${fid}'`);
+    }
+};
+/** `--month` and `--fid` after `checkMonthFid`. */
+export const monthAndFid = (ctx) => {
+    const month = required(ctx, "month");
+    const fid = required(ctx, "fid");
+    checkMonthFid(month, fid);
+    return { month, fid };
+};
 const rootOf = (ctx) => path.resolve(ctx.cwd, str(ctx.flags.root) ?? ".");
 const ROOT_FLAG = {
     name: "root",
@@ -128,9 +151,14 @@ const MONTH_FLAG = {
     name: "month",
     type: "string",
     required: true,
-    help: "YYYYMM bucket of the feature's logs",
+    help: "YYYYMM bucket of the feature's logs (six digits)",
 };
-const FID_FLAG = { name: "fid", type: "string", required: true, help: "feature id" };
+const FID_FLAG = {
+    name: "fid",
+    type: "string",
+    required: true,
+    help: "feature id (lowercase slug)",
+};
 /** Tracked files with uncommitted changes (`git status --porcelain` minus untracked). */
 function dirtyTracked(root) {
     return gitRaw(root, ["status", "--porcelain"])
@@ -939,6 +967,7 @@ function commitOnePath(o, log) {
  */
 export function commitBookkeeping(o, log) {
     const { root, month, fid, scope, mode, message, squashOf } = o;
+    checkMonthFid(month, fid);
     if (o.path !== undefined) {
         if (mode === "stage" || !MODES.includes(mode)) {
             throw new CommandError(EXIT.USAGE, "--path needs --mode=commit or commit-allow-empty");
@@ -1024,13 +1053,22 @@ export function commitBookkeeping(o, log) {
         throw new CommandError(EXIT_ROOT, `'git ls-files' failed while building the pathspec: ${listed.stderr}`);
     }
     let paths = nulList(listed.stdout);
+    const removed = gitRaw(root, ["ls-files", "-z", "--deleted", "--", ...specs]);
+    if (removed.status !== 0) {
+        throw new CommandError(EXIT_ROOT, `'git ls-files --deleted' failed while building the pathspec: ${removed.stderr}`);
+    }
+    const removedLocks = nulList(removed.stdout).filter((p) => p.endsWith(".bkit-lock"));
     let ledgerRows = [];
     if (rec !== null) {
         // Throws EXIT_FOREIGN_PATH when a recorded path in the allow-list changed.
         ledgerRows = ownSet(root, rec, paths).ledgers;
         const recorded = new Set(rec.paths.map((p) => p.path));
         paths = paths.filter((p) => !recorded.has(p));
+        removedLocks.splice(0, removedLocks.length, ...removedLocks.filter((p) => !recorded.has(p)));
     }
+    for (const p of removedLocks)
+        if (!paths.includes(p))
+            paths.push(p);
     let squashPaths = [];
     if (squashOf !== undefined) {
         const diff = gitRaw(root, ["diff", "--name-only", "-z", "--no-renames", `HEAD...${squashOf}`]);
@@ -1323,6 +1361,7 @@ function correctionBook(cwd, invocation) {
         return null;
     const file = path.join(dir, `${invocation.id}.corrections.jsonl`);
     fs.appendFileSync(file, "", { mode: 0o600 });
+    fs.chmodSync(file, 0o600);
     return { file, ...key };
 }
 /** The `{key, ts}` of each row in prepared `block` bytes. */
@@ -1897,6 +1936,7 @@ function copy(from, to) {
  * check for `ledgers only-bookkeeping` and the ship gate's carry-forward.
  */
 export function checkOnlyBookkeeping(root, o) {
+    checkMonthFid(o.month, o.fid, true);
     for (const ref of [o.from, o.to]) {
         if (gitRaw(root, ["cat-file", "-e", `${ref}^{commit}`]).status !== 0) {
             return { kind: "unknown-commit", ref };
@@ -1939,8 +1979,7 @@ export function changedOutside(root, from, to, specs) {
     return { ok: true, changed, outside: changed.filter((p) => !allowed.has(p)) };
 }
 function onlyBookkeeping(ctx) {
-    const month = required(ctx, "month");
-    const fid = required(ctx, "fid");
+    const { month, fid } = monthAndFid(ctx);
     const from = required(ctx, "from");
     const to = required(ctx, "to");
     const root = rootOf(ctx);

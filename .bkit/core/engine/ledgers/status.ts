@@ -724,9 +724,11 @@ export function ledgerOperationsFile(root: string, prepare = false): string | nu
   return file;
 }
 
-/** Create the private directory chain of `file`'s parent (0700). */
-function privateDir(file: string): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+/** Create the private directory chain of `file`'s parent (0700), and narrow a parent that already existed. */
+export function privateDir(file: string): void {
+  const dir = path.dirname(file);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  fs.chmodSync(dir, 0o700);
 }
 
 /**

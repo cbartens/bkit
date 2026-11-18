@@ -5,12 +5,14 @@ import * as path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { runCommand } from "../lib";
+import { CommandError, runCommand } from "../lib";
 import {
   EXIT_ROWS_MISSING,
   EXIT_ROW_REFUSED,
   appendLedgerRows,
   bookPathspecs,
+  checkOnlyBookkeeping,
+  commitBookkeeping,
   commitOwnSet,
   ledgersCommand,
   listRecords,
@@ -167,20 +169,20 @@ describe("bkit ledgers commit (tests/book-commit.bats)", () => {
     const r = repo();
     put(r, "README.md", "x\n");
     commitAll(r);
-    put(r, "docs/plans/202608/logs/446 space/status.jsonl", '{"a":1}\n');
+    put(r, "docs/plans/202608/logs/446-space/my status.jsonl", '{"a":1}\n');
     const res = await run(
       r,
       commitArgs(
         r,
         "--month=202608",
-        "--fid=446 space",
+        "--fid=446-space",
         "--scope=core",
         "--mode=commit",
         "--message=space test",
       ),
     );
     expect(res.code).toBe(0);
-    expect(stat(r)).toContain("446 space/status.jsonl");
+    expect(stat(r)).toContain("446-space/my status.jsonl");
   });
 
   it("nothing changed: exit 0, 'nothing to commit', no new commit", async () => {
@@ -251,6 +253,68 @@ describe("bkit ledgers commit (tests/book-commit.bats)", () => {
     const files = git(r, "show", "--name-only", "--format=", "HEAD");
     expect(files).toContain("status.jsonl");
     expect(files).not.toContain("status.jsonl.bkit-lock");
+    expect(git(r, "ls-files", "--", "*.bkit-lock")).toBe("");
+  });
+
+  it("a --fid that climbs out of the log folder is refused and commits nothing", async () => {
+    const r = repo();
+    put(r, "docs/plans/202608/logs/446-book/status.jsonl", '{"a":1}\n');
+    commitAll(r);
+    put(r, "src/app.ts", "export {};\n");
+    const before = head(r);
+    const res = await run(
+      r,
+      commitArgs(
+        r,
+        "--month=202608",
+        "--fid=../../../..",
+        "--scope=core",
+        "--mode=commit",
+        "--message=climb",
+      ),
+    );
+    expect(res.code).toBe(2);
+    expect(res.err).toContain("--fid");
+    expect(head(r)).toBe(before);
+    expect(git(r, "show", "--name-only", "--format=", "HEAD")).not.toContain("src/app.ts");
+  });
+
+  it("a --month that is not six digits is refused and commits nothing", async () => {
+    const r = repo();
+    put(r, "docs/plans/202608/logs/446-book/status.jsonl", '{"a":1}\n');
+    commitAll(r);
+    add(r, "docs/plans/202608/logs/446-book/status.jsonl", '{"a":2}\n');
+    const before = head(r);
+    const res = await run(
+      r,
+      commitArgs(r, "--month=*", "--fid=446-book", "--scope=core", "--mode=commit"),
+    );
+    expect(res.code).toBe(2);
+    expect(res.err).toContain("--month");
+    expect(head(r)).toBe(before);
+  });
+
+  it("a tracked *.bkit-lock that was removed is committed as a deletion by the bookkeeping commit", async () => {
+    const r = repo();
+    put(r, "docs/plans/202608/logs/446l/status.jsonl", "{}\n");
+    put(r, "docs/plans/202608/logs/446l/status.jsonl.bkit-lock", "");
+    commitAll(r);
+    fs.rmSync(path.join(r, "docs/plans/202608/logs/446l/status.jsonl.bkit-lock"));
+    add(r, "docs/plans/202608/logs/446l/status.jsonl", '{"more":1}\n');
+    const res = await run(
+      r,
+      commitArgs(
+        r,
+        "--month=202608",
+        "--fid=446l",
+        "--scope=core",
+        "--mode=commit",
+        "--message=lock deletion",
+      ),
+    );
+    expect(res.code).toBe(0);
+    const files = git(r, "show", "--name-status", "--format=", "HEAD");
+    expect(files).toMatch(/^D\s+docs\/plans\/202608\/logs\/446l\/status\.jsonl\.bkit-lock$/m);
     expect(git(r, "ls-files", "--", "*.bkit-lock")).toBe("");
   });
 
@@ -730,6 +794,23 @@ describe("bkit ledgers commit — a run in place on dev that shares its checkout
     expect(res.err).toContain("src/a.txt");
     expect(head(r)).toBe(before);
   });
+
+  it("a recorded tracked lock deleted during an in-place run does not refuse the bookkeeping commit", async () => {
+    const r = repo();
+    git(r, "switch", "-q", "-c", "dev");
+    put(r, `${LOGS}/status.jsonl`, "{}\n");
+    put(r, `${LOGS}/status.jsonl.bkit-lock`, "");
+    commitAll(r);
+    fs.writeFileSync(path.join(r, `${LOGS}/status.jsonl.bkit-lock`), '{"pid":1}');
+    writeRecord(r, newRecord(r, FID, "dev"));
+    fs.rmSync(path.join(r, `${LOGS}/status.jsonl.bkit-lock`));
+    add(r, `${LOGS}/status.jsonl`, '{"more":1}\n');
+    const res = await run(r, commitArgs(r, ...base, "--mode=commit", "--message=x"));
+    expect(res.code).toBe(0);
+    const files = git(r, "show", "--name-only", "--format=", "HEAD");
+    expect(files).toContain(`${LOGS}/status.jsonl`);
+    expect(files).not.toContain("bkit-lock");
+  });
 });
 
 describe("--squash-of (tests/book-commit.bats, #493)", () => {
@@ -1021,6 +1102,42 @@ describe("bkit ledgers only-bookkeeping", () => {
     expect(res.err).toContain("src/a.ts");
     expect(res.err).not.toContain("  docs/architecture.md");
     expect(res.json.outside).toEqual(["src/a.ts"]);
+  });
+
+  it("only-bookkeeping refuses a wildcard or climbing --fid instead of passing a source change", async () => {
+    const r = base();
+    commitAll(r);
+    const from = head(r);
+    add(r, "src/a.ts", "b\n");
+    commitAll(r, "source");
+    const res = await run(r, [
+      "only-bookkeeping",
+      `--root=${r}`,
+      "--month=202610",
+      "--fid=../../../..",
+      `--from=${from}`,
+      `--to=${head(r)}`,
+    ]);
+    expect(res.code).toBe(2);
+    expect(res.err).toContain("--fid");
+  });
+
+  it("only-bookkeeping refuses --month=* from the command line", async () => {
+    const r = base();
+    commitAll(r);
+    const from = head(r);
+    add(r, "src/a.ts", "b\n");
+    commitAll(r, "source");
+    const res = await run(r, [
+      "only-bookkeeping",
+      `--root=${r}`,
+      "--month=*",
+      "--fid=650-x",
+      `--from=${from}`,
+      `--to=${head(r)}`,
+    ]);
+    expect(res.code).toBe(2);
+    expect(res.err).toContain("--month");
   });
 
   it("another FID's plan file in the range: exit 7", async () => {
@@ -2192,6 +2309,50 @@ describe("bkit ledgers append --invocation", () => {
     expect(fs.statSync(events).mode & 0o777).toBe(0o600);
   });
 
+  it("a correction-events file left at 0644 is 0600 after a corrected append", async () => {
+    const r = repo();
+    const out: string[] = [];
+    await runCommand(
+      [
+        "status",
+        "invocation",
+        "--standalone=audit",
+        "--name=bkit-audit-example",
+        "--agent=bkit-build-plan-tests",
+        "--observed-model=m",
+        "--json",
+      ],
+      COMMANDS,
+      {
+        classicVerbs: new Set(["status"]),
+        cwd: r,
+        io: { stdout: (t) => out.push(t), stderr: () => {} },
+      },
+    );
+    const id = (JSON.parse(out.join("")) as { invocation: string }).invocation;
+    const events = path.join(r, ".git/bkit-outbox/invocation-context", `${id}.corrections.jsonl`);
+    fs.writeFileSync(events, "", { mode: 0o644 });
+    fs.chmodSync(events, 0o644);
+    expect(fs.statSync(events).mode & 0o777).toBe(0o644);
+    const invoke = [`--invocation=${id}`];
+    const rejected = await appendWith(
+      r,
+      "knowledge",
+      [knowledge({ key: "x", ts: "2026-11-09T10:00:00Z" })],
+      [...invoke, "--operation=op-1"],
+    );
+    expect(rejected.code).toBe(EXIT_ROW_REFUSED);
+    const fixed = await appendWith(
+      r,
+      "knowledge",
+      [knowledge({ key: "x" })],
+      [...invoke, "--operation=op-2", "--correction-of=op-1"],
+    );
+    expect(fixed.code).toBe(0);
+    expect(fixed.json.correction).toMatchObject({ used: 1 });
+    expect(fs.statSync(events).mode & 0o777).toBe(0o600);
+  });
+
   it("issues the same operation for rows whose keys are reordered", async () => {
     const r = buildRepo();
     const id = await issue(r, ["--agent=bkit-build-plan-tests"]);
@@ -2589,5 +2750,57 @@ describe("parked run commits", () => {
     removeParkedCommits(cwd, FID);
     expect(fs.existsSync(parkedFile(cwd))).toBe(false);
     expect(() => removeParkedCommits(cwd, FID)).not.toThrow();
+  });
+});
+
+describe("the bookkeeping sinks check month and fid for every caller", () => {
+  function refusal(fn: () => unknown): CommandError {
+    try {
+      fn();
+    } catch (e) {
+      if (e instanceof CommandError) return e;
+      throw e;
+    }
+    throw new Error("expected a CommandError, got a return value");
+  }
+
+  it("checkOnlyBookkeeping refuses a climbing fid from any caller", () => {
+    const r = repo();
+    put(r, "README.md", "x\n");
+    commitAll(r, "base");
+    const from = head(r);
+    put(r, "src/a.ts", "a\n");
+    commitAll(r, "change");
+    const to = head(r);
+    const err = refusal(() =>
+      checkOnlyBookkeeping(r, { month: "202610", fid: "../../../..", from, to }),
+    );
+    expect(err.code).toBe(2);
+    expect(err.message).toContain("../../../..");
+  });
+
+  it("commitBookkeeping refuses a climbing fid from any caller", () => {
+    const r = repo();
+    put(r, "docs/plans/202608/logs/446-book/status.jsonl", "{}\n");
+    commitAll(r);
+    put(r, "src/app.ts", "app\n");
+    const before = head(r);
+    const err = refusal(() =>
+      commitBookkeeping(
+        {
+          root: r,
+          month: "202608",
+          fid: "../../../..",
+          scope: "core",
+          mode: "commit",
+          message: "climb",
+        },
+        () => {},
+      ),
+    );
+    expect(err.code).toBe(2);
+    expect(err.message).toContain("../../../..");
+    expect(head(r)).toBe(before);
+    expect(staged(r)).toBe("");
   });
 });

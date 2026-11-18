@@ -27,7 +27,7 @@ import { readJsonFile, readTextFile } from "../../shared/json.js";
 import { oneLine } from "../../shared/text.js";
 import { CommandError, EXIT, git } from "../lib.js";
 import { loopProgress } from "./counters.js";
-import { appendLedgerRows } from "./ledgers.js";
+import { appendLedgerRows, monthAndFid } from "./ledgers.js";
 import { LOOPS, loopGateStep } from "./loops.js";
 import { ITEM_SPLIT, letterAt, parseDecisionItems, skipProblem, undecidedBesidesLoop, } from "./open-decision.js";
 import { classifyAt } from "./runtime.js";
@@ -561,10 +561,8 @@ export const decisionsCommand = {
             },
             run: (ctx) => {
                 const top = root(ctx.cwd, ctx.flags.root);
-                const month = String(ctx.flags.month);
-                if (!/^[0-9]{6}$/.test(month))
-                    throw new CommandError(EXIT.USAGE, "--month must be YYYYMM");
-                const logDir = path.join(top, "docs", "plans", month, "logs", String(ctx.flags.fid));
+                const { month, fid } = monthAndFid(ctx);
+                const logDir = path.join(top, "docs", "plans", month, "logs", fid);
                 const items = [];
                 const rows = [];
                 for (const abs of decisionFiles(logDir)) {

@@ -23,6 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
+_(refreshed 2026-11-18T12:02:45Z)_
 _(refreshed 2026-11-18T11:47:23Z)_
 
 ### Design
@@ -61,6 +62,7 @@ _(refreshed 2026-11-18T11:47:23Z)_
 | 1020-two-small-check | 1020-two-small-check | 1794962637613 |
 | 1028-gate-fails-workflow | 1028-gate-fails-workflow | 1794967440896 |
 | 1030-later-scope-passing | 1030-later-scope-passing | 1794972956727 |
+| 1035-ledger-commit-outbox | 1035-ledger-commit-outbox | 1795003365889 |
 | 1039-ledger-query-status | 1039-ledger-query-status | 1794984068525 |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
 | 811-publish-dev-refused | 811-publish-dev-refused | 1794974015158 |

@@ -13,7 +13,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { appendFrictionRow, appendJournalRow, engineCallRow, frictionRow, journalEnabled, launchedByGit, rebasePaused, shouldRecordFriction, } from "../ledgers/journal.js";
-import { fold, isInvocationEvent } from "../ledgers/status.js";
+import { fold, isInvocationEvent, privateDir } from "../ledgers/status.js";
 import { gitEnv, resolveGitSha } from "../ledgers/telemetry.js";
 import { parseJson } from "../shared/json.js";
 import { renderText } from "../shared/text.js";
@@ -449,8 +449,8 @@ export function writeInvocation(cwd, inv) {
     const dir = invocationDir(cwd);
     if (dir === null)
         throw new CommandError(EXIT.USAGE, `not inside a git repository: ${cwd}`);
-    fs.mkdirSync(dir, { recursive: true });
     const file = path.join(dir, `${inv.id}.json`);
+    privateDir(file);
     fs.writeFileSync(file, `${JSON.stringify(inv)}\n`, { mode: 0o600, flag: "wx" });
     return file;
 }

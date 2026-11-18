@@ -1676,6 +1676,34 @@ describe("bkit decisions apply --by=owner and pending", () => {
     expect(row.description).toContain("Options: A) Accept / B) Fix now");
   });
 
+  it("pending refuses a --fid that climbs out of the log folder and reads and writes nothing", async () => {
+    const { root } = checkout();
+    const other = path.join(root, "docs/plans/202610/logs/other-run");
+    fs.mkdirSync(other, { recursive: true });
+    fs.writeFileSync(
+      path.join(other, "build-decision-1-1.md"),
+      [
+        "Status: ASSUMED",
+        "",
+        "**Q1 — Task 3 [src/a.ts:10]:** MEDIUM: the retry has no cap. Accept it?",
+        "A) Accept — the item is recorded as accepted",
+        "B) Fix now — a fix task is added to the plan",
+        "Recommended: A) Accept — the caller already caps it",
+        "Default if unanswered: the run waits for you; taken as A when nobody can be asked",
+        "Decision: A) Accept (assumed) — the caller already caps it (headless, GITHUB_ACTION, 2026-10-28)",
+        "",
+      ].join("\n"),
+    );
+    const r = await run(
+      ["decisions", "pending", "--fid=../other-run", "--month=202610", "--defer"],
+      root,
+    );
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("--fid");
+    expect(r.json?.items).toBeUndefined();
+    expect(fs.existsSync(path.join(root, "docs/deferrals.jsonl"))).toBe(false);
+  });
+
   it("refuses a malformed --month", async () => {
     const { root } = checkout();
     expect((await run(["decisions", "pending", "--fid=7-x", "--month=2026-10"], root)).code).toBe(

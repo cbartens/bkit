@@ -27,6 +27,9 @@ import {
   statusLocation,
   utcMonth,
   verbHelp,
+  invocationDir,
+  writeInvocation,
+  type Invocation,
   type CommandSpec,
   type FlagSpec,
   type RunContext,
@@ -1147,5 +1150,59 @@ describe("tests-lock status file", () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("writeInvocation folder mode", () => {
+  const roots: string[] = [];
+  afterEach(() => {
+    for (const d of roots.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  });
+  const gitRepo = () => {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-lib-invmode-")));
+    roots.push(root);
+    spawnSync("git", ["init", "-q", "-b", "dev"], { cwd: root });
+    return root;
+  };
+  const invocation = (root: string): Invocation => ({
+    id: `inv-${"a".repeat(32)}`,
+    version: 1,
+    scope: "outbox",
+    workflow: null,
+    step: null,
+    number: null,
+    title: null,
+    run: null,
+    statusPath: null,
+    bookRoot: null,
+    group: null,
+    attempt: null,
+    agent: null,
+    host: null,
+    configuredModel: null,
+    observedModel: null,
+    standalone: "audit",
+    name: "bkit-audit-example",
+    declaredStep: "audit:bkit-audit-example",
+    allowedAgent: null,
+    worktree: root,
+    issuedAt: "2026-11-18T10:00:00Z",
+  });
+
+  it("writeInvocation creates invocation-context owner-only", () => {
+    const r = gitRepo();
+    writeInvocation(r, invocation(r));
+    const dir = invocationDir(r) as string;
+    expect(fs.statSync(dir).mode & 0o777).toBe(0o700);
+  });
+
+  it("writeInvocation narrows an existing invocation-context to 0700", () => {
+    const r = gitRepo();
+    const dir = invocationDir(r) as string;
+    fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
+    fs.chmodSync(dir, 0o755);
+    expect(fs.statSync(dir).mode & 0o777).toBe(0o755);
+    writeInvocation(r, invocation(r));
+    expect(fs.statSync(dir).mode & 0o777).toBe(0o700);
   });
 });

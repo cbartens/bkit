@@ -126,14 +126,14 @@ flowchart LR
   subgraph gn_bkit_core_engine[".bkit/core/engine"]
     n_bkit_core_engine_checks["checks<br/>265 symbols · 18 files"]
     n_bkit_core_engine_cli["cli<br/>33 symbols · 1 files"]
-    n_bkit_core_engine_commands["commands<br/>1963 symbols · 58 files"]
+    n_bkit_core_engine_commands["commands<br/>1965 symbols · 58 files"]
     n_bkit_core_engine_install["install<br/>366 symbols · 21 files"]
     n_bkit_core_engine_ledgers["ledgers<br/>241 symbols · 6 files"]
     n_bkit_core_engine_render["render<br/>63 symbols · 4 files"]
     n_bkit_core_engine_shared["shared<br/>157 symbols · 13 files<br/>1 open finding"]
   end
   nscripts_harvest["scripts/harvest<br/>199 symbols · 2 files"]
-  n_bkit_core_engine_commands -->|476| n_bkit_core_engine_ledgers
+  n_bkit_core_engine_commands -->|478| n_bkit_core_engine_ledgers
   n_bkit_core_engine_commands -->|431| n_bkit_core_engine_shared
   n_bkit_core_engine_commands -->|219| n_bkit_core_engine_install
   n_bkit_core_engine_install -->|187| n_bkit_core_engine_shared
@@ -279,7 +279,7 @@ flowchart LR
         n_bkit_core_engine_commands_workflow_fids["fids<br/>58 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_issues["issues<br/>61 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_junit["junit<br/>17 symbols · 1 files"]
-        n_bkit_core_engine_commands_workflow_ledgers["ledgers<br/>126 symbols · 1 files"]
+        n_bkit_core_engine_commands_workflow_ledgers["ledgers<br/>128 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_locks["locks<br/>40 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_loops["loops<br/>7 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_open_decision["open-decision<br/>17 symbols · 1 files"]
@@ -344,7 +344,7 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_branches -->|123| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_runs -->|76| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_workflows -->|75| n_bkit_core_engine_commands_lib
-  n_bkit_core_engine_commands_workflow_ledgers -->|52| n_bkit_core_engine_commands_lib
+  n_bkit_core_engine_commands_workflow_ledgers -->|53| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_prs -->|51| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_worktrees -->|46| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_ledgers -->|43| n_bkit_core_engine_ledgers_status
@@ -472,6 +472,7 @@ flowchart LR
   n_bkit_core_engine_checks_after_index -->|9| n_bkit_core_engine_checks_before_env
   n_bkit_core_engine_commands_install_install -->|9| n_bkit_core_engine_checks_after_index
   n_bkit_core_engine_commands_install_uninstall -->|9| n_bkit_core_engine_shared_package_roots
+  n_bkit_core_engine_commands_lib -->|9| n_bkit_core_engine_ledgers_status
   n_bkit_core_engine_commands_workflow_run_facts -->|9| n_bkit_core_engine_shared_json
   n_bkit_core_engine_commands_workflow_runs -->|9| n_bkit_core_engine_shared_settings
   n_bkit_core_engine_commands_workflow_runs -->|9| n_bkit_core_engine_commands_workflow_repo
@@ -519,7 +520,6 @@ flowchart LR
   n_bkit_core_engine_commands_install_uninstall -->|7| n_bkit_core_engine_render_models
   n_bkit_core_engine_commands_install_upgrade -->|7| n_bkit_core_engine_install_placeholders
   n_bkit_core_engine_commands_install_upgrade -->|7| n_bkit_core_engine_commands_install_install
-  n_bkit_core_engine_commands_lib -->|7| n_bkit_core_engine_ledgers_status
   n_bkit_core_engine_commands_stats -->|7| n_bkit_core_engine_commands_analysis
   n_bkit_core_engine_commands_workflow_branches -->|7| n_bkit_core_engine_shared_package_manager
   n_bkit_core_engine_commands_workflow_branches -->|7| n_bkit_core_engine_commands_workflow_locks
@@ -840,7 +840,7 @@ flowchart LR
   linkStyle 156 stroke:#59636eb3,stroke-width:3px
   linkStyle 157 stroke:#59636eb3,stroke-width:3px
   linkStyle 158 stroke:#59636eb3,stroke-width:3px
-  linkStyle 159 stroke:#59636e80,stroke-width:2px
+  linkStyle 159 stroke:#59636eb3,stroke-width:3px
   linkStyle 160 stroke:#59636e80,stroke-width:2px
   linkStyle 161 stroke:#59636e80,stroke-width:2px
   linkStyle 162 stroke:#59636e80,stroke-width:2px
