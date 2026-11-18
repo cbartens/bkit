@@ -78,7 +78,11 @@ import {
 } from "../../install/template-copies.js";
 import { formatPayloadLinkChanges, syncPayloadLinks } from "../../install/payload-links.js";
 import { renderOpencodeJson, reconcileOpencodeJson } from "../../install/modules/opencode.js";
-import { type ModuleContext, renderManagedOutputs } from "../../install/modules/index.js";
+import {
+  type ModuleContext,
+  listRenderedOutputs,
+  renderManagedOutputs,
+} from "../../install/modules/index.js";
 import { reconcileMcpJson, enrichClaudeSettingsAllows } from "../../install/modules/claude.js";
 import {
   type EffortMap,
@@ -506,12 +510,7 @@ export function updateCanonicalHashesAfterUpgrade(
 
   const fresh: Record<string, string> = {};
   for (const relPath of seedablePaths) {
-    // Exclude .agents/ internal files (docs.md, rules.md,
-    // skills.md, .env.example etc.) from canonicalHashes — they are not consumer-facing files
-    // whose hashes bkit uses for drift detection. Mirrors the same filter applied
-    // in the install path (install/modules/index.ts postDispatch). Template copies carry no
-    // hash there either.
-    if (relPath.startsWith(".agents" + path.sep)) continue;
+    // `.agents/` entries are dropped by mergeCanonicalHashes. Template copies carry no hash.
     if (relPath.startsWith(TEMPLATE_COPIES_DIR + path.sep)) continue;
     const absolutePath = path.join(cwd, relPath);
     if (!fs.existsSync(absolutePath)) continue;
@@ -1048,6 +1047,7 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
         updated: [
           ...result.updated,
           ...renderedDocPaths,
+          ...listRenderedOutputs(process.cwd()),
           ...mcpWs.writes.map((w) => path.relative(process.cwd(), w.path)),
           ...artifactWrites,
         ],

@@ -15,7 +15,7 @@ import { listFilesRecursive, remapTemplateDest } from "../template-copies";
 import { getBkitDocsRoot, getTemplatesRoot } from "../../shared/package-roots";
 import { runCoreModule } from "./core";
 import { renderOpencodeJson } from "./opencode";
-import { dispatchModules, type ModuleContext } from "./index";
+import { dispatchModules, listRenderedOutputs, type ModuleContext } from "./index";
 import { BKIT_GATE_SCRIPTS, ISSUE_TRACKERS } from "../manifest";
 import { readBkitVersion, writeBkitVersion } from "../version-file";
 import { writeCursorCliPermissionsArtifact } from "../cloud-env";
@@ -156,6 +156,37 @@ describe("module dispatch: --claude seeds only .claude/** + core", () => {
       expect(p).not.toMatch(/[/\\]\.vale/);
       expect(p).not.toMatch(/[/\\]\.husky[/\\]/);
     }
+  });
+});
+
+describe("listRenderedOutputs: the files bkit force-renders", () => {
+  const rendered = (): string[] =>
+    listRenderedOutputs(tmpDir).map((p) => path.normalize(p).split(path.sep).join("/"));
+
+  it("lists the force-rendered outputs of a claude install and nothing the owner shares", () => {
+    dispatchModules(new Set(["core", "claude"]), makeCtx());
+    const list = rendered();
+
+    expect(list).toContain(".bkit/templates.md");
+    expect(list).toContain(".bkit/allowlist.json");
+    expect(list).toContain(".claude/commands/bkit-build.md");
+    expect(list.some((p) => p.startsWith(".claude/agents/"))).toBe(true);
+
+    expect(list).not.toContain("package.json");
+    expect(list).not.toContain(".mcp.json");
+    expect(list).not.toContain(".bkit/prompts.md");
+    expect(list).not.toContain(".claude/settings.json");
+    expect(list.filter((p) => p.startsWith(".agents/"))).toEqual([]);
+  });
+
+  it("names no other host's mirror for a claude-only install", () => {
+    dispatchModules(new Set(["core", "claude"]), makeCtx());
+    const list = rendered();
+
+    expect(list).toContain(".claude/commands/bkit-build.md");
+    expect(list.filter((p) => p.startsWith(".cursor/"))).toEqual([]);
+    expect(list.filter((p) => p.startsWith(".opencode/"))).toEqual([]);
+    expect(list.filter((p) => p.startsWith(".codex/"))).toEqual([]);
   });
 });
 

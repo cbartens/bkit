@@ -216,6 +216,15 @@ export function bkitDocTokens(tokens) {
         REPO_SLUG: "{{REPO_SLUG}}",
     };
 }
+/**
+ * How a canonical doc is written: `merge` for a markered-text manifest entry (the owner's
+ * text below `bkit:end` survives), `overwrite` for every other doc. The one definition
+ * `runBkitDocs` writes by and `listRenderedOutputs` lists by.
+ */
+export function bkitDocWriteMode(name) {
+    const entry = getInstallManifest().find((e) => e.path === path.join(".bkit", name));
+    return entry?.format === "markered-text" ? "merge" : "overwrite";
+}
 // Mirror the package's canonical `.bkit/*.md` docs into the consumer's `.bkit/`.
 // Tier 1 (force-overwrite + ws-tracked for dry-run/install parity). Each source carries
 // the `{{BKIT_MANAGED_MARKER}}` token. Skipped in dogfood: the consumer destination
@@ -227,7 +236,6 @@ export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
     // Per-doc write strategy from the manifest: markered-text docs (e.g. prompts.md,
     // which carries the consumer-owned `## Model Overrides` section below `bkit:end`)
     // are block-merged so consumer content survives; the rest are force-overwritten.
-    const formatByPath = new Map(getInstallManifest().map((e) => [e.path, e.format]));
     for (const name of BKIT_CANONICAL_DOCS) {
         const srcPath = path.join(docsRoot, name);
         // A doc missing from a partial/corrupt package is skipped (writeTier1 throws on a
@@ -236,7 +244,7 @@ export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
             continue;
         const dstPath = path.join(".bkit", name);
         const prevLen = ws.writes.length;
-        if (formatByPath.get(path.join(".bkit", name)) === "markered-text") {
+        if (bkitDocWriteMode(name) === "merge") {
             writeTier2(srcPath, dstPath, docTokens, "html-comment", dryRun, ws);
         }
         else {
@@ -1870,7 +1878,7 @@ export function runCoreModule(ctx) {
         const existingCanonical = existingVersion?.canonicalHashes ?? {};
         // Build new canonicalHashes entries from ws.writes (files written in this run).
         // ws.writes is fully populated by the time postDispatch runs.
-        // Exclude .bkit/version itself and .agents/ internal files (not consumer-facing).
+        // Exclude .bkit/version itself; mergeCanonicalHashes drops `.agents/` entries.
         const newCanonicalEntries = {};
         for (const entry of ws.writes) {
             // Brand-migrated copy-and-own files carry no hash.
@@ -1879,8 +1887,6 @@ export function runCoreModule(ctx) {
             const absPath = path.isAbsolute(entry.path) ? entry.path : path.resolve(cwd, entry.path);
             const relPath = path.relative(cwd, absPath);
             if (relPath === path.join(".bkit", "version"))
-                continue;
-            if (relPath.startsWith(".agents" + path.sep))
                 continue;
             // Template copies carry no hash.
             if (relPath.startsWith(TEMPLATE_COPIES_DIR + path.sep))
@@ -1894,13 +1900,35 @@ export function runCoreModule(ctx) {
             if (hash)
                 newCanonicalEntries[relPath] = hash;
         }
+        const wroteEntries = Object.keys(newCanonicalEntries).length;
+        // Every force-rendered output is re-hashed from disk, written this run or not. An
+        // existing entry that differs from the file is stale: record the file's hash and
+        // write `.bkit/version`, which `bkit check` counts as drift.
+        const staleRendered = [];
+        let missingRendered = 0;
+        for (const rel of ctx.renderedOutputs ?? []) {
+            const hash = hashFile(path.resolve(cwd, rel));
+            if (!hash)
+                continue;
+            const recorded = existingCanonical[rel];
+            if (recorded !== undefined && recorded !== hash)
+                staleRendered.push(rel);
+            if (recorded === undefined)
+                missingRendered++;
+            newCanonicalEntries[rel] = hash;
+        }
+        if (staleRendered.length > 0) {
+            console.log(`${logPrefix} ${tag}stale .bkit/version entries re-recorded: ${staleRendered.join(", ")}`);
+        }
         // Merge: existing hashes preserved, new writes overwrite (hashes stay current),
         // and entries whose path is gone are pruned (mergeCanonicalHashes).
         const { canonicalHashes, pruned } = mergeCanonicalHashes(cwd, existingCanonical, newCanonicalEntries);
         // Decide whether a write is needed: version mismatch, first install, new canonical
         // entries, a pruned stale entry, or a changed claudeAllowDerived record.
         const versionChanged = !existingVersion || existingVersion.pinnedVersion !== pkgVersion;
-        const hasNewEntries = Object.keys(newCanonicalEntries).length > 0;
+        // A missing rendered entry is added by a real run; a dry run (`bkit check`) leaves it
+        // alone so a missing entry is not drift.
+        const hasNewEntries = wroteEntries > 0 || staleRendered.length > 0 || (!dryRun && missingRendered > 0);
         const claudeAllowDerived = ctx.claudeAllowRecorded ?? existingVersion?.claudeAllowDerived ?? [];
         const derivedChanged = JSON.stringify(claudeAllowDerived) !==
             JSON.stringify(existingVersion?.claudeAllowDerived ?? []);

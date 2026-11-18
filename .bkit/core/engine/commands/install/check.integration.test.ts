@@ -24,6 +24,7 @@ import { dispatchModules, type ModuleContext } from "../../install/modules/index
 import { parseModelLookup, buildOpencodeModelLookup, parseEffortMap } from "../../render/models";
 import type { WriteSet } from "../../install/write";
 import { getBkitDocsRoot } from "../../shared/package-roots";
+import { readBkitVersion, sha256, writeBkitVersion } from "../../install/version-file";
 import { requireTsx } from "../../../../../vitest.tsx-bin";
 import { localLimit } from "../../../../../vitest.timeout-budget";
 
@@ -239,6 +240,31 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
 // `plugin.json`, a weakened `hooks.json` and a missing hook file, and `bkit status` still
 // lists the host.
 // ---------------------------------------------------------------------------
+
+describe("#1053 — bkit check fails on a wrong entry for a rendered output", () => {
+  it("a wrong entry for a rendered mirror fails check and names the file, a wrong package.json entry does not", () => {
+    expect(runBkit(["install", "--claude", "--tracker=github"]).status).toBe(0);
+    expect(runBkit(["check"]).status).toBe(0);
+
+    const versionFile = path.join(tmpDir, ".bkit", "version");
+    const mirror = ".claude/commands/bkit-build.md";
+
+    // Only the owner-edited package.json entry is wrong: check stays green.
+    const onlyPkg = readBkitVersion(versionFile)!;
+    onlyPkg.canonicalHashes["package.json"] = sha256("stale package.json");
+    writeBkitVersion(versionFile, onlyPkg);
+    const pkgOnly = runBkit(["check"]);
+    expect(pkgOnly.status, combinedOutput(pkgOnly)).toBe(0);
+
+    // A rendered mirror's entry is wrong while the file is current: check fails and names it.
+    const withMirror = readBkitVersion(versionFile)!;
+    withMirror.canonicalHashes[mirror] = sha256("stale mirror");
+    writeBkitVersion(versionFile, withMirror);
+    const wrong = runBkit(["check"]);
+    expect(wrong.status, combinedOutput(wrong)).toBe(1);
+    expect(combinedOutput(wrong)).toContain(mirror);
+  });
+});
 
 describe("bkit check — antigravity detected from any plugin file", () => {
   const plugin = (rel: string) => path.join(tmpDir, ".agents", "plugins", "bkit", rel);

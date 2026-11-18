@@ -14,9 +14,11 @@ import type { EffortMap } from "../../render/models.js";
 import type { PreflightFinding } from "../../checks/before/index.js";
 import { getCoreRoot, getSharedRoot } from "../../shared/package-roots.js";
 import { getInstallManifest, type IssueTracker } from "../manifest.js";
-import { writeNetworkAllowlist } from "../network-allowlist.js";
+import { NETWORK_ALLOWLIST_RELPATH, writeNetworkAllowlist } from "../network-allowlist.js";
 import {
+  BKIT_CANONICAL_DOCS,
   BKIT_PREFIX,
+  bkitDocWriteMode,
   listCoreTemplateFiles,
   listSharedTemplateFiles,
   runBkitDocs,
@@ -99,6 +101,12 @@ export interface ModuleContext {
    * install/upgrade set it explicitly.
    */
   version?: string;
+  /**
+   * Consumer-relative paths of every file bkit force-renders (`listRenderedOutputs`), set
+   * by `dispatchModules` after the modules ran and before the `postDispatch` callbacks.
+   * Absent in isolated unit tests.
+   */
+  renderedOutputs?: readonly string[];
   /**
    * The full set of host modules present for this run — the dispatched set UNION the hosts
    * already on disk. Read by the Antigravity module to warn when Codex is also installed
@@ -184,6 +192,39 @@ const RENDERED_MIRRORS: ReadonlyArray<[dir: string, ext: string]> = [
   [".agents/plugins/bkit/agents", ".md"],
 ];
 
+/** The `bkit-*` mirror files present on disk in each rendered mirror dir. */
+function listRenderedMirrors(cwd: string): string[] {
+  const out: string[] = [];
+  for (const [dir, ext] of RENDERED_MIRRORS) {
+    const abs = path.join(cwd, dir);
+    if (!fs.existsSync(abs)) continue;
+    for (const f of fs.readdirSync(abs)) {
+      if (f.startsWith(BKIT_PREFIX) && f.endsWith(ext)) out.push(path.join(dir, f));
+    }
+  }
+  return out;
+}
+
+/**
+ * Every file bkit force-renders whole into `cwd` that exists on disk: the non-markered
+ * `.bkit/*.md` docs, `.bkit/allowlist.json` and the host agent/command mirrors present.
+ * Never an `.agents/` path, `package.json`, `.mcp.json` or a block-merged doc: the owner
+ * shares those files, so their recorded hash may differ from the file. Consumer-relative.
+ */
+export function listRenderedOutputs(cwd: string): string[] {
+  const out: string[] = [];
+  for (const name of BKIT_CANONICAL_DOCS) {
+    if (bkitDocWriteMode(name) !== "overwrite") continue;
+    const rel = path.join(".bkit", name);
+    if (fs.existsSync(path.join(cwd, rel))) out.push(rel);
+  }
+  if (fs.existsSync(path.join(cwd, NETWORK_ALLOWLIST_RELPATH))) out.push(NETWORK_ALLOWLIST_RELPATH);
+  for (const p of listRenderedMirrors(cwd)) {
+    if (!p.startsWith(".agents")) out.push(p);
+  }
+  return out;
+}
+
 /**
  * Every file bkit writes into `cwd` that carries the managed-version marker: the core
  * payload (listCoreTemplateFiles), the non-JSON non-generated manifest entries of every
@@ -207,13 +248,7 @@ export function listStampedFiles(cwd: string): StampedFile[] {
     add(entry.path, entry.format === "markered-text" ? "block" : "whole");
   }
 
-  for (const [dir, ext] of RENDERED_MIRRORS) {
-    const abs = path.join(cwd, dir);
-    if (!fs.existsSync(abs)) continue;
-    for (const f of fs.readdirSync(abs)) {
-      if (f.startsWith(BKIT_PREFIX) && f.endsWith(ext)) add(path.join(dir, f), "whole");
-    }
-  }
+  for (const p of listRenderedMirrors(cwd)) add(p, "whole");
   // Codex renders workflow skills into `.agents/skills/bkit-*/SKILL.md`; Antigravity renders
   // its own into the plugin `.agents/plugins/bkit/skills/bkit-*/SKILL.md`. Both stamp a
   // managed-version marker; collect each for the stale detector.
@@ -268,6 +303,7 @@ export function dispatchModules(modules: Set<ModuleFlag>, ctx: ModuleContext): v
     if (!fn) continue;
     fn(ctx);
   }
+  ctx.renderedOutputs = listRenderedOutputs(process.cwd());
   // Run deferred finalisation callbacks (e.g. .bkit/version write) only after all modules succeed.
   for (const cb of ctx.postDispatch) {
     cb();

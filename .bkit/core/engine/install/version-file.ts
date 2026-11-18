@@ -187,7 +187,8 @@ export function mergeCanonicalHashes(
       !fs.existsSync(path.join(cwd, relPath)) ||
       isRemoving(relPath) ||
       isTemplateSetPath(relPath) ||
-      isSchemaLedger(relPath)
+      isSchemaLedger(relPath) ||
+      isAgentsPath(relPath)
     ) {
       pruned++;
       continue;
@@ -195,8 +196,16 @@ export function mergeCanonicalHashes(
     canonicalHashes[relPath] = hash;
   }
   // A ledger is append-only data a migration may rewrite, never a managed file.
-  const kept = Object.fromEntries(Object.entries(fresh).filter(([p]) => !isSchemaLedger(p)));
+  // `.agents/*` files are block-merged doctrine the owner writes below `bkit:end`; no entry is kept.
+  const kept = Object.fromEntries(
+    Object.entries(fresh).filter(([p]) => !isSchemaLedger(p) && !isAgentsPath(p)),
+  );
   return { canonicalHashes: { ...canonicalHashes, ...kept }, pruned };
+}
+
+/** True when `relPath` is under `.agents/`, whose files carry no recorded hash. */
+function isAgentsPath(relPath: string): boolean {
+  return relPath.replace(/\\/g, "/").startsWith(".agents/");
 }
 
 /** True when `dest` is a member of the package's copy-and-own template set. */

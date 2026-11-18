@@ -42,7 +42,7 @@ import { CLAUDE_CLOUD_RELPATH, CODEX_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeC
 import { syncTemplateCopies, formatTemplateChanges, warnMissingLintStagedConfig, } from "../../install/template-copies.js";
 import { formatPayloadLinkChanges, syncPayloadLinks } from "../../install/payload-links.js";
 import { renderOpencodeJson, reconcileOpencodeJson } from "../../install/modules/opencode.js";
-import { renderManagedOutputs } from "../../install/modules/index.js";
+import { listRenderedOutputs, renderManagedOutputs, } from "../../install/modules/index.js";
 import { reconcileMcpJson, enrichClaudeSettingsAllows } from "../../install/modules/claude.js";
 import { parseModelLookup, applyModelOverrides, buildOpencodeModelLookup, buildAntigravityModelLookup, parseEffortMap, } from "../../render/models.js";
 /** Zero-value token map — markered-text templates managed on upgrade are token-free. */
@@ -314,13 +314,7 @@ export function updateCanonicalHashesAfterUpgrade(result, options) {
     const seedablePaths = new Set([...result.updated, ...result.skippedSeedable]);
     const fresh = {};
     for (const relPath of seedablePaths) {
-        // Exclude .agents/ internal files (docs.md, rules.md,
-        // skills.md, .env.example etc.) from canonicalHashes — they are not consumer-facing files
-        // whose hashes bkit uses for drift detection. Mirrors the same filter applied
-        // in the install path (install/modules/index.ts postDispatch). Template copies carry no
-        // hash there either.
-        if (relPath.startsWith(".agents" + path.sep))
-            continue;
+        // `.agents/` entries are dropped by mergeCanonicalHashes. Template copies carry no hash.
         if (relPath.startsWith(TEMPLATE_COPIES_DIR + path.sep))
             continue;
         const absolutePath = path.join(cwd, relPath);
@@ -783,6 +777,7 @@ export async function runUpgradeCommand(upgradeFlags) {
             updated: [
                 ...result.updated,
                 ...renderedDocPaths,
+                ...listRenderedOutputs(process.cwd()),
                 ...mcpWs.writes.map((w) => path.relative(process.cwd(), w.path)),
                 ...artifactWrites,
             ],

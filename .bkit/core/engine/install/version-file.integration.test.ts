@@ -124,3 +124,25 @@ describe("updateCanonicalHashesAfterUpgrade prunes hashes for absent paths", () 
     expect(fs.readFileSync(versionFile, "utf-8")).toBe(before);
   });
 });
+
+describe("updateCanonicalHashesAfterUpgrade drops .agents/ entries (#1053)", () => {
+  it("updateCanonicalHashesAfterUpgrade drops a recorded .agents/docs.md entry", () => {
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".agents", "docs.md"), "docs", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, "kept.md"), "kept", "utf-8");
+    const versionFile = path.join(tmpDir, ".bkit", "version");
+    fs.mkdirSync(path.dirname(versionFile), { recursive: true });
+    writeBkitVersion(versionFile, {
+      pinnedVersion: "4.12.0",
+      canonicalHashes: { ".agents/docs.md": sha256("old docs"), "kept.md": sha256("kept") },
+      claudeAllowDerived: [],
+    });
+
+    updateCanonicalHashesAfterUpgrade(
+      { updated: [], conflicts: [], skipped: [], skippedSeedable: [] },
+      { dryRun: false, cwd: tmpDir },
+    );
+
+    expect(readBkitVersion(versionFile)!.canonicalHashes).toEqual({ "kept.md": sha256("kept") });
+  });
+});

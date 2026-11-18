@@ -3048,6 +3048,60 @@ describe(
 );
 
 // ---------------------------------------------------------------------------
+// #1053 — the `.bkit/version` entry of a rendered output matches its file
+// ---------------------------------------------------------------------------
+
+describe("#1053 — a core install run re-records rendered outputs and drops .agents/ entries", () => {
+  const versionPath = (): string => path.join(tmpDir, ".bkit", "version");
+
+  it("re-records a stale entry for a rendered output whose file is already current", () => {
+    dispatchModules(new Set(["core"]), makeCtx());
+    const rel = path.join(".bkit", "templates.md");
+    const before = fs.readFileSync(path.join(tmpDir, rel));
+
+    const recorded = readBkitVersion(versionPath())!;
+    recorded.canonicalHashes[rel] = "0".repeat(64);
+    writeBkitVersion(versionPath(), recorded);
+
+    dispatchModules(new Set(["core"]), makeCtx());
+
+    expect(fs.readFileSync(path.join(tmpDir, rel)).equals(before)).toBe(true);
+    expect(readBkitVersion(versionPath())!.canonicalHashes[rel]).toBe(
+      hashFile(path.join(tmpDir, rel)),
+    );
+  });
+
+  it("adds a missing entry for a rendered output when the run writes nothing else", () => {
+    dispatchModules(new Set(["core"]), makeCtx());
+    const rel = path.join(".bkit", "templates.md");
+
+    const recorded = readBkitVersion(versionPath())!;
+    delete recorded.canonicalHashes[rel];
+    writeBkitVersion(versionPath(), recorded);
+
+    dispatchModules(new Set(["core"]), makeCtx());
+
+    expect(readBkitVersion(versionPath())!.canonicalHashes[rel]).toBe(
+      hashFile(path.join(tmpDir, rel)),
+    );
+  });
+
+  it("a core install run drops a recorded .agents/docs.md entry", () => {
+    dispatchModules(new Set(["core"]), makeCtx());
+    const rel = path.join(".agents", "docs.md");
+    expect(fs.existsSync(path.join(tmpDir, rel))).toBe(true);
+
+    const recorded = readBkitVersion(versionPath())!;
+    recorded.canonicalHashes[rel] = "0".repeat(64);
+    writeBkitVersion(versionPath(), recorded);
+
+    dispatchModules(new Set(["core"]), makeCtx());
+
+    expect(Object.keys(readBkitVersion(versionPath())!.canonicalHashes)).not.toContain(rel);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Fresh install and upgrade keep shared hook behaviour and consumer-owned drivers
 // ---------------------------------------------------------------------------
 

@@ -826,6 +826,54 @@ describe("#717 — .codex/bkit-cloud.md through install, upgrade and check", () 
   });
 });
 
+describe("#1053 — upgrade re-records the entry of every rendered output", () => {
+  const bkitInstallPath = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "../../cli.ts",
+  );
+  function runCli(args: string[]) {
+    return spawnSync(requireTsx(), [bkitInstallPath, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 90_000,
+    });
+  }
+
+  it("re-records a stale entry for a rendered mirror, doc and allowlist that are already current", () => {
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    expect(runCli(["install", "--claude", "--tracker=github"]).status).toBe(0);
+
+    const rendered = [
+      ".claude/commands/bkit-build.md",
+      ".bkit/templates.md",
+      ".bkit/allowlist.json",
+    ];
+    const versionFile = path.join(tmpDir, ".bkit", "version");
+    const recorded = readBkitVersion(versionFile)!;
+    for (const rel of rendered) recorded.canonicalHashes[rel] = sha256(`stale ${rel}`);
+    recorded.canonicalHashes["package.json"] = sha256("stale package.json");
+    writeBkitVersion(versionFile, recorded);
+
+    const onDisk = new Map(rendered.map((rel) => [rel, fs.readFileSync(path.join(tmpDir, rel))]));
+
+    expect(runCli(["upgrade", "--auto-apply"]).status).toBe(0);
+
+    const after = readBkitVersion(versionFile)!.canonicalHashes;
+    for (const rel of rendered) {
+      expect(fs.readFileSync(path.join(tmpDir, rel)).equals(onDisk.get(rel)!), rel).toBe(true);
+      expect(after[rel], rel).toBe(sha256(fs.readFileSync(path.join(tmpDir, rel))));
+    }
+    // package.json is the owner's: its entry is not a rendered output and is not rewritten.
+    expect(after["package.json"]).toBe(sha256("stale package.json"));
+  });
+});
+
 describe("#255 — upgrade does not force-create uninstalled host/tooling modules", () => {
   const bkitInstallPath = path.resolve(
     path.dirname(new URL(import.meta.url).pathname),

@@ -395,3 +395,32 @@ describe("claudeAllowDerived provenance field (T16)", () => {
     expect(parseBkitVersion(serializeBkitVersion(parsed!))?.claudeAllowDerived).toEqual(rows);
   });
 });
+
+describe("mergeCanonicalHashes drops .agents/ entries (#1053)", () => {
+  const seedAgents = (): void => {
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".agents", "docs.md"), "docs", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, "kept.md"), "kept", "utf-8");
+  };
+
+  it("prunes an existing .agents/ entry and counts it", () => {
+    seedAgents();
+    const result = mergeCanonicalHashes(
+      tmpDir,
+      { ".agents/docs.md": sha256("docs"), "kept.md": sha256("kept") },
+      {},
+    );
+    expect(result.canonicalHashes).toEqual({ "kept.md": sha256("kept") });
+    expect(result.pruned).toBe(1);
+  });
+
+  it("drops a fresh .agents/ entry", () => {
+    seedAgents();
+    const result = mergeCanonicalHashes(
+      tmpDir,
+      {},
+      { ".agents/docs.md": sha256("docs"), "kept.md": sha256("kept") },
+    );
+    expect(result.canonicalHashes).toEqual({ "kept.md": sha256("kept") });
+  });
+});
