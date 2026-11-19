@@ -844,6 +844,47 @@ describe("bkit tasks takeover", () => {
     expect(rows()).toHaveLength(1);
   });
 
+  /** The tests step's red row for the takeover task, as `steps finish` records it. */
+  const recordRed = (group: number, task: number, name: string) =>
+    fs.appendFileSync(
+      path.join(cwd, STATUS),
+      `${JSON.stringify({
+        type: "step-done",
+        workflow: "build",
+        step: "build-tests-red",
+        status: "DONE",
+        group,
+        tests: [{ task, test: TEST, testName: name, state: "red", blob: null }],
+      })}\n`,
+    );
+
+  it("addTakeoverTasks adds a new task when the open takeover task already has a red record", async () => {
+    setup();
+    expect(takeover("adds a row")).toEqual([3]);
+    recordRed(3, 3, "adds a row");
+    expect(takeover("adds a row")).toEqual([4]);
+    const text = plan();
+    expect(text).toContain("- [ ] **TASK 4:** Take over `adds a row` from TASK 1");
+    expect(checkPlanText(text).problems).toEqual([]);
+    expect(rows()).toEqual([
+      expect.objectContaining({ task: 3, name: "adds a row" }),
+      expect.objectContaining({ task: 4, name: "adds a row" }),
+    ]);
+    const p = (await pending()).json;
+    expect(p.pending).toEqual(expect.objectContaining({ tasks: [4] }));
+  });
+
+  it("addTakeoverTasks reuses the new task on a repeat call after a recorded takeover", () => {
+    setup();
+    expect(takeover("adds a row")).toEqual([3]);
+    recordRed(3, 3, "adds a row");
+    expect(takeover("adds a row")).toEqual([4]);
+    const once = plan();
+    expect(takeover("adds a row")).toEqual([4]);
+    expect(plan()).toBe(once);
+    expect(rows()).toHaveLength(2);
+  });
+
   it("addTakeoverTasks writes only the missing row when a run stopped after the plan write", () => {
     setup();
     takeover("adds a row");

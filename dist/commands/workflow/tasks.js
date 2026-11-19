@@ -261,7 +261,8 @@ function withTakeoverTask(text, task, n, group, into, row) {
 /**
  * Adds one pure takeover task per entry to the plan at `planFile`, plus its Derived Test
  * Matrix row and its `build-takeover` row in `statusPath`. Safe to repeat: an open takeover
- * task whose `TEST FIRST` already names the entry's file and name is reused, and only a
+ * task whose `TEST FIRST` already names the entry's file and name is reused while its test has
+ * no red record for that task (a recorded test is rewritten by a new takeover task), and only a
  * missing row is written, so a second run or a run stopped between the two writes leaves one
  * task and one row. The task goes into the plan's last group while that group is a takeover
  * group whose tests half has not run, else into a new last group. Returns the takeover task
@@ -273,9 +274,12 @@ export function addTakeoverTasks(cwd, planFile, statusPath, entries, log) {
         const test = path.posix.normalize(e.test);
         const text = fs.readFileSync(planFile, "utf-8");
         const plan = parsePlanBlocks(text);
+        const reds = redEntries(statusPath, "build");
         const open = plan.tasks.find((t) => !t.done &&
             t.title.startsWith("Take over ") &&
-            (t.testFirst?.tests ?? []).some((x) => path.posix.normalize(x.test) === test && sameTestName(x.name, e.name)));
+            (t.testFirst?.tests ?? []).some((x) => path.posix.normalize(x.test) === test &&
+                sameTestName(x.name, e.name) &&
+                !reds.has(redKey(t.task, x.test, x.name))));
         let n;
         if (open !== undefined) {
             n = open.task;

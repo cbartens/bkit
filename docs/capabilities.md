@@ -421,6 +421,7 @@ flowchart LR
   n_bkit_core_engine_commands_ci_push_gate -->|13| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_context -->|13| n_bkit_core_engine_commands_workflow_status
   n_bkit_core_engine_commands_workflow_run_facts -->|13| n_bkit_core_engine_ledgers_telemetry
+  n_bkit_core_engine_commands_workflow_tasks -->|13| n_bkit_core_engine_commands_workflow_tests
   n_bkit_core_engine_commands_workflow_tests_changed -->|13| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_tracker -->|13| n_bkit_core_engine_shared_json
   n_bkit_core_engine_install_modules_core -->|13| n_bkit_core_engine_shared_json
@@ -441,7 +442,6 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_challenge -->|11| n_bkit_core_engine_commands_workflow_plan_blocks
   n_bkit_core_engine_commands_workflow_locks -->|11| n_bkit_core_engine_ledgers_status
   n_bkit_core_engine_commands_workflow_runs -->|11| n_bkit_core_engine_commands_workflow_tracker
-  n_bkit_core_engine_commands_workflow_tasks -->|11| n_bkit_core_engine_commands_workflow_tests
   n_bkit_core_engine_commands_workflow_tests -->|11| n_bkit_core_engine_commands_workflow_tests_changed
   n_bkit_core_engine_commands_workflow_worktrees -->|11| n_bkit_core_engine_ledgers_status
   n_bkit_core_engine_install_modules_opencode -->|11| n_bkit_core_engine_render_models
@@ -768,7 +768,7 @@ flowchart LR
   linkStyle 83 stroke:#59636e,stroke-width:6px
   linkStyle 84 stroke:#59636e,stroke-width:6px
   linkStyle 85 stroke:#59636e,stroke-width:6px
-  linkStyle 86 stroke:#59636eb3,stroke-width:3px
+  linkStyle 86 stroke:#59636e,stroke-width:6px
   linkStyle 87 stroke:#59636eb3,stroke-width:3px
   linkStyle 88 stroke:#59636eb3,stroke-width:3px
   linkStyle 89 stroke:#59636eb3,stroke-width:3px
