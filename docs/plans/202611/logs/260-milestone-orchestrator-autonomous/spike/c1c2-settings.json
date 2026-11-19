@@ -1,0 +1,6 @@
+{
+  "hooks": {
+    "Stop": [{ "hooks": [{ "type": "command", "command": "test -f '/Users/christian/Documents/GitHub/bkit/.worktrees/260-milestone-orchestrator-autonomous/docs/plans/202611/logs/260-milestone-orchestrator-autonomous/spike/c1c2-hook.cjs' && node '/Users/christian/Documents/GitHub/bkit/.worktrees/260-milestone-orchestrator-autonomous/docs/plans/202611/logs/260-milestone-orchestrator-autonomous/spike/c1c2-hook.cjs' || true" }] }],
+    "SessionStart": [{ "matcher": "startup|compact|resume", "hooks": [{ "type": "command", "command": "test -f '/Users/christian/Documents/GitHub/bkit/.worktrees/260-milestone-orchestrator-autonomous/docs/plans/202611/logs/260-milestone-orchestrator-autonomous/spike/c1c2-hook.cjs' && node '/Users/christian/Documents/GitHub/bkit/.worktrees/260-milestone-orchestrator-autonomous/docs/plans/202611/logs/260-milestone-orchestrator-autonomous/spike/c1c2-hook.cjs' || true" }] }]
+  }
+}

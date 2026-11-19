@@ -26,6 +26,7 @@ _(above the bkit list — yours, never overwritten)_
 _(refreshed 2026-11-19T10:48:38Z)_
 _(refreshed 2026-11-19T09:44:18Z)_
 _(refreshed 2026-11-19T07:08:28Z)_
+_(refreshed 2026-11-19T10:40:25Z)_
 
 ### Design
 
@@ -33,6 +34,7 @@ _(refreshed 2026-11-19T07:08:28Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 254-add-pi-dev | 254-add-pi-dev | 1794046179322 |
+| 260-milestone-orchestrator-autonomous | 260-milestone-orchestrator-autonomous | 1795084825933 |
 | 764-map-each-five | 764-map-each-five | 1793669052601 |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
 | 924-every-workflow-land | 924-every-workflow-land | 1794553962276 |
