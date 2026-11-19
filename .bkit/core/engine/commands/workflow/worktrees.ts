@@ -773,9 +773,12 @@ export function install(
 // Branch cleanup
 // ---------------------------------------------------------------------------
 
-/** Preserve NUL-delimited paths and the status columns that runGit trims. */
-function cleanupRead(root: string, args: string[]): ReturnType<typeof runGit> {
-  const result = spawnSync("git", args, {
+/**
+ * Preserve NUL-delimited paths and the status columns that runGit trims.
+ * `literal` reads every pathspec as a file name, so a path starting with `:` is not pattern magic.
+ */
+function cleanupRead(root: string, args: string[], literal = false): ReturnType<typeof runGit> {
+  const result = spawnSync("git", literal ? ["--literal-pathspecs", ...args] : args, {
     cwd: root,
     encoding: "utf-8",
     env: gitEnv(),
@@ -789,7 +792,7 @@ function cleanupRead(root: string, args: string[]): ReturnType<typeof runGit> {
 }
 
 function treeEntry(root: string, rev: string, file: string): string | null {
-  const result = cleanupRead(root, ["ls-tree", "-z", rev, "--", file]);
+  const result = cleanupRead(root, ["ls-tree", "-z", rev, "--", file], true);
   if (!result.ok) throw new Error(`cannot inspect ${rev}:${file}: ${result.stderr}`);
   return result.stdout === "" ? null : result.stdout.slice(0, result.stdout.indexOf("\t"));
 }
@@ -803,13 +806,11 @@ function committedLines(root: string, rev: string, file: string): string[] {
 
 /** True when some origin/dev commit since the merge base holds the branch's tree entry for the file. */
 function devHeldEntry(root: string, base: string, file: string, entry: string | null): boolean {
-  const log = cleanupRead(root, [
-    "rev-list",
-    "--full-history",
-    `${base}..${ORIGIN_DEV}`,
-    "--",
-    file,
-  ]);
+  const log = cleanupRead(
+    root,
+    ["rev-list", "--full-history", `${base}..${ORIGIN_DEV}`, "--", file],
+    true,
+  );
   if (!log.ok) throw new Error(`cannot inspect ${base}..${ORIGIN_DEV} for ${file}: ${log.stderr}`);
   return log.stdout
     .split("\n")
@@ -880,7 +881,7 @@ function dirtyWork(root: string, wt: string, landed: boolean): string[] {
     try {
       if (
         staged.has(file) &&
-        !cleanupRead(wt, ["diff", "--cached", "--quiet", ORIGIN_DEV, "--", file]).ok
+        !cleanupRead(wt, ["diff", "--cached", "--quiet", ORIGIN_DEV, "--", file], true).ok
       )
         return true;
       const entry = treeEntry(root, ORIGIN_DEV, file);

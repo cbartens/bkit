@@ -3666,6 +3666,31 @@ describe("shared landed comparison", { timeout: GIT_TIMEOUT }, () => {
     const comparison = await import("./worktrees");
     expect(comparison.notOnDev(clone, "feat/1-x")).toEqual([]);
   });
+
+  it("names a path under a directory named : when dev deleted, re-added and later edited the top-level file", async () => {
+    const { origin, clone } = withOrigin("land-colon-readded");
+    git(clone, "switch", "-q", "-c", "feat/1-x");
+    commit(clone, { ":/src.txt": "branch colon file\n" }, "feat: add file under colon dir");
+    const other = tmp("other-colon-del");
+    git(other, "clone", "-q", "-b", "dev", origin, ".");
+    expect(git(other, "rm", "-q", "src.txt").ok).toBe(true);
+    expect(git(other, "commit", "-qm", "dev deletes src").ok).toBe(true);
+    expect(git(other, "push", "-q", "origin", "dev").ok).toBe(true);
+    landOnDev(origin, { "src.txt": "code v0\n" }, "dev re-adds src with its original content");
+    landOnDev(origin, { "src.txt": "later dev edit\n" }, "later dev edit of src");
+    expect(git(clone, "fetch", "-q", "origin").ok).toBe(true);
+    const comparison = await import("./worktrees");
+    expect(comparison.notOnDev(clone, "feat/1-x")).toEqual([":/src.txt"]);
+  });
+
+  it("a path under a directory named : that dev never touched is not reported landed", async () => {
+    const { clone } = withOrigin("land-colon-untouched");
+    git(clone, "switch", "-q", "-c", "feat/1-x");
+    commit(clone, { ":/src.txt": "branch colon file\n" }, "feat: add file under colon dir");
+    expect(git(clone, "fetch", "-q", "origin").ok).toBe(true);
+    const comparison = await import("./worktrees");
+    expect(comparison.notOnDev(clone, "feat/1-x")).toEqual([":/src.txt"]);
+  });
 });
 
 describe("branches land", { timeout: GIT_TIMEOUT }, () => {

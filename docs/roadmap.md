@@ -23,6 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
+_(refreshed 2026-11-19T05:27:14Z)_
 _(refreshed 2026-11-19T04:59:47Z)_
 
 ### Design
@@ -65,6 +66,7 @@ _(refreshed 2026-11-19T04:59:47Z)_
 | 1039-ledger-query-status | 1039-ledger-query-status | 1794984068525 |
 | 1053-upgrade-leaves-stale | 1053-upgrade-leaves-stale | 1795011926108 |
 | 1055-worktree-removal-says | 1055-worktree-removal-says | 1795006893761 |
+| 1058-cleanup-check-reads | 1058-cleanup-check-reads | 1795066034776 |
 | 1061-takeover-unbuilt-planned | 1061-takeover-unbuilt-planned | 1795052683803 |
 | 1063-fix-loop-pause | 1063-fix-loop-pause | 1795064387258 |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
