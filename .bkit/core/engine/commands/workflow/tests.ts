@@ -359,7 +359,7 @@ export interface RedTest {
    * start for a takeover.
    */
   base?: string;
-  /** The earlier task this test was taken over from (`planTakeovers`), when that task has a baseline. */
+  /** The nearest earlier task naming this test that has a baseline (`planTakeovers` decides it is a takeover). */
   from?: number;
 }
 
@@ -515,9 +515,9 @@ export function lockBaselines(
             text: t.blob,
             origin: t.blob,
           });
-        // A takeover's entry, whatever its state, is the new baseline of every earlier key
-        // naming the same test: the earlier task's lock moves onto the taken-over lines.
-        if (t.from === undefined) continue;
+        // A later task's entry, whatever its state and with or without `from`, is the new
+        // baseline of every earlier key of another task naming the same test: the earlier
+        // task's lock moves onto the taken-over lines.
         for (const [k, b] of out)
           if (k !== key && b.test === t.test && sameTestName(b.testName, t.testName))
             out.set(k, {
@@ -2597,12 +2597,21 @@ export const testsCommand: CommandSpec = {
         );
         const baselines = [...proven.values()];
         const fromOf = (task: number, test: string, name: string) => {
-          const k = takeovers.get(redKey(task, test, name));
-          if (k === undefined) return undefined;
-          const owned = baselines.some(
-            (b) => b.task === k.from && b.test === k.test && sameTestName(b.testName, k.name),
-          );
-          return owned ? k.from : undefined;
+          if (!takeovers.has(redKey(task, test, name))) return undefined;
+          const at = parsed.tasks.findIndex((b) => b.task === task);
+          const posix = path.posix.normalize(test);
+          for (let i = at - 1; i >= 0; i -= 1) {
+            const earlier = parsed.tasks[i]!;
+            const names = (earlier.testFirst?.tests ?? []).some(
+              (x) => path.posix.normalize(x.test) === posix && sameTestName(x.name, name),
+            );
+            if (!names) continue;
+            const owned = baselines.some(
+              (b) => b.task === earlier.task && b.test === test && sameTestName(b.testName, name),
+            );
+            if (owned) return earlier.task;
+          }
+          return undefined;
         };
         const runStartRaw = activeRunStart(status, workflow)?.parentSha;
         const runStart = typeof runStartRaw === "string" ? runStartRaw : undefined;

@@ -39,6 +39,7 @@ import {
   testBlock,
   testSpan,
   testsCommand,
+  touchedTests,
 } from "./tests";
 import { parseJunit, reportFailures, type JunitCase } from "./junit";
 import { writeStepRow } from "./steps";
@@ -1823,9 +1824,41 @@ describe("lockBaselines and takeovers", () => {
   it("lockBaselines leaves a test nobody took over on its own baseline", () => {
     const rows = [
       redRow(1, [entry(2, "adds a row", "v2")]),
-      redRow(2, [entry(5, "adds a row", "v5")]),
+      redRow(2, [entry(5, "adds a row", "v5", { test: "src/b.test.ts" })]),
     ];
     expect(blocks(rows)).toEqual(["2:adds a row:v2", "5:adds a row:v5"]);
+  });
+
+  it("lockBaselines moves an earlier task's key onto a later task's red entry that carries no from", () => {
+    const rows = [
+      redRow(1, [entry(2, "adds a row", "old")]),
+      redRow(2, [entry(5, "adds a row", "new")]),
+    ];
+    expect(blocks(rows)).toEqual(["2:adds a row:new", "5:adds a row:new"]);
+    expect(lockBaselines(rows, null).get(redKey(2, "src/a.test.ts", "adds a row"))).toEqual(
+      expect.objectContaining({ blob: "blob-new", block: "new", origin: "blob-new" }),
+    );
+  });
+
+  it("touchedTests reports nothing when the file holds the later task's lines and its red carries no from", () => {
+    const top = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-touched-"));
+    try {
+      const NAME = "adds a row";
+      const body = (n: number) => `it('${NAME}', () => {\n  expect(rows()).toBe(${n});\n});\n`;
+      const file = path.join(top, "status.jsonl");
+      const rows = [
+        redRow(1, [entry(2, NAME, blockHash(body(1), NAME)!)]),
+        redRow(2, [entry(5, NAME, blockHash(body(2), NAME)!)]),
+      ];
+      fs.writeFileSync(file, `${rows.map((r) => JSON.stringify(r)).join("\n")}\n`);
+      fs.mkdirSync(path.join(top, "src"));
+      fs.writeFileSync(path.join(top, "src/a.test.ts"), body(2));
+      expect(touchedTests(top, file, "build")).toEqual([]);
+      fs.writeFileSync(path.join(top, "src/a.test.ts"), body(1));
+      expect(touchedTests(top, file, "build").map((t) => t.name)).toEqual([NAME, NAME]);
+    } finally {
+      fs.rmSync(top, { recursive: true, force: true });
+    }
   });
 });
 
@@ -3656,6 +3689,64 @@ describe("bkit tests red / green", () => {
       expect(r.json.tests).toEqual([
         expect.objectContaining({ task: 2, state: "updated", from: 1, base: start }),
       ]);
+    });
+
+    /** TASK 1 (group 1), TASK 2 (group 2, never run) and TASK 3 (group 3) all name `TEST` `NAME`. */
+    const writeUnbuiltPlan = () =>
+      fs.writeFileSync(
+        path.join(cwd, "plan.md"),
+        `# Plan\n\n${[
+          groupBlock(1, TASK_1),
+          groupBlock(2, testTask(2, [[TEST, NAME]])),
+          groupBlock(3, testTask(3, [[TEST, NAME]])),
+        ].join("\n")}\n`,
+      );
+    const groupThree = (verb: "red" | "green", log: string) =>
+      run(
+        [`--file=${STATUS}`, "--workflow=build", "--group=3", "--plan=plan.md", `--log=${log}`],
+        cwd,
+        verb,
+      );
+
+    it("tests red records from as the owner when an unbuilt task between the two names the test", async () => {
+      writeUnbuiltPlan();
+      runStarted(sha());
+      await groupOneRed();
+      fs.writeFileSync(path.join(cwd, TEST), body(6));
+      vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+      const r = await groupThree("red", "logs/build-tests-red-3-1.md");
+      expect(r.code).toBe(0);
+      expect(r.json.tests).toEqual([
+        expect.objectContaining({ task: 3, testName: NAME, state: "red", from: 1 }),
+      ]);
+    });
+
+    it("tests green lists a takeover whose nearest earlier task has no red as taken over from the owner", async () => {
+      writeUnbuiltPlan();
+      runStarted(sha());
+      await groupOneRed();
+      fs.writeFileSync(path.join(cwd, TEST), body(6));
+      vi.stubEnv("FAKE_EXIT", "0");
+      vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+      expect((await groupThree("red", "logs/build-tests-red-3-1.md")).code).toBe(0);
+      const r = await groupThree("green", "logs/green.md");
+      expect(r.code).toBe(0);
+      expect(r.json.takenOver).toEqual([
+        expect.objectContaining({ task: 3, from: 1, test: TEST, name: NAME }),
+      ]);
+    });
+
+    it("tests red records no from when no earlier task naming the test has a baseline", async () => {
+      writeUnbuiltPlan();
+      runStarted(sha());
+      fs.writeFileSync(path.join(cwd, TEST), body(6));
+      vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+      const r = await groupThree("red", "logs/build-tests-red-3-1.md");
+      expect(r.code).toBe(0);
+      expect(r.json.tests).toEqual([
+        expect.objectContaining({ task: 3, testName: NAME, state: "red" }),
+      ]);
+      expect(r.json.tests[0]).not.toHaveProperty("from");
     });
 
     it("a resumed tests red skips a taken-over entry", async () => {
