@@ -1,0 +1,42 @@
+Verdict: CONCERNS
+Failures: 2
+Fingerprint: 8e031ebac58f9ee6a235c6db07ee3f9347972376b79d4b767cfdb5d39a208a54
+<!-- verdict:end -->
+
+# Build Challenge
+
+Lens: Security — auth, secrets, input validation, data exposure, OWASP, data-access policies / tenancy.
+
+## Scope
+
+- Diff: `tmp/bkit-diff-985-install-settings-merge.md`, full coverage (no `partial diff coverage` header). 22 files; engine changes in `.bkit/core/engine/install/write.ts`, the four host modules, `.bkit/core/engine/commands/install/upgrade.ts` and their `dist/` builds.
+- Plan: `docs/plans/202611/985-install-settings-merge-plan.md`, tasks 1-7.
+- Evidence: `git show <tag>:<shipped settings template>` for every `vX.Y.Z` tag (`.agents/templates/.claude/settings.json` for v0.x-v2.x, `.bkit/templates/.claude/settings.json` for v3.x-v4.x, `.bkit/shared/.claude/settings.json` for v5.x+), compared with HEAD's template plus `resolveClaudeDerivedAllows` output for an empty checkout. A run of the built `dist/install/write.js` on HEAD's template plus old-release strings kept `mcp__claude_ai_Linear__save_issue`, `save_comment`, `list_issues`, `mcp__*__save_issue`, `WebFetch(domain:z.ai)` and `WebFetch(domain:*.kimi.com)` after `pruneRetiredSettingsEntries` + `mergeManagedJson`, and labelled the three Linear strings as edited.
+
+## Notes
+
+- **Why the missed entries matter now:** the list merge that keeps entries only the consumer's file holds (`mergeManagedJson`, commit `e4377aad7`) is in no release tag yet. In `v5.4.0`, `deepMergeJson` replaced a drifted array whole, so old shipped entries fell away at the next drift. Once this release ships both changes, any old entry still on disk stays for good unless it is on `RETIRED_SETTINGS_ENTRIES`. The plan's Source section says the survey found one entry; the tags show more, because the survey missed `.agents/templates/.claude/settings.json` (v0.x-v2.x) and the v4.x `WebFetch` rows.
+- **Retired strings left out on purpose:** `Edit(*)` and `Write(*)` (to `v4.1.4`) are covered by HEAD's `defaultMode: acceptEdits`. `WebFetch(domain:api.github.com|docs.github.com|raw.githubusercontent.com|docs.anthropic.com|docs.claude.com|developer.mozilla.org)` are covered by wildcards HEAD derives. They widen nothing, so they are not tasked.
+- **Already recorded, not raised again:** `bkit upgrade` printing no line for a removed entry is the OPEN deferral row `985-install-settings-merge-challenge-low-bkit-core-engine-install-write-ts-516` in this diff.
+- **Out of scope, propose separately (not caused by this diff):** `writeTier2JsonContained` writes with `fs.writeFileSync` and no `lstat` check (none in `write.ts`, `claude.ts` or `upgrade.ts`), so a cloned repo whose `.claude/settings.json` is a symlink to a JSON file outside the checkout gets bkit's merge written to the link target. The drift path already did this; the diff only adds one more trigger.
+- **Checked, no finding:** no new dependency, lockfile or install script. No hardcoded secret. Advisory and warning text only repeats allow strings starting with the retired stem and a repo-relative path. The prune only removes values, and `assertRetirableEntry` keeps it to `permissions.allow`, so it never widens a grant or touches deny/ask. Its keys are fixed, so a parsed `__proto__` key is copied as data, not used as a prototype. The new `upgrade.integration.test.ts` `{ ...process.env }` spawn uses the pattern the rest of that file already uses. No embedded directives in the diff.
+- **Docs cross-check:** `docs/security.md` has no section on shipped permission grants; the plan's "only removes grants" holds for what the prune does. Knowledge row `project-permissions-allow-is-trust-gated-and-cloud-never-shows-the-dialog`: the cloud bootstrap accepts the trust dialog, so the kept allow rows are live in cloud sessions as well as locally.
+
+## Findings Log
+
+<!-- bkit:task 1 start -->
+- [ ] **TASK 1:** A consumer upgrading from bkit v0.4.0-v2.2.3 keeps the Linear connector grants bkit shipped (`mcp__claude_ai_Linear__save_issue`, `save_comment`, `list_issues` and seven more), and the upgrade tells them each is their own edit, so an agent steered by issue text still reads and writes their claude.ai Linear workspace without asking
+  **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/write.ts:419` · **Round:** 1
+  - **DONE WHEN:** `RETIRED_SETTINGS_ENTRIES` holds each of the ten `mcp__claude_ai_Linear__<tool>` strings that `.agents/templates/.claude/settings.json` shipped (`git show v2.2.3:.agents/templates/.claude/settings.json` lines 9-18: `list_teams`, `list_projects`, `list_issues`, `list_issue_labels`, `list_issue_statuses`, `get_issue`, `get_issue_status`, `save_issue`, `list_comments`, `save_comment`; `get_issue`, `list_issues`, `save_issue`, `list_comments`, `save_comment` from `v0.4.0`, the rest from `v2.0.5`, all last in `v2.2.3`), each with a `docs/migrations.md` row naming its source tags. `findRetiredSettingsEntries` reports them as `retired`, never `edited`, and `writeTier2JsonContained` removes them. Every test and doc that uses `mcp__claude_ai_Linear__get_issue` as the person's edited example (`write.test.ts:952`, `claude.integration.test.ts:208`, the `docs/migrations.md` row, the plan's Concrete Example) uses a string no release shipped instead, and the `toHaveLength(1)` assertion in `shipped list holds mcp__claude_ai_Linear__* for .claude/settings.json permissions.allow` follows the list length.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/write.test.ts` `removes every Linear connector tool grant bkit shipped in v0.4.0-v2.2.3 and reports none as edited` fails on `pruneRetiredSettingsEntries(".claude/settings.json", { permissions: { allow: [<the ten strings>, "mcp__mine__*"] } })` keeping all ten strings, and `findRetiredSettingsEntries` returning them in `edited` instead of `retired`
+    - `.bkit/core/engine/install/modules/claude.integration.test.ts` `dry run over a v2.2.3 settings file names the Linear connector write grants as retired, not kept` fails on the `retired-settings-entry` advisory `detect` listing `mcp__claude_ai_Linear__save_issue` under "edited copies of a retired entry, kept" (seed `allow: ["Bash(ls)", "mcp__claude_ai_Linear__save_issue", "mcp__claude_ai_Linear__save_comment"]`, no `mcp-servers` block, `runClaudeModule(makeCtx({ dryRun: true }))`)
+<!-- bkit:task 1 end -->
+
+<!-- bkit:task 2 start -->
+- [ ] **TASK 2:** A consumer upgrading from bkit v0.2.0-v0.3.0 or v4.1.5-v4.10.0 silently keeps shipped grants no current release gives (`mcp__*__save_issue` and `mcp__*__save_comment` on every MCP server, `WebFetch` for `z.ai`, `kimi.com`, `moonshot.ai`, `*.nvidia.com` and `supabase.com`), because the retired list comes from a release survey that missed them
+  **Severity:** LOW · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/write.ts:366` · **Round:** 1
+  - **DONE WHEN:** `RETIRED_SETTINGS_ENTRIES` holds `mcp__*__get_issue`, `mcp__*__list_issues`, `mcp__*__save_issue`, `mcp__*__list_comments` and `mcp__*__save_comment` (`.agents/templates/.claude/settings.json`, `v0.2.0` through `v0.3.0`), and `WebFetch(domain:z.ai)`, `WebFetch(domain:*.z.ai)`, `WebFetch(domain:moonshot.ai)`, `WebFetch(domain:*.moonshot.ai)`, `WebFetch(domain:kimi.com)`, `WebFetch(domain:*.kimi.com)` (`v4.9.0` through `v4.10.0`), `WebFetch(domain:*.nvidia.com)` (`v4.1.7` through `v4.10.0`) and `WebFetch(domain:supabase.com)` (`v4.1.5` through `v4.1.6`) from `.bkit/templates/.claude/settings.json`, each with a `docs/migrations.md` row naming its source tags. The plan's Source section lists every `permissions.allow` string a release tag's shipped template held (`.agents/templates/`, `.bkit/templates/` and `.bkit/shared/` copies) that HEAD neither ships nor derives through `resolveClaudeDerivedAllows`, and says which ones are on the list and which are left off because a grant HEAD still gives covers them.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/write.test.ts` `removes the MCP wildcard and WebFetch grants bkit shipped in v0.2.0-v4.10.0 and keeps the person's` fails on `pruneRetiredSettingsEntries(".claude/settings.json", { permissions: { allow: ["mcp__*__save_issue", "mcp__*__save_comment", "WebFetch(domain:z.ai)", "WebFetch(domain:*.kimi.com)", "WebFetch(domain:*.nvidia.com)", "WebFetch(domain:supabase.com)", "Bash(mine)"] } })` returning every entry instead of `["Bash(mine)"]`
+<!-- bkit:task 2 end -->

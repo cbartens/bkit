@@ -107,7 +107,14 @@ export function runClaudeModule(ctx: ModuleContext): void {
   const settingsDst = ".claude/settings.json";
   if (fs.existsSync(settingsSrc)) {
     const prevLen = ws.writes.length;
-    writeTier2JsonContained(settingsSrc, settingsDst, dryRun, ws);
+    writeTier2JsonContained(
+      settingsSrc,
+      settingsDst,
+      dryRun,
+      ws,
+      advisories,
+      resolveClaudeDerivedAllows(process.cwd()),
+    );
     ctx.claudeAllowRecorded = enrichClaudeSettingsAllows(
       settingsDst,
       process.cwd(),

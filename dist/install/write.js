@@ -273,18 +273,198 @@ export function trackerEntryInSync(existing, owned) {
         return false;
     return deepContains(mergeTrackerEntry(existing, owned), existing).ok;
 }
+export const RETIRED_SETTINGS_ENTRIES = [
+    // v3.0.0-v5.4.0, dropped in v5.5.0.
+    { file: ".claude/settings.json", path: "permissions.allow", value: "mcp__claude_ai_Linear__*" },
+    // v0.4.0-v2.2.3 (get_issue, list_issues, save_issue, list_comments, save_comment from v0.4.0;
+    // the rest from v2.0.5), all last shipped in v2.2.3.
+    ...[
+        "list_teams",
+        "list_projects",
+        "list_issues",
+        "list_issue_labels",
+        "list_issue_statuses",
+        "get_issue",
+        "get_issue_status",
+        "save_issue",
+        "list_comments",
+        "save_comment",
+    ].map((tool) => ({
+        file: ".claude/settings.json",
+        path: "permissions.allow",
+        value: `mcp__claude_ai_Linear__${tool}`,
+    })),
+];
+/** Only `permissions.allow` entries can be retired; a deny or ask rule is never taken back. */
+function assertRetirableEntry(entry) {
+    if (entry.path !== "permissions.allow") {
+        throw new Error(`[bkit] retired settings entry "${entry.value}" names ${entry.path}; only permissions.allow entries can be retired`);
+    }
+}
+function matchesRetiredFile(rel, file) {
+    const norm = rel.replace(/\\/g, "/");
+    return norm === file || norm.endsWith("/" + file);
+}
+function arrayAt(doc, dotted) {
+    let cur = doc;
+    for (const key of dotted.split(".")) {
+        if (cur === null || typeof cur !== "object" || Array.isArray(cur))
+            return undefined;
+        cur = cur[key];
+    }
+    return Array.isArray(cur) ? cur : undefined;
+}
+const retiredStem = (entry) => entry.value.replace(/\*$/, "");
+/**
+ * Retired entries still present (`retired`), and entries that only start like one
+ * (`edited`: kept, each reported once against the retired entry with the longest stem).
+ */
+export function findRetiredSettingsEntries(rel, doc, template, list = RETIRED_SETTINGS_ENTRIES) {
+    const retired = [];
+    const edited = [];
+    for (const entry of list)
+        assertRetirableEntry(entry);
+    const forFile = list.filter((e) => matchesRetiredFile(rel, e.file));
+    for (const dotted of new Set(forFile.map((e) => e.path))) {
+        const held = arrayAt(doc, dotted);
+        if (!held)
+            continue;
+        const onPath = forFile.filter((e) => e.path === dotted);
+        const shipped = template === undefined ? [] : (arrayAt(template, dotted) ?? []);
+        for (const item of held) {
+            if (typeof item !== "string")
+                continue;
+            const finding = (e) => ({
+                file: e.file,
+                path: e.path,
+                value: item,
+                retired: e.value,
+            });
+            const exact = onPath.find((e) => e.value === item);
+            if (exact) {
+                retired.push(finding(exact));
+                continue;
+            }
+            if (shipped.includes(item))
+                continue;
+            const like = onPath
+                .filter((e) => item.startsWith(retiredStem(e)))
+                .sort((a, b) => retiredStem(b).length - retiredStem(a).length)[0];
+            if (like)
+                edited.push(finding(like));
+        }
+    }
+    return { retired, edited };
+}
+/**
+ * Report what {@link writeTier2JsonContained} found, naming each retired value once. A
+ * `bkit check` dry run gets one advisory; any other run prints one line per removed entry
+ * and then, once for the file, how to keep a removed grant. A look-alike is printed only
+ * when no advisory list is passed (`bkit upgrade`), so one upgrade run names it once and
+ * `bkit check` / `bkit install` never report it.
+ */
+function reportRetiredSettingsEntries(dstPath, found, dryRun, advisories, derivedKeep) {
+    const retired = [...new Map(found.retired.map((e) => [e.value, e])).values()];
+    if (dryRun && advisories) {
+        if (retired.length === 0)
+            return;
+        advisories.push({
+            id: "retired-settings-entry",
+            severity: "advisory",
+            detect: `${dstPath}: retired entries bkit removes: ${retired.map((e) => `"${e.value}" (${e.path})`).join(", ")}.`,
+            action: "Run bkit upgrade to remove a retired entry.",
+        });
+        return;
+    }
+    for (const e of retired) {
+        console.log(dryRun
+            ? `[bkit] ${e.file}: would remove "${e.value}" from ${e.path}, an entry bkit retired.`
+            : `[bkit] ${e.file}: removed "${e.value}" from ${e.path}, an entry bkit retired.`);
+    }
+    if (retired.length > 0)
+        console.log(keepRemovedGrantAdvice(retired, derivedKeep, dryRun));
+    if (advisories)
+        return;
+    for (const e of found.edited) {
+        console.warn(`[bkit] ${e.file}: ${e.path} holds "${e.value}", which starts like the retired entry "${e.retired}"; bkit removes exact matches only, so it is kept.`);
+    }
+}
+/**
+ * How to keep a grant bkit removed, as one line for the file. A grant whose server
+ * wildcard the `mcp-servers` block derives (`derivedKeep`) is named as covered by it. Any other grant gets
+ * `.claude/settings.local.json` for one person and, for an MCP connector grant, listing
+ * its server in the `mcp-servers` block for the whole team, which derives its Claude
+ * wildcard (`.bkit/providers.md` § MCP servers).
+ */
+function keepRemovedGrantAdvice(retired, derivedKeep, dryRun) {
+    const serverOf = (value) => /^mcp__claude_ai_(.+?)__/.exec(value)?.[1];
+    const wildcardOf = (server) => `mcp__claude_ai_${server}__*`;
+    const parts = [];
+    const open = [];
+    for (const e of retired) {
+        const server = serverOf(e.value);
+        if (server !== undefined && derivedKeep.includes(wildcardOf(server))) {
+            parts.push(`"${e.value}" ${dryRun ? "would be" : "is"} covered by "${wildcardOf(server)}", which bkit derives from the mcp-servers block in .agents/context.md.`);
+        }
+        else {
+            open.push(e);
+        }
+    }
+    if (open.length > 0) {
+        const grant = dryRun ? "a grant bkit would remove" : "a removed grant";
+        parts.push(`to keep ${grant} for yourself, add it to your personal .claude/settings.local.json.`);
+        const servers = [...new Set(open.flatMap((e) => serverOf(e.value) ?? []))];
+        if (servers.length > 0) {
+            const names = servers.map((s) => `"${s}"`).join(" and ");
+            const wildcards = servers.map((s) => `"${wildcardOf(s)}"`).join(" and ");
+            parts.push(`To allow it for the whole team, list the ${names} server in the mcp-servers block of .agents/context.md and run bkit upgrade; bkit then derives ${wildcards} for Claude, which pre-approves every tool on the server, reads and writes (see .bkit/providers.md § MCP servers).`);
+        }
+    }
+    return `[bkit] ${retired[0].file}: ${parts.join(" ")}`;
+}
+/** The document without the exact retired strings; a document holding none comes back as is. */
+export function pruneRetiredSettingsEntries(rel, doc, list = RETIRED_SETTINGS_ENTRIES) {
+    let out = doc;
+    for (const entry of list) {
+        assertRetirableEntry(entry);
+        if (!matchesRetiredFile(rel, entry.file))
+            continue;
+        const keys = entry.path.split(".");
+        const walk = (node, i) => {
+            if (node === null || typeof node !== "object" || Array.isArray(node))
+                return node;
+            const obj = node;
+            const child = obj[keys[i]];
+            if (child === undefined)
+                return node;
+            if (i === keys.length - 1) {
+                if (!Array.isArray(child) || !child.includes(entry.value))
+                    return node;
+                return { ...obj, [keys[i]]: child.filter((x) => x !== entry.value) };
+            }
+            const next = walk(child, i + 1);
+            return next === child ? node : { ...obj, [keys[i]]: next };
+        };
+        out = walk(out, 0);
+    }
+    return out;
+}
 // ---------------------------------------------------------------------------
 // writeTier2JsonContained — deep-containment JSON helper (BAR-167 Phase 1)
 //
 // Contract:
 //   - dest absent         → write template as-is (first install)
 //   - dest present, valid JSON, template contained → no-op (idempotent)
+//   - dest present, valid JSON, template contained, retired entries held → the document
+//     without them, in the file's own key and entry order
 //   - dest present, valid JSON, containment fails → deepMergeJson(existing, template)
 //     (template wins on key collisions; consumer-only keys outside template tree preserved)
 //   - dest present, malformed JSON → throw; the consumer fixes it by hand
 //   - schemaFlipped: true when a path value changed type during deep-merge
 // ---------------------------------------------------------------------------
-export function writeTier2JsonContained(srcPath, dstPath, dryRun, ws) {
+export function writeTier2JsonContained(srcPath, dstPath, dryRun, ws, advisories, 
+/** Values bkit derives into this file at install time; never pruned or reported as retired. */
+derivedKeep = []) {
     const srcRaw = fs.readFileSync(srcPath, "utf-8");
     const templateRead = parseJson(srcRaw);
     if (!templateRead.ok) {
@@ -310,20 +490,24 @@ export function writeTier2JsonContained(srcPath, dstPath, dryRun, ws) {
         throw new Error(`[bkit] ${dstPath} is malformed JSON — fix manually before running bkit install`);
     }
     const existing = existingRead.value;
-    // Check if existing already contains the template
-    const containsResult = deepContains(template, existing);
-    if (containsResult.ok) {
-        return; // idempotent — no change needed
+    // Take back entries a release retired; entries that only start like one stay.
+    const liveList = RETIRED_SETTINGS_ENTRIES.filter((e) => !derivedKeep.includes(e.value));
+    const pruned = pruneRetiredSettingsEntries(dstPath, existing, liveList);
+    const prunedChanged = JSON.stringify(pruned) !== JSON.stringify(existing);
+    const found = findRetiredSettingsEntries(dstPath, existing, template, liveList);
+    // A contained template needs no merge: the pruned document keeps the file's own order.
+    // Otherwise deep-merge with the existing file as base and the template winning conflicts.
+    const containsResult = deepContains(template, pruned);
+    if (!containsResult.ok || prunedChanged) {
+        const next = containsResult.ok ? pruned : mergeManagedJson(pruned, template);
+        const nextStr = JSON.stringify(next, null, 2) + "\n";
+        if (nextStr !== dstRaw) {
+            if (!dryRun)
+                fs.writeFileSync(dstPath, nextStr, "utf-8");
+            ws.writes.push({ path: dstPath, action: "update" });
+        }
     }
-    // Deep-merge: existing base, template override (template wins on conflicts)
-    const merged = mergeManagedJson(existing, template);
-    const mergedStr = JSON.stringify(merged, null, 2) + "\n";
-    if (mergedStr === dstRaw)
-        return; // idempotent guard
-    if (!dryRun) {
-        fs.writeFileSync(dstPath, mergedStr, "utf-8");
-    }
-    ws.writes.push({ path: dstPath, action: "update" });
+    reportRetiredSettingsEntries(dstPath, found, dryRun, advisories, derivedKeep);
 }
 // ---------------------------------------------------------------------------
 // Internal helpers

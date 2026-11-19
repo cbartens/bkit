@@ -38,7 +38,7 @@ import { detectInstalledHostModules } from "../../install/hosts.js";
 import { detectInstalledModules } from "./check.js";
 import { remapTemplateDest } from "../../install/template-copies.js";
 import { syncProjectDocs } from "../../install/project-docs.js";
-import { CLAUDE_CLOUD_RELPATH, CODEX_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeClaudeCloudDoc, writeCodexCloudDoc, writeCursorCloudDoc, writeCursorCliPermissionsArtifact, } from "../../install/cloud-env.js";
+import { CLAUDE_CLOUD_RELPATH, CODEX_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeClaudeCloudDoc, writeCodexCloudDoc, writeCursorCloudDoc, writeCursorCliPermissionsArtifact, resolveClaudeDerivedAllows, } from "../../install/cloud-env.js";
 import { syncTemplateCopies, formatTemplateChanges, warnMissingLintStagedConfig, } from "../../install/template-copies.js";
 import { formatPayloadLinkChanges, syncPayloadLinks } from "../../install/payload-links.js";
 import { renderOpencodeJson, reconcileOpencodeJson } from "../../install/modules/opencode.js";
@@ -207,7 +207,7 @@ export function runUpgrade(candidates, options) {
                         jsonSrc = jsonTmp;
                     }
                     try {
-                        writeTier2JsonContained(jsonSrc, absolutePath, options.dryRun, ws);
+                        writeTier2JsonContained(jsonSrc, absolutePath, options.dryRun, ws, undefined, resolveClaudeDerivedAllows(cwd));
                     }
                     finally {
                         if (jsonTmp) {

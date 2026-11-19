@@ -79,7 +79,7 @@ export function runClaudeModule(ctx) {
     const settingsDst = ".claude/settings.json";
     if (fs.existsSync(settingsSrc)) {
         const prevLen = ws.writes.length;
-        writeTier2JsonContained(settingsSrc, settingsDst, dryRun, ws);
+        writeTier2JsonContained(settingsSrc, settingsDst, dryRun, ws, advisories, resolveClaudeDerivedAllows(process.cwd()));
         ctx.claudeAllowRecorded = enrichClaudeSettingsAllows(settingsDst, process.cwd(), dryRun, ws, advisories);
         if (ws.writes.length > prevLen) {
             console.log(`${logPrefix} ${tag}claude: ${settingsDst}`);

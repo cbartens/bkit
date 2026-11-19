@@ -2862,3 +2862,131 @@ describe("#803 — upgrade over legacy OpenCode substring fetch grants", () => {
     expect(substringKeys.sort()).toEqual(["curl *github.com*", "wget *github.com*"]);
   });
 });
+
+describe("#985 — upgrade takes back a retired settings grant", () => {
+  const cliPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
+  function runCli(args: string[]) {
+    return spawnSync(requireTsx(), [cliPath, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 90_000,
+    });
+  }
+  const RETIRED = "mcp__claude_ai_Linear__*";
+  const SETTINGS = path.join(".claude", "settings.json");
+
+  /** An installed consumer whose settings still hold the retired grant and one of its own. */
+  function seedOldShapeSettings(): string {
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    expect(runCli(["install", "--claude", "--tracker=github"]).status).toBe(0);
+    const file = path.join(tmpDir, SETTINGS);
+    const doc = JSON.parse(fs.readFileSync(file, "utf-8")) as {
+      permissions: { allow: string[] };
+    };
+    doc.permissions.allow.push(RETIRED, "mcp__person__*");
+    fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n", "utf-8");
+    return file;
+  }
+
+  it("upgrade over a seeded old-shape settings file removes the retired grant and keeps the person's", () => {
+    const file = seedOldShapeSettings();
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status, combinedOutput(upgrade)).toBe(0);
+    const allow = (
+      JSON.parse(fs.readFileSync(file, "utf-8")) as { permissions: { allow: string[] } }
+    ).permissions.allow;
+    expect(allow).not.toContain(RETIRED);
+    expect(allow).toContain("mcp__person__*");
+    const second = runCli(["upgrade", "--auto-apply"]);
+    expect(second.status, combinedOutput(second)).toBe(0);
+    expect(runCli(["check"]).stdout).toContain("0 write(s) would occur");
+  });
+
+  it("upgrade names each retired entry it removed", () => {
+    const file = seedOldShapeSettings();
+    const save = "mcp__claude_ai_Linear__save_issue";
+    const doc = JSON.parse(fs.readFileSync(file, "utf-8")) as { permissions: { allow: string[] } };
+    doc.permissions.allow.push(save);
+    fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n", "utf-8");
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status, combinedOutput(upgrade)).toBe(0);
+    const out = combinedOutput(upgrade);
+    expect(out).toContain(`removed "${RETIRED}" from permissions.allow`);
+    expect(out).toContain(`removed "${save}" from permissions.allow`);
+  });
+
+  it("install over a retired grant says it removed it and does not ask for bkit upgrade", () => {
+    seedOldShapeSettings();
+    const install = runCli(["install", "--claude", "--tracker=github"]);
+    expect(install.status, combinedOutput(install)).toBe(0);
+    const out = combinedOutput(install);
+    expect(out).toContain(`removed "${RETIRED}" from permissions.allow`);
+    expect(out).not.toContain("Run bkit upgrade to remove a retired entry");
+  });
+
+  it("upgrade prints a look-alike once; check and install print none and check exits 0", () => {
+    const file = seedOldShapeSettings();
+    const like = "mcp__claude_ai_Linear__my_own_tool";
+    const doc = JSON.parse(fs.readFileSync(file, "utf-8")) as { permissions: { allow: string[] } };
+    doc.permissions.allow = doc.permissions.allow.filter((e) => e !== RETIRED);
+    doc.permissions.allow.push(like);
+    fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n", "utf-8");
+    const advisoriesFile = path.join(tmpDir, ".bkit", "advisories.md");
+
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status, combinedOutput(upgrade)).toBe(0);
+    expect(combinedOutput(upgrade).split(like).length - 1).toBe(1);
+    expect(fs.readFileSync(advisoriesFile, "utf-8")).not.toContain(like);
+
+    const check = runCli(["check"]);
+    expect(check.status, combinedOutput(check)).toBe(0);
+    expect(combinedOutput(check)).not.toContain(like);
+    expect(fs.readFileSync(advisoriesFile, "utf-8")).not.toContain(like);
+
+    const install = runCli(["install", "--claude", "--tracker=github"]);
+    expect(install.status, combinedOutput(install)).toBe(0);
+    expect(combinedOutput(install)).not.toContain(like);
+    expect(fs.readFileSync(advisoriesFile, "utf-8")).not.toContain(like);
+    expect(fs.readFileSync(file, "utf-8")).toContain(like);
+  });
+
+  it("upgrade over a contained settings file changes only the retired line", () => {
+    const file = seedOldShapeSettings();
+    const doc = JSON.parse(fs.readFileSync(file, "utf-8")) as Record<string, unknown> & {
+      permissions: { allow: string[] } & Record<string, unknown>;
+    };
+    const shipped = doc.permissions.allow.filter((e) => e !== RETIRED);
+    const allow = [shipped[1]!, "mcp__own_a__*", RETIRED, shipped[0]!, "mcp__own_b__*"];
+    allow.push(...shipped.slice(2));
+    const ownOrder: Record<string, unknown> = { ownKey: { a: 1 } };
+    for (const key of Object.keys(doc).reverse()) ownOrder[key] = doc[key];
+    ownOrder.permissions = { ...doc.permissions, allow };
+    const input = JSON.stringify(ownOrder, null, 2) + "\n";
+    fs.writeFileSync(file, input, "utf-8");
+
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status, combinedOutput(upgrade)).toBe(0);
+    const expected = input
+      .split("\n")
+      .filter((l) => l.trim() !== `"${RETIRED}",`)
+      .join("\n");
+    expect(fs.readFileSync(file, "utf-8")).toBe(expected);
+  });
+
+  it("upgrade dry run lists the settings update and leaves the retired grant", () => {
+    const file = seedOldShapeSettings();
+    const before = fs.readFileSync(file, "utf-8");
+    const dry = runCli(["upgrade", "--dry-run"]);
+    expect(dry.status, combinedOutput(dry)).toBe(0);
+    expect(combinedOutput(dry)).toContain(".claude/settings.json");
+    expect(combinedOutput(dry)).toContain(`would remove "${RETIRED}" from permissions.allow`);
+    expect(fs.readFileSync(file, "utf-8")).toBe(before);
+    expect(before).toContain(RETIRED);
+  });
+});

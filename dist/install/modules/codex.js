@@ -143,7 +143,7 @@ export function runCodexModule(ctx) {
             if (!dryRun)
                 ensureDir(path.dirname(jsonDst));
             const prevLen = ws.writes.length;
-            writeTier2JsonContained(jsonSrc, jsonDst, dryRun, ws);
+            writeTier2JsonContained(jsonSrc, jsonDst, dryRun, ws, advisories);
             if (ws.writes.length > prevLen)
                 console.log(`${logPrefix} ${tag}codex: ${jsonDst}`);
         }

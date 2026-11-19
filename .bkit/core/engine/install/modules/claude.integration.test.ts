@@ -3,7 +3,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WriteSet } from "../write";
 import { buildOpencodeModelLookup, parseEffortMap } from "../../render/models";
 import { runClaudeModule, reconcileMcpJson } from "./claude";
@@ -165,6 +165,121 @@ describe("runClaudeModule preserves consumer settings through deep-containment",
     ).toBeUndefined();
     // Consumer key survives
     expect(onDisk.customKey).toBe("consumer-value");
+  });
+});
+
+describe("runClaudeModule dry run reports retired settings entries", () => {
+  const RETIRED = "mcp__claude_ai_Linear__*";
+
+  function seedSettings(allow: string[]): string {
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+    const dst = path.join(tmpDir, ".claude", "settings.json");
+    fs.writeFileSync(dst, JSON.stringify({ permissions: { allow } }, null, 2) + "\n", "utf-8");
+    return dst;
+  }
+
+  function retiredAdvisories(ctx: ModuleContext): PreflightFinding[] {
+    return ctx.advisories.filter((a) => a.id === "retired-settings-entry");
+  }
+
+  it("dry run over a seeded old-shape settings file reports the file as drift and names the retired entry", () => {
+    const dst = seedSettings(["Bash(ls)", RETIRED, "mcp__mine__*"]);
+    const before = fs.readFileSync(dst, "utf-8");
+    const ctx = makeCtx({ dryRun: true });
+    runClaudeModule(ctx);
+    expect(fs.readFileSync(dst, "utf-8")).toBe(before);
+    expect(ctx.ws.writes.some((w) => w.path.endsWith(".claude/settings.json"))).toBe(true);
+    const found = retiredAdvisories(ctx);
+    expect(found).toHaveLength(1);
+    expect(found[0]!.severity).toBe("advisory");
+    expect(found[0]!.detect).toContain(RETIRED);
+    expect(found[0]!.detect).toContain(".claude/settings.json");
+  });
+
+  it("dry run over a clean settings file records no drift and no retired-settings-entry advisory", () => {
+    seedSettings(["Bash(ls)"]);
+    runClaudeModule(makeCtx());
+    const ctx = makeCtx({ dryRun: true });
+    runClaudeModule(ctx);
+    expect(retiredAdvisories(ctx)).toHaveLength(0);
+    expect(ctx.ws.writes.some((w) => w.path.endsWith(".claude/settings.json"))).toBe(false);
+  });
+
+  it("dry run reports no advisory for a look-alike of a retired entry", () => {
+    const like = "mcp__claude_ai_Linear__my_own_tool";
+    seedSettings(["Bash(ls)", like]);
+    const ctx = makeCtx({ dryRun: true });
+    runClaudeModule(ctx);
+    expect(retiredAdvisories(ctx)).toHaveLength(0);
+    expect(JSON.stringify(ctx.advisories)).not.toContain(like);
+  });
+
+  it("removes an exact retired tool grant a person added and keeps the derived allow that equals a retired value", () => {
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".agents", "context.md"),
+      "<!-- bkit:end -->\n<!-- mcp-servers:start -->\nLinear\n<!-- mcp-servers:end -->\n",
+      "utf-8",
+    );
+    const toolGrant = "mcp__claude_ai_Linear__save_issue";
+    const dst = seedSettings(["Bash(ls)"]);
+    runClaudeModule(makeCtx());
+    const doc = JSON.parse(fs.readFileSync(dst, "utf-8")) as { permissions: { allow: string[] } };
+    const installed = doc.permissions.allow.filter((e) => e !== RETIRED);
+    const kept = [installed[0]!, RETIRED, "mcp__mine__*", ...installed.slice(1)];
+    doc.permissions.allow = [...kept.slice(0, 2), toolGrant, ...kept.slice(2)];
+    fs.writeFileSync(dst, JSON.stringify(doc, null, 2) + "\n", "utf-8");
+
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const ctx = makeCtx();
+      runClaudeModule(ctx);
+      const allow = (
+        JSON.parse(fs.readFileSync(dst, "utf-8")) as { permissions: { allow: string[] } }
+      ).permissions.allow;
+      expect(allow).toEqual(kept);
+      const printed = log.mock.calls.map((c) => c.join(" ")).join("\n");
+      expect(printed).toContain(`removed "${toolGrant}"`);
+      expect(printed).not.toContain(`removed "${RETIRED}"`);
+      expect([ctx.claudeAllowRecorded].flat()).not.toContain(RETIRED);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("dry run over a v2.2.3 settings file names the Linear connector write grants as retired, not kept", () => {
+    seedSettings([
+      "Bash(ls)",
+      "mcp__claude_ai_Linear__save_issue",
+      "mcp__claude_ai_Linear__save_comment",
+    ]);
+    const ctx = makeCtx({ dryRun: true });
+    runClaudeModule(ctx);
+    const found = retiredAdvisories(ctx);
+    expect(found).toHaveLength(1);
+    const detect = found[0]!.detect;
+    expect(detect).toContain("retired entries bkit removes");
+    expect(detect).toContain("mcp__claude_ai_Linear__save_issue");
+    expect(detect).toContain("mcp__claude_ai_Linear__save_comment");
+  });
+
+  it("keeps a retired value the mcp-servers block derives and records no drift on the next dry run", () => {
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".agents", "context.md"),
+      "<!-- bkit:end -->\n<!-- mcp-servers:start -->\nLinear\n<!-- mcp-servers:end -->\n",
+      "utf-8",
+    );
+    const dst = seedSettings(["Bash(ls)"]);
+    runClaudeModule(makeCtx());
+    const allow = (
+      JSON.parse(fs.readFileSync(dst, "utf-8")) as { permissions: { allow: string[] } }
+    ).permissions.allow;
+    expect(allow).toContain(RETIRED);
+    const ctx = makeCtx({ dryRun: true });
+    runClaudeModule(ctx);
+    expect(ctx.ws.writes.some((w) => w.path.endsWith(".claude/settings.json"))).toBe(false);
+    expect(retiredAdvisories(ctx)).toHaveLength(0);
   });
 });
 

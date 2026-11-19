@@ -5,6 +5,9 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   RETIRED_DRIVER_HASHES,
+  RETIRED_SETTINGS_ENTRIES,
+  findRetiredSettingsEntries,
+  pruneRetiredSettingsEntries,
   driverText,
   writeTier1,
   writeTier2,
@@ -17,6 +20,7 @@ import {
   type JsonValue,
 } from "./write";
 import { stripManagedBlock, detectMarkerStyle } from "./managed-block";
+import type { PreflightFinding } from "../checks/before/index";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -898,6 +902,394 @@ describe("writeTier2JsonContained", () => {
 
     expect(fs.existsSync(dst)).toBe(false);
     expect(ws.writes).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Retired settings entries (#985) — a fixed list of exact entries a release dropped
+// ---------------------------------------------------------------------------
+
+const RETIRED_LINEAR = "mcp__claude_ai_Linear__*";
+const CODEX_LIST = [
+  { file: ".codex/hooks.json", path: "permissions.allow", value: "retired-codex-entry" },
+];
+
+function allowOf(doc: unknown): string[] {
+  return (doc as { permissions: { allow: string[] } }).permissions.allow;
+}
+
+describe("retired settings entries — find and prune", () => {
+  it("shipped list holds mcp__claude_ai_Linear__* for .claude/settings.json permissions.allow", () => {
+    expect(RETIRED_SETTINGS_ENTRIES).toBeDefined();
+    const text = JSON.stringify(RETIRED_SETTINGS_ENTRIES);
+    expect(text).toContain(".claude/settings.json");
+    expect(text).toContain("permissions.allow");
+    expect(text).toContain(RETIRED_LINEAR);
+    expect(RETIRED_SETTINGS_ENTRIES).toHaveLength(11);
+  });
+
+  it("removes a retired entry and keeps the person's entries beside it", () => {
+    const doc = {
+      permissions: { allow: ["Bash(*)", RETIRED_LINEAR, "mcp__mine__*"], deny: ["Bash(rm -rf ~)"] },
+      env: { A: "1" },
+    };
+    const out = pruneRetiredSettingsEntries(".claude/settings.json", doc as JsonValue);
+    expect(allowOf(out)).toEqual(["Bash(*)", "mcp__mine__*"]);
+    expect((out as typeof doc).permissions.deny).toEqual(["Bash(rm -rf ~)"]);
+    expect((out as typeof doc).env).toEqual({ A: "1" });
+  });
+
+  it("returns a document without the retired entry unchanged and a second prune changes nothing", () => {
+    const clean = { permissions: { allow: ["Bash(*)", "mcp__mine__*"] } };
+    const once = pruneRetiredSettingsEntries(".claude/settings.json", clean as JsonValue);
+    expect(once).toEqual(clean);
+    const dirty = { permissions: { allow: [RETIRED_LINEAR, "mcp__mine__*"] } };
+    const first = pruneRetiredSettingsEntries(".claude/settings.json", dirty as JsonValue);
+    const second = pruneRetiredSettingsEntries(".claude/settings.json", first);
+    expect(second).toEqual(first);
+    expect(allowOf(first)).toEqual(["mcp__mine__*"]);
+  });
+
+  it("reports an edited variant as edited and never removes it", () => {
+    const edited = "mcp__claude_ai_Linear__my_own_tool";
+    const doc = { permissions: { allow: [edited, "mcp__mine__*"] } };
+    const found = findRetiredSettingsEntries(".claude/settings.json", doc as JsonValue);
+    expect(found.retired).toHaveLength(0);
+    expect(found.edited.length).toBeGreaterThan(0);
+    expect(JSON.stringify(found.edited)).toContain(edited);
+    const out = pruneRetiredSettingsEntries(".claude/settings.json", doc as JsonValue);
+    expect(allowOf(out)).toEqual([edited, "mcp__mine__*"]);
+  });
+
+  it("does not report an entry the template ships as edited", () => {
+    const shipped = "mcp__claude_ai_Linear__my_own_tool";
+    const doc = { permissions: { allow: [shipped] } };
+    const template = { permissions: { allow: [shipped] } };
+    const found = findRetiredSettingsEntries(
+      ".claude/settings.json",
+      doc as JsonValue,
+      template as JsonValue,
+    );
+    expect(found.edited).toHaveLength(0);
+    expect(found.retired).toHaveLength(0);
+  });
+
+  it("matches the file by repo-relative path whether the destination is relative or absolute", () => {
+    const doc = { permissions: { allow: [RETIRED_LINEAR, "mine"] } };
+    const abs = path.join(tmpDir, ".claude", "settings.json");
+    for (const rel of [".claude/settings.json", abs]) {
+      const out = pruneRetiredSettingsEntries(rel, doc as JsonValue);
+      expect(allowOf(out)).toEqual(["mine"]);
+      expect(findRetiredSettingsEntries(rel, doc as JsonValue).retired.length).toBeGreaterThan(0);
+    }
+    const other = pruneRetiredSettingsEntries(path.join(tmpDir, "other.json"), doc as JsonValue);
+    expect(allowOf(other)).toContain(RETIRED_LINEAR);
+  });
+
+  it("does not remove a deny rule named by an injected retired list", () => {
+    const doc = { permissions: { deny: ["Bash(rm -rf ~/*)", "Bash(mine)"] } };
+    const list = [
+      { file: ".claude/settings.json", path: "permissions.deny", value: "Bash(rm -rf ~/*)" },
+    ];
+    expect(() =>
+      pruneRetiredSettingsEntries(".claude/settings.json", doc as JsonValue, list),
+    ).toThrow(/permissions\.deny/);
+    expect(doc.permissions.deny).toEqual(["Bash(rm -rf ~/*)", "Bash(mine)"]);
+  });
+
+  it("removes every Linear connector tool grant bkit shipped in v0.4.0-v2.2.3 and reports none as edited", () => {
+    const tools = [
+      "list_teams",
+      "list_projects",
+      "list_issues",
+      "list_issue_labels",
+      "list_issue_statuses",
+      "get_issue",
+      "get_issue_status",
+      "save_issue",
+      "list_comments",
+      "save_comment",
+    ].map((t) => `mcp__claude_ai_Linear__${t}`);
+    const doc = { permissions: { allow: [...tools, "mcp__mine__*"] } };
+    const found = findRetiredSettingsEntries(".claude/settings.json", doc as JsonValue);
+    expect(found.edited).toHaveLength(0);
+    expect(found.retired.map((e) => e.value).sort()).toEqual([...tools].sort());
+    const out = pruneRetiredSettingsEntries(".claude/settings.json", doc as JsonValue);
+    expect(allowOf(out)).toEqual(["mcp__mine__*"]);
+  });
+
+  it("reports a look-alike that starts like two retired entries once, naming the closer one", () => {
+    const like = "mcp__claude_ai_Linear__list_teams_v2";
+    const doc = { permissions: { allow: [like] } };
+    const found = findRetiredSettingsEntries(".claude/settings.json", doc as JsonValue);
+    expect(found.edited).toEqual([
+      {
+        file: ".claude/settings.json",
+        path: "permissions.allow",
+        value: like,
+        retired: "mcp__claude_ai_Linear__list_teams",
+      },
+    ]);
+  });
+
+  it("prunes a retired entry in any host file the list names", () => {
+    const doc = { permissions: { allow: ["retired-codex-entry", "keep"] } };
+    const out = pruneRetiredSettingsEntries(".codex/hooks.json", doc as JsonValue, CODEX_LIST);
+    expect(allowOf(out)).toEqual(["keep"]);
+  });
+});
+
+describe("writeTier2JsonContained — retired settings entries", () => {
+  function seed(allow: string[]): { src: string; dst: string } {
+    const src = path.join(tmpDir, "template.json");
+    const dst = path.join(tmpDir, ".claude", "settings.json");
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.writeFileSync(src, JSON.stringify({ permissions: { allow: ["Bash(*)"] } }) + "\n", "utf-8");
+    fs.writeFileSync(dst, JSON.stringify({ permissions: { allow } }, null, 2) + "\n", "utf-8");
+    return { src, dst };
+  }
+
+  it("drops a retired entry even when the template is otherwise contained", () => {
+    const { src, dst } = seed(["Bash(*)", RETIRED_LINEAR, "mcp__mine__*"]);
+    const ws = makeWriteSet();
+    writeTier2JsonContained(src, dst, false, ws);
+    const after = JSON.parse(fs.readFileSync(dst, "utf-8"));
+    expect(after.permissions.allow).toEqual(["Bash(*)", "mcp__mine__*"]);
+    expect(ws.writes).toEqual([{ path: dst, action: "update" }]);
+  });
+
+  it("dry run records the same write and leaves the file untouched", () => {
+    const { src, dst } = seed(["Bash(*)", RETIRED_LINEAR]);
+    const before = fs.readFileSync(dst, "utf-8");
+    const real = makeWriteSet();
+    writeTier2JsonContained(src, dst, true, real);
+    expect(fs.readFileSync(dst, "utf-8")).toBe(before);
+    expect(real.writes).toEqual([{ path: dst, action: "update" }]);
+  });
+
+  it("a second run after pruning writes nothing", () => {
+    const { src, dst } = seed(["Bash(*)", RETIRED_LINEAR]);
+    const first = makeWriteSet();
+    writeTier2JsonContained(src, dst, false, first);
+    expect(first.writes).toEqual([{ path: dst, action: "update" }]);
+    const second = makeWriteSet();
+    writeTier2JsonContained(src, dst, false, second);
+    expect(second.writes).toHaveLength(0);
+  });
+
+  it("keeps an edited variant and warns with the file and the entry", () => {
+    const edited = "mcp__claude_ai_Linear__my_own_tool";
+    const { src, dst } = seed(["Bash(*)", edited]);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      writeTier2JsonContained(src, dst, false, makeWriteSet());
+      const after = JSON.parse(fs.readFileSync(dst, "utf-8"));
+      expect(after.permissions.allow).toContain(edited);
+      expect(warn).toHaveBeenCalled();
+      const text = warn.mock.calls.map((c) => c.join(" ")).join("\n");
+      expect(text).toContain(".claude/settings.json");
+      expect(text).toContain(edited);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("warns that a look-alike starts like the retired entry and is kept, without calling it an edited copy", () => {
+    const like = "mcp__claude_ai_Linear__my_own_tool";
+    const { src, dst } = seed(["Bash(*)", like]);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      writeTier2JsonContained(src, dst, false, makeWriteSet());
+      expect(warn).toHaveBeenCalledTimes(1);
+      const text = String(warn.mock.calls[0]![0]);
+      expect(text).toContain(`"${like}"`);
+      expect(text).toContain(`starts like the retired entry "${RETIRED_LINEAR}"`);
+      expect(text).toContain("bkit removes exact matches only, so it is kept");
+      expect(text).not.toMatch(/edited/i);
+      expect(text).not.toMatch(/delete/i);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it.each([true, false])(
+    "with an advisory list (dry run %s), a look-alike adds no advisory and prints nothing",
+    (dryRun) => {
+      const { src, dst } = seed(["Bash(*)", "mcp__claude_ai_Linear__my_own_tool"]);
+      const advisories: PreflightFinding[] = [];
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        writeTier2JsonContained(src, dst, dryRun, makeWriteSet(), advisories);
+        expect(advisories).toEqual([]);
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+      }
+    },
+  );
+
+  it("a contained template with a retired entry writes the pruned document in the file's own order", () => {
+    const src = path.join(tmpDir, "template.json");
+    const dst = path.join(tmpDir, ".claude", "settings.json");
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.writeFileSync(
+      src,
+      JSON.stringify({ permissions: { allow: ["Bash(a)", "Bash(b)"] }, env: { X: "1" } }) + "\n",
+      "utf-8",
+    );
+    const own = {
+      mine: true,
+      env: { MINE: "2", X: "1" },
+      permissions: { allow: ["Bash(b)", "mine-1", RETIRED_LINEAR, "Bash(a)", "mine-2"] },
+    };
+    fs.writeFileSync(dst, JSON.stringify(own, null, 2) + "\n", "utf-8");
+    writeTier2JsonContained(src, dst, false, makeWriteSet());
+    const expected = {
+      ...own,
+      permissions: { allow: ["Bash(b)", "mine-1", "Bash(a)", "mine-2"] },
+    };
+    expect(fs.readFileSync(dst, "utf-8")).toBe(JSON.stringify(expected, null, 2) + "\n");
+  });
+
+  it("a real run with an advisory list prints that it removed the entry and adds no upgrade advisory", () => {
+    const { src, dst } = seed(["Bash(*)", RETIRED_LINEAR]);
+    const advisories: PreflightFinding[] = [];
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      writeTier2JsonContained(src, dst, false, makeWriteSet(), advisories);
+      expect(advisories).toEqual([]);
+      const text = log.mock.calls.map((c) => c.join(" ")).join("\n");
+      expect(text).toContain(`removed "${RETIRED_LINEAR}" from permissions.allow`);
+      expect(text).not.toContain("Run bkit upgrade");
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("a dry run with an advisory list reports the retired entry as an advisory to run bkit upgrade", () => {
+    const { src, dst } = seed(["Bash(*)", RETIRED_LINEAR]);
+    const advisories: PreflightFinding[] = [];
+    writeTier2JsonContained(src, dst, true, makeWriteSet(), advisories);
+    expect(advisories).toHaveLength(1);
+    expect(advisories[0]!.id).toBe("retired-settings-entry");
+    expect(advisories[0]!.detect).toContain(`retired entries bkit removes: "${RETIRED_LINEAR}"`);
+    expect(advisories[0]!.action).toBe("Run bkit upgrade to remove a retired entry.");
+  });
+
+  it("a real run without an advisory list names each entry it removed", () => {
+    const save = "mcp__claude_ai_Linear__save_issue";
+    const { src, dst } = seed(["Bash(*)", RETIRED_LINEAR, save]);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      writeTier2JsonContained(src, dst, false, makeWriteSet());
+      const lines = log.mock.calls.map((c) => c.join(" "));
+      expect(lines.filter((l) => l.includes(`removed "${RETIRED_LINEAR}"`))).toHaveLength(1);
+      expect(lines.filter((l) => l.includes(`removed "${save}"`))).toHaveLength(1);
+      expect(lines.join("\n")).toContain(".claude/settings.json");
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("a real run prints the advice to keep a removed grant once per file, naming the personal and the team route", () => {
+    const { src, dst } = seed(["Bash(*)", RETIRED_LINEAR, "mcp__claude_ai_Linear__save_issue"]);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      writeTier2JsonContained(src, dst, false, makeWriteSet());
+      const advice = log.mock.calls
+        .map((c) => c.join(" "))
+        .filter((l) => l.includes("settings.local.json"));
+      expect(advice).toEqual([
+        '[bkit] .claude/settings.json: to keep a removed grant for yourself, add it to your personal .claude/settings.local.json. To allow it for the whole team, list the "Linear" server in the mcp-servers block of .agents/context.md and run bkit upgrade; bkit then derives "mcp__claude_ai_Linear__*" for Claude, which pre-approves every tool on the server, reads and writes (see .bkit/providers.md § MCP servers).',
+      ]);
+      expect(advice[0]).not.toMatch(/\bonly\b/);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("a dry run words the advice as a grant bkit would remove", () => {
+    const { src, dst } = seed(["Bash(*)", "mcp__claude_ai_Linear__save_issue"]);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      writeTier2JsonContained(src, dst, true, makeWriteSet());
+      const advice = log.mock.calls
+        .map((c) => c.join(" "))
+        .filter((l) => l.includes("settings.local.json"));
+      expect(advice).toHaveLength(1);
+      expect(advice[0]).toContain("to keep a grant bkit would remove for yourself");
+      expect(advice[0]).not.toContain("removed grant");
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it.each([
+    [false, "is covered"],
+    [true, "would be covered"],
+  ])(
+    "a removed grant that a derived wildcard covers is named as covered, with no route to keep it (dry run %s)",
+    (dryRun, covered) => {
+      const save = "mcp__claude_ai_Linear__save_issue";
+      const { src, dst } = seed(["Bash(*)", RETIRED_LINEAR, save]);
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      try {
+        writeTier2JsonContained(src, dst, dryRun, makeWriteSet(), undefined, [RETIRED_LINEAR]);
+        const lines = log.mock.calls.map((c) => c.join(" "));
+        expect(lines).toContain(
+          `[bkit] .claude/settings.json: "${save}" ${covered} by "${RETIRED_LINEAR}", which bkit derives from the mcp-servers block in .agents/context.md.`,
+        );
+        expect(lines.join("\n")).not.toContain("settings.local.json");
+        expect(lines.join("\n")).not.toContain("run bkit upgrade");
+      } finally {
+        log.mockRestore();
+      }
+    },
+  );
+
+  it("a retired value held twice is named once, in the printed lines and in the advisory", () => {
+    const { src, dst } = seed(["Bash(*)", RETIRED_LINEAR, RETIRED_LINEAR]);
+    const advisories: PreflightFinding[] = [];
+    writeTier2JsonContained(src, dst, true, makeWriteSet(), advisories);
+    expect(advisories[0]!.detect.split(RETIRED_LINEAR).length - 1).toBe(1);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      writeTier2JsonContained(src, dst, false, makeWriteSet());
+      const lines = log.mock.calls.map((c) => c.join(" "));
+      expect(lines.filter((l) => l.includes(`removed "${RETIRED_LINEAR}"`))).toHaveLength(1);
+    } finally {
+      log.mockRestore();
+    }
+  });
+});
+
+describe("retired settings list — shipped settings", () => {
+  it("no retired value is in the shipped .bkit/shared/.claude/settings.json at its path", () => {
+    const sharedRoot = path.join(__dirname, "..", "..", "..", "shared");
+    for (const entry of RETIRED_SETTINGS_ENTRIES) {
+      const shippedPath = path.join(sharedRoot, entry.file);
+      expect(fs.existsSync(shippedPath), `${shippedPath} is not shipped`).toBe(true);
+      let node: unknown = JSON.parse(fs.readFileSync(shippedPath, "utf-8"));
+      for (const key of entry.path.split(".")) node = (node as Record<string, unknown>)[key];
+      expect(Array.isArray(node), `${entry.file} has no ${entry.path} array`).toBe(true);
+      expect(node as unknown[]).not.toContain(entry.value);
+    }
+  });
+});
+
+describe("retired settings list — docs/migrations.md", () => {
+  it("every entry on the retired settings list has a docs/migrations.md row naming its source tags", () => {
+    const migrations = fs.readFileSync(
+      path.join(__dirname, "..", "..", "..", "..", "docs", "migrations.md"),
+      "utf-8",
+    );
+    expect(RETIRED_SETTINGS_ENTRIES.length).toBeGreaterThan(0);
+    for (const entry of RETIRED_SETTINGS_ENTRIES) {
+      const row = migrations.split("\n").find((l) => l.includes(entry.value));
+      expect(row, `no docs/migrations.md row names ${entry.value}`).toBeDefined();
+      expect(row).toContain(entry.file);
+      expect(row).toMatch(/v\d+\.\d+\.\d+/);
+    }
   });
 });
 

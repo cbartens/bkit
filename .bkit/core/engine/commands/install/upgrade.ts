@@ -70,6 +70,7 @@ import {
   writeCodexCloudDoc,
   writeCursorCloudDoc,
   writeCursorCliPermissionsArtifact,
+  resolveClaudeDerivedAllows,
 } from "../../install/cloud-env.js";
 import {
   syncTemplateCopies,
@@ -377,7 +378,14 @@ export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptio
             jsonSrc = jsonTmp;
           }
           try {
-            writeTier2JsonContained(jsonSrc, absolutePath, options.dryRun, ws);
+            writeTier2JsonContained(
+              jsonSrc,
+              absolutePath,
+              options.dryRun,
+              ws,
+              undefined,
+              resolveClaudeDerivedAllows(cwd),
+            );
           } finally {
             if (jsonTmp) {
               try {

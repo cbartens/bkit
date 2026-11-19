@@ -79,7 +79,7 @@ export function runCursorModule(ctx) {
     const hooksDst = ".cursor/hooks.json";
     if (fs.existsSync(hooksSrc)) {
         const prevLen = ws.writes.length;
-        writeTier2JsonContained(hooksSrc, hooksDst, dryRun, ws);
+        writeTier2JsonContained(hooksSrc, hooksDst, dryRun, ws, advisories);
         if (ws.writes.length > prevLen) {
             console.log(`${logPrefix} ${tag}cursor: ${hooksDst}`);
         }
