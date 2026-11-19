@@ -568,7 +568,7 @@ export const tasksCommand: CommandSpec = {
     },
     open: {
       summary:
-        "Print the group's tasks holding neither a `DONE` nor a `BLOCKED` line in the plan-execute log, and whether any is open; exit 0 (including none), 1 a plan with no task blocks, 2 a missing file or group.",
+        "Print the group's unticked tasks holding neither a `DONE` nor a `BLOCKED` line in the plan-execute log (a ticked task counts as done), and whether any is open; exit 0 (including none), 1 a plan with no task blocks, 2 a missing file or group.",
       use: "by-hand",
       flags: [
         {
@@ -593,7 +593,8 @@ export const tasksCommand: CommandSpec = {
       output: {
         plan: "the plan file read, as given",
         group: "the group whose tasks were read",
-        tasks: "[task numbers] the group's tasks with neither a `DONE` nor a `BLOCKED` line",
+        tasks:
+          "[task numbers] the group's unticked tasks with neither a `DONE` nor a `BLOCKED` line; a ticked task counts as done",
         handover: "true when at least one task is open, else false",
       },
       run: (ctx) => {
@@ -608,8 +609,7 @@ export const tasksCommand: CommandSpec = {
         const plan = readPlan(ctx.cwd, planArg);
         const candidates = groupTasks(plan, planArg, group);
         const closed = new Set(doneTasks(fs.readFileSync(logFile, "utf-8"), ["DONE", "BLOCKED"]));
-        // The log decides, not the box: a ticked task with no log line is still open.
-        const open = candidates.filter((t) => !closed.has(t.task)).map((t) => t.task);
+        const open = candidates.filter((t) => !t.done && !closed.has(t.task)).map((t) => t.task);
         for (const n of open) ctx.log(`TASK ${n} is open`);
         ctx.emit({ plan: planArg, group, tasks: open, handover: open.length > 0 });
         return EXIT.OK;
