@@ -7,11 +7,15 @@
  *   lower   rewrite both ceilings to the current totals; refuses when a total is above its ceiling
  *   raise   --reason "<why>": rewrite both ceilings to the current totals; owner only, refuses unless
  *           stdin and stdout are a terminal and the person types the confirmation
+ * Counted text: check counts the *.md files on disk. Inside a git work tree, lower and raise count
+ *   them as staged in the index, name each file whose unstaged changes they leave out and each
+ *   counted file whose staged change is not yet in HEAD, and refuse before any count while a
+ *   counted *.md file is unmerged; outside one, they count disk.
  * A record the index holds unmerged is a conflict, whatever the file holds:
  *   check and raise refuse it and name lower.
  *   lower refuses when the record is outside --root.
  *   lower reads index stages 1 (base), 2 (ours) and 3 (theirs) and refuses when one is missing or
- *   lacks a whole-number ceiling, or while a counted *.md file is unmerged.
+ *   lacks a whole-number ceiling.
  *   Merge rule, only when git runs a merge or a rebase (no REVERT_HEAD or CHERRY_PICK_HEAD) and
  *   stage 3 is the record of that operation's own commit (MERGE_HEAD or REBASE_HEAD): each folder
  *   may hold min(ours + theirs - base, max(ours, theirs)) words.
@@ -51,9 +55,59 @@ function listFiles(root, folder) {
     }));
 }
 
+/** Runs git in the repo that holds `root`, never one that the caller's GIT_* variables name. */
 function git(root, args) {
-  const r = spawnSync("git", args, { cwd: root, encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 });
+  const env = { ...process.env };
+  delete env.GIT_DIR;
+  delete env.GIT_WORK_TREE;
+  delete env.GIT_INDEX_FILE;
+  const r = spawnSync("git", args, {
+    cwd: root,
+    encoding: "utf-8",
+    env,
+    maxBuffer: 64 * 1024 * 1024,
+  });
   return r.status === 0 ? r.stdout : null;
+}
+
+const names = (out) => out.split("\0").filter(Boolean);
+
+/**
+ * Inside a git work tree, a lister of one folder's direct *.md children as staged in the index,
+ * with `unstaged` (changed on disk against the index after git's filters, or untracked) and
+ * `uncommitted` (staged changes not in HEAD; every staged file before the first commit).
+ * Refuses while a counted file is unmerged, before any count. Outside a work tree, null.
+ */
+function stagedLister(root, command) {
+  if (git(root, ["rev-parse", "--is-inside-work-tree"])?.trim() !== "true") return null;
+  const text = unmergedText(root);
+  if (text.length > 0) {
+    throw new CeilingError(
+      `${command} refused: ${text.join(", ")} still unmerged; resolve the text conflicts first, because conflict markers would be counted as words. The record is unchanged.`,
+    );
+  }
+  const read = (args) => {
+    const out = git(root, args);
+    if (out === null) {
+      throw new CeilingError(`${command} refused: git ${args.join(" ")} failed in ${root}.`);
+    }
+    return out;
+  };
+  const head = git(root, ["rev-parse", "-q", "--verify", "HEAD"]) !== null;
+  return (folder) => {
+    const spec = ["--", `:(glob)${folder}/*.md`];
+    const files = names(read(["ls-files", "-z", "--cached", ...spec]))
+      .sort()
+      .map((rel) => ({ rel, words: countWords(read(["show", `:./${rel}`])) }));
+    const unstaged = [
+      ...names(read(["diff", "--relative", "--name-only", "-z", ...spec])),
+      ...names(read(["ls-files", "-z", "--others", ...spec])),
+    ];
+    const uncommitted = head
+      ? names(read(["diff", "--cached", "--relative", "--name-only", "-z", "HEAD", ...spec]))
+      : files.map((f) => f.rel);
+    return { files, unstaged, uncommitted };
+  };
 }
 
 /** Files of one folder that grew since the record's last commit; the five largest without one. */
@@ -144,14 +198,14 @@ function loadRecord(root, recordPath, allowConflict) {
   if (unmergedPaths(root, [recordPath]).length > 0) {
     if (allowConflict) return CONFLICT;
     throw new CeilingError(
-      `${shown} is in a merge conflict; resolve the text files, then run: pnpm bkit:text:ceiling lower`,
+      `${shown} is in a merge conflict; resolve the text files, stage them with git add, then run: pnpm bkit:text:ceiling lower`,
     );
   }
   if (!fs.existsSync(recordPath)) return null;
   const parsed = parseJson(fs.readFileSync(recordPath, "utf-8"));
   if (parsed !== undefined) return parsed;
   throw new CeilingError(
-    `${shown} is not valid JSON; restore it from a commit where it is valid, then run: pnpm bkit:text:ceiling lower`,
+    `${shown} is not valid JSON; restore it from a commit where it is valid, stage your text edits with git add, then run: pnpm bkit:text:ceiling lower`,
   );
 }
 
@@ -182,12 +236,6 @@ function settleConflict(root, recordPath, ctx) {
       );
     }
     sides[side] = rec;
-  }
-  const text = unmergedText(root);
-  if (text.length > 0) {
-    throw new CeilingError(
-      `lower refused: ${text.join(", ")} still unmerged; resolve the text conflicts first, because conflict markers would be counted as words. The record is unchanged.`,
-    );
   }
   const { "merge base": base, ours, theirs } = sides;
   const merge = isMergeOrRebase(root, shown);
@@ -229,24 +277,57 @@ function writeRecord(recordPath, rec) {
   fs.writeFileSync(recordPath, `${JSON.stringify(sorted, null, 2)}\n`);
 }
 
-function load(root, recordPath, allowConflict = false) {
+/**
+ * `staged` names the command (lower, raise) that counts the index inside a git work tree and the
+ * files on disk outside one; without it, the files on disk.
+ */
+function load(root, recordPath, { allowConflict = false, staged } = {}) {
   const record = loadRecord(root, recordPath, allowConflict);
+  const lister = staged ? stagedLister(root, staged) : null;
   const state = {};
   const empty = [];
+  const noneStaged = [];
+  const unstaged = [];
+  const uncommitted = [];
   for (const [name, folder] of Object.entries(FOLDERS)) {
-    const files = listFiles(root, folder);
-    if (files.length === 0) empty.push(folder);
+    const disk = listFiles(root, folder);
+    const listed = lister ? lister(folder) : { files: disk, unstaged: [], uncommitted: [] };
+    const { files } = listed;
+    unstaged.push(...listed.unstaged);
+    uncommitted.push(...listed.uncommitted);
+    if (files.length === 0) (disk.length > 0 ? noneStaged : empty).push(folder);
     state[name] = { files, total: files.reduce((a, f) => a + f.words, 0) };
   }
-  return { record, state, empty };
+  return { record, state, empty, noneStaged, unstaged, uncommitted };
+}
+
+/** The notes of lower and raise: unstaged changes left out, and counted changes not yet in HEAD. */
+function noteStaged(ctx) {
+  if (ctx.unstaged.length > 0) {
+    console.log(
+      `[bkit:text:ceiling] not counted, because only the staged text is counted: the unstaged changes in ${ctx.unstaged.join(", ")}. Stage them with git add to count them.`,
+    );
+  }
+  if (ctx.uncommitted.length > 0) {
+    console.log(
+      `[bkit:text:ceiling] counted staged changes not yet committed: ${ctx.uncommitted.join(", ")}; the record holds only on a commit that carries them with the record.`,
+    );
+  }
 }
 
 function requireFolders(ctx) {
+  const out = [];
+  if (ctx.noneStaged.length > 0) {
+    out.push(
+      `${ctx.noneStaged.join(", ")} holds *.md files on disk but none staged; lower and raise count the staged text, so stage them with git add, then run the command again.`,
+    );
+  }
   if (ctx.empty.length > 0) {
-    throw new CeilingError(
+    out.push(
       `${ctx.empty.join(", ")} is missing or holds no *.md file; the ceiling cannot be counted. Restore the folder, or move the record's folder with the text.`,
     );
   }
+  if (out.length > 0) throw new CeilingError(out.join(" "));
 }
 
 function problems(root, recordPath, ctx) {
@@ -272,7 +353,7 @@ function problems(root, recordPath, ctx) {
       );
     } else if (total < ceiling) {
       out.push(
-        `${name}: ${total} words is below the ceiling of ${ceiling}. Lower the ceiling in this change: pnpm bkit:text:ceiling lower`,
+        `${name}: ${total} words is below the ceiling of ${ceiling}. Stage the text edits with git add, then lower the ceiling in this change: pnpm bkit:text:ceiling lower`,
       );
     }
   }
@@ -299,7 +380,8 @@ function next(ctx, reasonFor) {
  */
 export async function raiseCeilings({ root, record, reason, confirm }) {
   const recordPath = path.resolve(record ?? path.join(root, RECORD_REL));
-  const ctx = load(path.resolve(root), recordPath);
+  const ctx = load(path.resolve(root), recordPath, { staged: "raise" });
+  noteStaged(ctx);
   requireFolders(ctx);
   const why = (reason ?? "").trim();
   if (!why) {
@@ -352,7 +434,8 @@ async function main(argv) {
         .join(", ")}`,
     );
   } else if (command === "lower") {
-    const ctx = load(root, recordPath, true);
+    const ctx = load(root, recordPath, { allowConflict: true, staged: "lower" });
+    noteStaged(ctx);
     requireFolders(ctx);
     if (ctx.record === CONFLICT) {
       const { shown, merge } = settleConflict(root, recordPath, ctx);
@@ -376,7 +459,7 @@ async function main(argv) {
     writeRecord(recordPath, next(ctx, undefined));
     console.log("[bkit:text:ceiling] ceilings lowered to the current totals");
   } else if (command === "raise") {
-    const ctx = load(root, recordPath);
+    const ctx = load(root, recordPath, { staged: "raise" });
     requireFolders(ctx);
     if (!(opt("reason") ?? "").trim()) {
       throw new CeilingError(`raise refused: a non-empty --reason is required. Usage: ${RAISE}`);

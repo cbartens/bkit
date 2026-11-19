@@ -9,7 +9,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const SCRIPT = path.resolve("scripts/gate/bkit-text-ceiling.mjs");
 
@@ -90,6 +90,11 @@ function gitIn(fx: Fixture) {
 const promptFile = (fx: Fixture, name: string): string =>
   path.join(fx.root, ".bkit/core/prompts", name);
 
+/** `git add` of one prompt file in the fixture repo: lower and raise count the staged text. */
+const stagePrompt = (fx: Fixture, name: string): void => {
+  expect(gitIn(fx)("add", "--", `.bkit/core/prompts/${name}`).status).toBe(0);
+};
+
 type Side = (fx: Fixture) => void | Promise<void>;
 
 /** A git repo on branch main with prompts p1.md (5) + p2.md (5) at a committed record of 10. */
@@ -127,11 +132,13 @@ async function mergeFixture(sideA: Side, sideB: Side, mode: "merge" | "rebase" =
 
 const shorten = (name: string, n: number) => (fx: Fixture) => {
   fs.writeFileSync(promptFile(fx, name), words(n));
+  stagePrompt(fx, name);
   expect(run(["lower"], fx).status).toBe(0);
 };
 
 const raiseTo = (name: string, n: number, reason: string) => async (fx: Fixture) => {
   fs.writeFileSync(promptFile(fx, name), words(n));
+  stagePrompt(fx, name);
   await callRaise({ root: fx.root, record: fx.record, reason, confirm: () => true });
 };
 
@@ -323,6 +330,171 @@ describe("bkit-text-ceiling lower and raise", () => {
   });
 });
 
+describe("bkit-text-ceiling lower on the staged text", () => {
+  const P = ".bkit/core/prompts";
+
+  it("lower with an unstaged edit in another prompt file never leaves a record the committed tree fails", () => {
+    const { fx, git } = repoFixture();
+    fs.writeFileSync(promptFile(fx, "p1.md"), words(1));
+    expect(git("add", `${P}/p1.md`).status).toBe(0);
+    fs.writeFileSync(promptFile(fx, "p2.md"), words(2));
+    expect(run(["lower"], fx).status).toBe(0);
+    expect(git("add", RECORD).status).toBe(0);
+    expect(git("commit", "-q", "-m", "staged only").status).toBe(0);
+    expect(git("checkout", "--", `${P}/p2.md`).status).toBe(0);
+    const c = run(["check"], fx);
+    expect(c.out).not.toContain("above the ceiling");
+    expect(c.status).toBe(0);
+  });
+
+  it("lower counts a staged new prompt file and leaves out an unstaged one", () => {
+    const { fx, git } = repoFixture();
+    fs.writeFileSync(promptFile(fx, "p1.md"), words(1));
+    fs.writeFileSync(promptFile(fx, "new1.md"), words(1));
+    expect(git("add", `${P}/p1.md`, `${P}/new1.md`).status).toBe(0);
+    fs.writeFileSync(promptFile(fx, "new2.md"), words(1));
+    const r = run(["lower"], fx);
+    expect(r.status).toBe(0);
+    expect(readRecord(fx).prompts.ceiling).toBe(7);
+    const notes = r.out.split("\n").filter((l) => l.includes("not counted"));
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain(`${P}/new2.md`);
+    expect(notes[0]).not.toContain("new1.md");
+  });
+
+  it("lower counts a prompt file deleted on disk but still in the index and names it as not counted", () => {
+    const { fx } = repoFixture();
+    fs.rmSync(promptFile(fx, "p2.md"));
+    const r = run(["lower"], fx);
+    expect(r.status).toBe(0);
+    expect(readRecord(fx).prompts.ceiling).toBe(10);
+    const notes = r.out.split("\n").filter((l) => l.includes("not counted"));
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain(`${P}/p2.md`);
+    expect(notes[0]).not.toContain("p1.md");
+  });
+
+  it("lower refuses a folder whose every prompt file is unstaged and names the folder", () => {
+    const fx = makeFixture({ "a.md": 10 }, { "p1.md": 5 });
+    const git = gitIn(fx);
+    expect(git("init", "-q", "-b", "main").status).toBe(0);
+    expect(git("add", "--", ".bkit/core/workflows", RECORD).status).toBe(0);
+    expect(git("commit", "-q", "-m", "workflows only").status).toBe(0);
+    const before = fs.readFileSync(fx.record);
+    const r = run(["lower"], fx);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain(`${P} holds *.md files on disk but none staged`);
+    expect(r.out).toContain("git add");
+    expect(r.out).not.toContain("is missing or holds no *.md file");
+    expect(fs.readFileSync(fx.record).equals(before)).toBe(true);
+  });
+
+  it("lower names every counted file whose staged change is not yet committed", () => {
+    const { fx } = repoFixture();
+    fs.writeFileSync(promptFile(fx, "p2.md"), words(2));
+    stagePrompt(fx, "p2.md");
+    fs.writeFileSync(promptFile(fx, "p1.md"), words(4));
+    stagePrompt(fx, "p1.md");
+    const r = run(["lower"], fx);
+    expect(r.status).toBe(0);
+    expect(readRecord(fx).prompts.ceiling).toBe(6);
+    const notes = r.out.split("\n").filter((l) => l.includes("not yet committed"));
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain(`${P}/p1.md`);
+    expect(notes[0]).toContain(`${P}/p2.md`);
+    expect(notes[0]).toContain("carries them with the record");
+  });
+
+  it("lower prints no not-yet-committed note when the index equals HEAD for the counted files", () => {
+    const { fx } = repoFixture();
+    fs.writeFileSync(promptFile(fx, "p1.md"), words(1));
+    const r = run(["lower"], fx);
+    expect(r.status).toBe(0);
+    expect(r.out).not.toContain("not yet committed");
+  });
+
+  it("lower prints no not-counted note when a line-ending rule makes disk differ from the index byte for byte", () => {
+    const fx = makeFixture({ "a.md": 10 }, { "p1.md": 5 });
+    fs.writeFileSync(path.join(fx.root, ".gitattributes"), "*.md text eol=crlf\n");
+    const git = gitIn(fx);
+    expect(git("init", "-q", "-b", "main").status).toBe(0);
+    expect(git("add", "-A").status).toBe(0);
+    expect(git("commit", "-q", "-m", "baseline").status).toBe(0);
+    fs.rmSync(promptFile(fx, "p1.md"));
+    expect(git("checkout", "--", P).status).toBe(0);
+    expect(fs.readFileSync(promptFile(fx, "p1.md"), "utf-8")).toContain("\r\n");
+    const r = run(["lower"], fx);
+    expect(r.status).toBe(0);
+    expect(r.out).not.toContain("not counted");
+  });
+
+  it("lower counts this root's index when the caller's GIT_DIR names another repo", () => {
+    const other = repoFixture();
+    fs.writeFileSync(promptFile(other.fx, "p1.md"), words(1));
+    stagePrompt(other.fx, "p1.md");
+    const { fx } = repoFixture();
+    fs.writeFileSync(promptFile(fx, "p1.md"), words(3));
+    stagePrompt(fx, "p1.md");
+    const r = spawnSync("node", [SCRIPT, "lower", "--root", fx.root, "--record", fx.record], {
+      encoding: "utf-8",
+      cwd: fx.root,
+      env: { ...cleanEnv(), GIT_DIR: path.join(other.fx.root, ".git") },
+    });
+    expect(r.status).toBe(0);
+    expect(readRecord(fx).prompts.ceiling).toBe(8);
+  });
+
+  it("raise leaves out an unstaged edit and names it as not counted", async () => {
+    const { fx } = repoFixture();
+    fs.writeFileSync(promptFile(fx, "p1.md"), words(8));
+    stagePrompt(fx, "p1.md");
+    fs.writeFileSync(promptFile(fx, "p2.md"), words(9));
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      await callRaise({ root: fx.root, record: fx.record, reason: "why", confirm: () => true });
+      const notes = log.mock.calls
+        .map((c) => String(c[0]))
+        .filter((l) => l.includes("not counted"));
+      expect(notes).toHaveLength(1);
+      expect(notes[0]).toContain(`${P}/p2.md`);
+    } finally {
+      log.mockRestore();
+    }
+    expect(readRecord(fx).prompts.ceiling).toBe(13);
+  });
+
+  it("check inside a git repo counts the files on disk and fails below on an unstaged shrink", () => {
+    const { fx } = repoFixture();
+    fs.writeFileSync(promptFile(fx, "p1.md"), words(1));
+    const c = run(["check"], fx);
+    expect(c.status).toBe(1);
+    expect(c.out).toContain("prompts: 6 words is below the ceiling of 10");
+  });
+
+  it("lower refuses before counting while a prompt file is unmerged and the record is not", () => {
+    const fx = makeFixture({ "a.md": 10 }, { "p1.md": 30 });
+    const git = gitIn(fx);
+    expect(git("init", "-q", "-b", "main").status).toBe(0);
+    expect(git("add", "-A").status).toBe(0);
+    expect(git("commit", "-q", "-m", "baseline").status).toBe(0);
+    expect(git("branch", "b").status).toBe(0);
+    fs.writeFileSync(promptFile(fx, "p1.md"), "alpha beta\n");
+    expect(git("commit", "-q", "-am", "main side").status).toBe(0);
+    expect(git("checkout", "-q", "b").status).toBe(0);
+    fs.writeFileSync(promptFile(fx, "p1.md"), "gamma delta\n");
+    expect(git("commit", "-q", "-am", "b side").status).toBe(0);
+    expect(git("checkout", "-q", "main").status).toBe(0);
+    expect(git("merge", "-q", "--no-edit", "b").status).not.toBe(0);
+    const unmerged = git("diff", "--name-only", "--diff-filter=U").out.trim().split("\n");
+    expect(unmerged).toEqual([`${P}/p1.md`]);
+    const before = fs.readFileSync(fx.record);
+    const r = run(["lower"], fx);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain("still unmerged");
+    expect(fs.readFileSync(fx.record).equals(before)).toBe(true);
+  });
+});
+
 describe("bkit-text-ceiling missing folders and a broken record", () => {
   it("check fails and lower refuses when a text folder is missing or empty", () => {
     for (const mode of ["missing", "empty"] as const) {
@@ -434,6 +606,7 @@ describe("bkit-text-ceiling on a record in a merge conflict", () => {
     expect(merge.status).not.toBe(0);
     expect(unmerged).toEqual([RECORD]);
     fs.writeFileSync(promptFile(fx, "p1.md"), words(2));
+    stagePrompt(fx, "p1.md");
     expect(run(["lower"], fx).status).toBe(0);
     expect(readRecord(fx).prompts.ceiling).toBe(11);
     expect(readRecord(fx).prompts.reason).toBe("theirs raise");
@@ -447,6 +620,7 @@ describe("bkit-text-ceiling on a record in a merge conflict", () => {
     expect(merge.status).not.toBe(0);
     expect(unmerged).toEqual([RECORD]);
     fs.writeFileSync(promptFile(fx, "p1.md"), words(5));
+    stagePrompt(fx, "p1.md");
     expect(run(["lower"], fx).status).toBe(0);
     expect(readRecord(fx).prompts.ceiling).toBe(12);
     expect(readRecord(fx).prompts.reason).toBe("ours raise");
@@ -466,6 +640,7 @@ describe("bkit-text-ceiling on a record in a merge conflict", () => {
     expect(c.out).toContain("is in a merge conflict");
     expect(c.out).toContain("pnpm bkit:text:ceiling lower");
     fs.writeFileSync(promptFile(fx, "p1.md"), words(4));
+    stagePrompt(fx, "p1.md");
     const before = fs.readFileSync(fx.record);
     const r = run(["lower"], fx);
     expect(r.status).toBe(1);
@@ -477,6 +652,7 @@ describe("bkit-text-ceiling on a record in a merge conflict", () => {
     const { fx, git, merge, unmerged } = await mergeFixture(
       async (f) => {
         fs.writeFileSync(promptFile(f, "p1.md"), words(8));
+        stagePrompt(f, "p1.md");
         await callRaise({
           root: f.root,
           record: f.record,
@@ -500,6 +676,7 @@ describe("bkit-text-ceiling on a record in a merge conflict", () => {
     const { fx, merge } = await mergeFixture(shorten("p1.md", 3), shorten("p2.md", 4));
     expect(merge.status).not.toBe(0);
     fs.writeFileSync(promptFile(fx, "p1.md"), words(6));
+    stagePrompt(fx, "p1.md");
     const before = fs.readFileSync(fx.record);
     const r = run(["lower"], fx);
     expect(r.status).toBe(1);
@@ -514,6 +691,7 @@ describe("bkit-text-ceiling on a record in a merge conflict", () => {
   it("lower refuses when both sides raised and the merged total is above the higher side", async () => {
     const grow = (name: string, n: number) => async (f: Fixture) => {
       fs.writeFileSync(promptFile(f, name), words(n));
+      stagePrompt(f, name);
       await callRaise({ root: f.root, record: f.record, reason: "raise", confirm: () => true });
     };
     const { fx, merge, unmerged } = await mergeFixture(grow("p1.md", 8), grow("p2.md", 7));
@@ -593,6 +771,7 @@ describe("bkit-text-ceiling on a record conflict that is not a merge or a rebase
     const sha = repo.git("rev-parse", "HEAD").out.trim();
     await repo.commit((f) => {
       fs.writeFileSync(promptFile(f, "p1.md"), words(5));
+      stagePrompt(f, "p1.md");
       shorten("p2.md", 4)(f);
     }, "C");
     return { ...repo, sha };
@@ -635,6 +814,7 @@ describe("bkit-text-ceiling on a record conflict that is not a merge or a rebase
   it("lower refuses a revert of a raise whose total sits between that allowance and ours' ceiling", async () => {
     const { fx } = await raiseReverted();
     fs.writeFileSync(promptFile(fx, "p1.md"), words(6));
+    stagePrompt(fx, "p1.md");
     expect(expectRefused(fx, 9).out).toContain("ours 11 + theirs 10 - base 12 = 9");
   });
 
