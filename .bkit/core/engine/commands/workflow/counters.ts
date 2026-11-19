@@ -327,14 +327,16 @@ export function loopTrend(rounds: Step[], codeChanged: boolean | null): LoopTren
 
 /**
  * The failing tests of the latest `test-run` row for `step` and `attempt` in `workflow`'s
- * active run: 0 with no row, null when unknown (no count, or red with 0 counted failures).
+ * active run. `ran` is false when no row exists (the gate did not run: not run, never 0);
+ * `failures` is null when unknown (no count, or red with 0 counted failures) and 0 only for a
+ * row that counted 0.
  */
 function gateFailuresOf(
   file: string,
   workflow: string,
   step: string,
   attempt: number | undefined,
-): number | null {
+): { ran: boolean; failures: number | null } {
   const rows = readStatusRows(file);
   let start = -1;
   rows.forEach((r, i) => {
@@ -350,11 +352,11 @@ function gateFailuresOf(
         r.attempt === attempt,
     )
     .at(-1);
-  if (row === undefined) return 0;
+  if (row === undefined) return { ran: false, failures: null };
   const failures = row.failures;
-  if (typeof failures !== "number") return null;
-  if (row.verdict === "FAIL" && failures === 0) return null;
-  return failures;
+  if (typeof failures !== "number") return { ran: true, failures: null };
+  if (row.verdict === "FAIL" && failures === 0) return { ran: true, failures: null };
+  return { ran: true, failures };
 }
 
 export interface LoopProgress {
@@ -386,8 +388,11 @@ export interface LoopProgress {
  * `sinceClean`, only the rounds after `check`'s last clean round: a loop that reopens. With
  * `gate` (a step prefix, e.g. `build-group-gate`), each round also counts the failing tests
  * of the latest same-attempt test-run row of `{gate}-{group}`, or of `{gate}` with no group:
- * 0 with no row, and unknown (null) when that row's count is null or the row is red with 0
- * counted failures. A round is clean only when its gate also counted 0.
+ * not run (unknown, never 0) with no row, and unknown (null) when that row's count is null or
+ * the row is red with 0 counted failures. A round is clean only when its gate also counted 0,
+ * so a clean verify with no gate row (not run) is not clean once the gate ran in any round, and
+ * a `sinceClean` loop never closes on a gate that did not run. Only rounds with the same scope and the same gate state
+ * (ran or not) are compared.
  */
 export function loopProgress(
   file: string,
@@ -403,23 +408,42 @@ export function loopProgress(
   const gateStep = gate === undefined || group === undefined ? gate : `${gate}-${group}`;
   const gateOf = (r: Step) =>
     gateStep === undefined ? undefined : gateFailuresOf(file, workflow, gateStep, r.attempt);
-  const clean = (r: Step) => cleanRound(r) && (gateStep === undefined || gateOf(r) === 0);
+  // A loop whose gate ran in no round at all (every verify failed first) ignores the gate for
+  // cleanliness; once the gate ran in any round, a round without a gate row is not clean.
+  const gateRanAnywhere = () =>
+    gateStep !== undefined &&
+    activeDoneSteps(runs, workflow, { step: check, group }).some((r) => gateOf(r)?.ran === true);
+  const clean = (r: Step) => {
+    if (!cleanRound(r)) return false;
+    if (gateStep === undefined) return true;
+    const g = gateOf(r);
+    return g?.ran ? g.failures === 0 : !gateRanAnywhere();
+  };
   const done = (step: string) =>
     sinceClean
       ? activeDoneStepsSinceClean(runs, workflow, { step, group }, check, clean)
       : activeDoneSteps(runs, workflow, { step, group });
   const checked = done(check);
-  const gateFailures = checked.map(gateOf);
+  const gateResults = checked.map(gateOf);
+  const gateFailures = gateResults.map((g) => (g === undefined ? undefined : g.failures));
+  const gateRan = gateResults.map((g) => g?.ran === true);
   const rounds = checked.map((r, i) => {
-    const g = gateFailures[i];
-    if (g === undefined) return r;
-    const failures = g === null || r.failures === undefined ? undefined : r.failures + g;
+    const g = gateResults[i];
+    if (g === undefined || !g.ran) return r;
+    const failures =
+      g.failures === null || r.failures === undefined ? undefined : r.failures + g.failures;
     return { ...r, failures };
   });
   const fixes = done(fix);
   const last = rounds.at(-1);
-  // Only rounds that ran the same tests are compared: the earliest round with the last round's scope.
-  const first = last === undefined ? undefined : rounds.find((r) => r.scope === last.scope);
+  // Only rounds measured the same way are compared: the earliest round with the last round's
+  // scope and the same gate state (ran or not).
+  const lastIndex = rounds.length - 1;
+  const firstIndex =
+    last === undefined
+      ? -1
+      : rounds.findIndex((r, i) => r.scope === last.scope && gateRan[i] === gateRan[lastIndex]);
+  const first = firstIndex < 0 ? undefined : rounds[firstIndex];
   let codeChanged: boolean | null = null;
   if (first && last && first !== last && first.parentSha && last.parentSha) {
     const diff = runGit(checkoutOf(file, cwd), [
@@ -447,11 +471,13 @@ export function loopProgress(
       ? "STANDARD"
       : repeatStrategy(readStatusRows(file), workflow, testStep, current).strategy;
   const sameScope = first !== undefined && last !== undefined && first !== last;
-  const differentScopes = rounds.length >= 2 && !sameScope;
+  const incomparable = rounds.length >= 2 && !sameScope;
+  const gateMixed = incomparable && rounds.slice(0, -1).some((r) => r.scope === last?.scope);
+  const differentScopes = incomparable && !gateMixed;
   const trend: LoopTrend =
     rounds.length < 2
       ? "first-round"
-      : differentScopes
+      : incomparable
         ? "unknown"
         : loopTrend([first as Step, last as Step], codeChanged);
   const countOf = (r: Step | undefined) => (r?.failures === undefined ? "?" : String(r.failures));
@@ -460,6 +486,8 @@ export function loopProgress(
   const lastFailures = last?.failures;
   let trendLine: string;
   if (trend === "first-round") trendLine = "This was the first round, so there is no trend yet.";
+  else if (gateMixed)
+    trendLine = `The gate ran in only some of the rounds (${gateRan.map((g) => (g ? "ran" : "not run")).join(" → ")}), so their counts cannot be compared.`;
   else if (differentScopes)
     trendLine = `The rounds ran different tests (${scopeText(rounds[0]?.scope)}, then ${scopeText(last?.scope)}), so their counts cannot be compared.`;
   else if (trend === "unknown")
@@ -492,7 +520,7 @@ export function loopProgress(
       ? {}
       : {
           gateCounts: gateFailures
-            .map((g) => (g === null || g === undefined ? "?" : String(g)))
+            .map((g, i) => (g === null || g === undefined || !gateRan[i] ? "?" : String(g)))
             .join(" → "),
         }),
     codeChanged,
@@ -873,7 +901,7 @@ export const countersCommand: CommandSpec = {
         counts:
           "problem count after each round, e.g. 5 → 2 (with a gate, the gate's failing tests are added)",
         gateCounts:
-          "the group gate's failing tests after each round, e.g. 3 → 3 (absent without a gate)",
+          "the group gate's failing tests after each round, e.g. 3 → 3; a round whose gate did not run reads ? (absent without a gate)",
         codeChanged:
           "source changed between the compared rounds, the earliest and the last that ran the same tests (same scope) (null when git cannot tell)",
         lastStrategy: "strategy of the last fix round (null when none ran)",
@@ -881,7 +909,7 @@ export const countersCommand: CommandSpec = {
         finalSpent: "true when a fix round already ran FINAL",
         minutesPerRound: "average minutes between check rounds (null under two rounds)",
         trend:
-          "first-round | closing | stuck | worse | unknown (a missing count, or rounds of different scopes)",
+          "first-round | closing | stuck | worse | unknown (a missing count, rounds of different scopes, or the gate ran in only some of the rounds)",
         trendLine: "one plain sentence on what the counts show, with the counts and the reason",
         recommend:
           "try-again when closing, stop when stuck or worse (null on the first round or an unknown trend)",

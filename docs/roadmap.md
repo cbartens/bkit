@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-19T01:44:43Z)_
+_(refreshed 2026-11-19T04:59:47Z)_
 
 ### Design
 
@@ -66,6 +66,7 @@ _(refreshed 2026-11-19T01:44:43Z)_
 | 1053-upgrade-leaves-stale | 1053-upgrade-leaves-stale | 1795011926108 |
 | 1055-worktree-removal-says | 1055-worktree-removal-says | 1795006893761 |
 | 1061-takeover-unbuilt-planned | 1061-takeover-unbuilt-planned | 1795052683803 |
+| 1063-fix-loop-pause | 1063-fix-loop-pause | 1795064387258 |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
 | 811-publish-dev-refused | 811-publish-dev-refused | 1794974015158 |
 | 812-keep-steps-placeholder | 812-keep-steps-placeholder | 1795002443754 |

@@ -1036,9 +1036,9 @@ Every point where a run can ask the owner has two settings under `package.json` 
   | `codeChanged` | `git diff` of source (plan logs and ledgers excluded) between the `parentSha` of the compared same-scope pair; `null` when git cannot compare |
   | `lastStrategy` / `finalSpent` | fix rows' `strategy` |
   | `nextStrategy` | the same label `status route` gives the fix step: from the failing tests that repeat across attempts of every run |
-  | `gateCounts` | each round's gate failing tests (`build-group-gate-{GROUP}` for the verify loop, `build-holistic-gate` for the holistic loop), added to `counts`; a round is clean only when its gate also counted 0 |
+  | `gateCounts` | each round's gate failing tests (`build-group-gate-{GROUP}` for the verify loop, `build-holistic-gate` for the holistic loop), added to `counts`; a round whose gate did not run (verify `CONCERNS` or `FAIL`, so no gate ran) reads `?`, never `0`, and keeps its verify count; a round is clean only when its gate also counted 0, so once the gate ran in any round a clean verify with no gate row is not clean |
   | `minutesPerRound` | check-row timestamps |
-  | `trend` | Compares the earliest round with the last round's `scope` against the last round. `unknown` = a compared count is missing, or no earlier round shares the last round's `scope`; `worse` = count rose; `closing` = count fell and code changed; `stuck` = otherwise; `first-round` = one check row |
+  | `trend` | Compares the earliest round with the last round's `scope` against the last round. `unknown` = a compared count is missing, or no earlier round shares the last round's `scope` and gate state (the gate ran in only some of the rounds); `worse` = count rose; `closing` = count fell and code changed; `stuck` = otherwise; `first-round` = one check row |
   | `trendLine` | One plain sentence with the compared counts and the reason for the trend; every loop question states it instead of a fixed claim |
   | `recommend` | `try-again` when `closing`, else `stop`; `null` on `first-round` and `unknown` |
 

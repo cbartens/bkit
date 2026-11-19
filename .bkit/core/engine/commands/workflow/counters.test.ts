@@ -1234,8 +1234,78 @@ describe("loopProgress with a gate", () => {
       verify("2026-10-01T00:30:00Z", 2, 0),
     ]);
     const r = progress(file);
-    expect(r.json.gateCounts).toBe("0 → 3");
+    expect(r.json.gateCounts).toBe("? → 3");
     expect(r.json.counts).toBe("0 → 3");
+    expect(r.json.trend).toBe("unknown");
+    expect(r.json.recommend).toBeNull();
+    expect(r.json.rounds[0].gateFailures).toBeNull();
+  });
+
+  it("a not-run gate then a red gate has no trend", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      done("build", "build-plan-verify", "2026-10-01T00:10:00Z", {
+        verdict: "CONCERNS",
+        failures: 3,
+        attempt: 1,
+        group: 1,
+        parentSha: "sha1",
+      }),
+      done("build", "build-plan-verify", "2026-10-01T00:30:00Z", {
+        verdict: "PASS",
+        failures: 0,
+        attempt: 2,
+        group: 1,
+        parentSha: "sha2",
+      }),
+      gate("2026-10-01T00:29:00Z", 2, "FAIL", 34),
+    ]);
+    const r = progress(file);
+    expect(r.json.gateCounts).toBe("? → 34");
+    expect(r.json.trend).toBe("unknown");
+    expect(r.json.recommend).toBeNull();
+    expect(r.json.rounds[0].gateFailures).toBeNull();
+    expect(r.json.trendLine).not.toMatch(/rose/i);
+  });
+
+  it("a gate that ran and counted 0 reads 0 beside a not-run round that reads ?", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      done("build", "build-plan-verify", "2026-10-01T00:10:00Z", {
+        verdict: "CONCERNS",
+        failures: 2,
+        attempt: 1,
+        group: 1,
+        parentSha: "sha1",
+      }),
+      gate("2026-10-01T00:29:00Z", 2, "PASS", 0),
+      verify("2026-10-01T00:30:00Z", 2, 1),
+    ]);
+    const r = progress(file);
+    expect(r.json.gateCounts).toBe("? → 0");
+    expect(r.json.rounds[1].gateFailures).toBe(0);
+    expect(r.json.rounds[0].gateFailures).toBeNull();
+  });
+
+  it("a red gate then a verify round with no gate run has no trend", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      gate("2026-10-01T00:09:00Z", 1, "FAIL", 5),
+      verify("2026-10-01T00:10:00Z", 1, 0),
+      done("build", "build-plan-verify", "2026-10-01T00:30:00Z", {
+        verdict: "CONCERNS",
+        failures: 1,
+        attempt: 2,
+        group: 1,
+        parentSha: "sha2",
+      }),
+    ]);
+    const r = progress(file);
+    expect(r.json.trend).toBe("unknown");
+    expect(r.json.recommend).toBeNull();
+    expect(r.json.trendLine).not.toMatch(/closing/i);
+    expect(r.json.trendLine).toMatch(/gate/i);
+    expect(r.json.trendLine).toMatch(/only|some/i);
   });
 });
 
@@ -1299,6 +1369,40 @@ describe("loopProgress with the holistic gate", () => {
     const p = progress(file);
     expect(p.rounds.map((r) => r.attempt)).toEqual([2, 3]);
     expect(p.counts).toBe("3 → 2");
+  });
+
+  it("a clean holistic verify with no gate row stays a round of the open loop", () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      holistic("2026-10-01T00:10:00Z", 1, "FAIL", 2),
+      gate("2026-10-01T00:11:00Z", 1, "FAIL", 3),
+      holistic("2026-10-01T00:20:00Z", 2, "PASS", 0),
+      holistic("2026-10-01T00:30:00Z", 3, "FAIL", 1),
+      gate("2026-10-01T00:31:00Z", 3, "FAIL", 3),
+    ]);
+    const p = loopProgress(
+      file,
+      path.dirname(file),
+      "build",
+      "build-plan-verify-holistic",
+      "build-plan-gaps-remediate-holistic",
+      undefined,
+      true,
+      "build-holistic-gate",
+    );
+    expect(p.rounds.map((r) => r.attempt)).toEqual([1, 2, 3]);
+  });
+
+  it("a gate-mixed trend line names the holistic gate, not the group gate", () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      holistic("2026-10-01T00:10:00Z", 1, "FAIL", 2),
+      gate("2026-10-01T00:11:00Z", 1, "FAIL", 3),
+      holistic("2026-10-01T00:30:00Z", 2, "FAIL", 1),
+    ]);
+    const p = progress(file);
+    expect(p.trendLine).toMatch(/only some of the rounds/);
+    expect(p.trendLine).not.toMatch(/group gate/i);
   });
 });
 
