@@ -23,8 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-19T05:27:14Z)_
-_(refreshed 2026-11-19T04:59:47Z)_
+_(refreshed 2026-11-19T07:08:28Z)_
 
 ### Design
 
@@ -64,6 +63,7 @@ _(refreshed 2026-11-19T04:59:47Z)_
 | 1030-later-scope-passing | 1030-later-scope-passing | 1794972956727 |
 | 1035-ledger-commit-outbox | 1035-ledger-commit-outbox | 1795003365889 |
 | 1039-ledger-query-status | 1039-ledger-query-status | 1794984068525 |
+| 1048-pre-push-dist | 1048-pre-push-dist | 1795072108927 |
 | 1053-upgrade-leaves-stale | 1053-upgrade-leaves-stale | 1795011926108 |
 | 1055-worktree-removal-says | 1055-worktree-removal-says | 1795006893761 |
 | 1058-cleanup-check-reads | 1058-cleanup-check-reads | 1795066034776 |

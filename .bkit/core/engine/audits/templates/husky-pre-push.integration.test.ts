@@ -1260,9 +1260,36 @@ describe(".husky/pre-push min push", () => {
   });
 
   it(".husky/pre-push: a code push still runs them", () => {
-    const r = push(".husky/pre-push", commitFiles({ "src/a.ts": "b\n" }, "feat(1): a"));
-    expect(r.calls).toContain("bkit:check:dist");
+    const sha = commitFiles({ "src/a.ts": "b\n" }, "feat(1): a");
+    const r = push(".husky/pre-push", sha);
+    expect(r.calls).toContain(`bkit:check:dist --ref=${sha}`);
+    expect(r.calls).not.toContain("bkit:check:dist");
     expect(r.calls).toContain("bkit:lint:workflows");
+  });
+
+  it(".husky/pre-push: a push to dev checks the commit pushed to dev, which wins over the branch commit", () => {
+    const devSha = commitFiles({ "src/a.ts": "b\n" }, "feat(1): a");
+    const branchSha = commitFiles({ "src/a.ts": "c\n" }, "feat(1): b");
+    const r = push(
+      ".husky/pre-push",
+      devSha,
+      "refs/heads/dev",
+      ZERO,
+      `refs/heads/feat/1-x ${branchSha} refs/heads/feat/1-x ${ZERO}\n`,
+    );
+    expect(r.calls).toContain(`bkit:check:dist --ref=${devSha}`);
+    expect(r.calls).not.toContain(`bkit:check:dist --ref=${branchSha}`);
+    expect(r.calls).not.toContain("bkit:check:dist");
+  });
+
+  it(".husky/pre-push: a push with no dev or branch commit runs the dist check with no argument", () => {
+    const r = push(
+      ".husky/pre-push",
+      commitFiles({ "src/a.ts": "b\n" }, "feat(1): a"),
+      "refs/heads/other",
+    );
+    expect(r.calls).toContain("bkit:check:dist");
+    expect(r.calls.some((c) => c.startsWith("bkit:check:dist --ref"))).toBe(false);
   });
 });
 

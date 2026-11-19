@@ -388,11 +388,21 @@ if [ -n "$PUSH_DEV_SHA" ] && [ -f scripts/ci/lanes/bkit-resolve-push-base.mjs ];
   fi
 fi
 
-# bkit repo only: the staged `dist/` must equal the `tsc` output of the staged tree (the
-# index), and actionlint over `.github/workflows/*` (skips when actionlint is absent). A min
-# push skips both: it changes no code.
+# bkit repo only: `dist/` must equal the `tsc` output of the same tree, and actionlint over
+# `.github/workflows/*` (skips when actionlint is absent). The dist check judges the commit pushed
+# to `dev`, else the commit pushed to the checked-out branch; with neither (a tag push, a delete, a
+# branch that is not checked out) it reads the index. A min push skips both: it changes no code.
 if [ "$MIN_PUSH" != "1" ]; then
-  pnpm bkit:check:dist < /dev/null
+  DIST_REF="${PUSH_DEV_SHA:-$PUSH_BRANCH_SHA}"
+  case "$DIST_REF" in
+    *[!0]*) ;;
+    *) DIST_REF="" ;;
+  esac
+  if [ -n "$DIST_REF" ]; then
+    pnpm bkit:check:dist --ref="$DIST_REF" < /dev/null
+  else
+    pnpm bkit:check:dist < /dev/null
+  fi
   pnpm bkit:lint:workflows < /dev/null
 fi
 

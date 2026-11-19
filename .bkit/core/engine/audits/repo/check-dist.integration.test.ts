@@ -15,6 +15,7 @@ const ROOT = process.cwd();
 const SCRIPT = path.join(ROOT, "scripts/gate/bkit-check-dist.mjs");
 const TSC = path.join(ROOT, "node_modules/.bin/tsc");
 const STALE_MESSAGE = "[bkit] dist/ is stale — run pnpm build and commit the result";
+const REF_MESSAGE = "[bkit] --ref value is not a commit";
 const EMPTY_MESSAGE =
   "[bkit] the staged tree compiles to no file under dist/ — check tsconfig.json outDir and noEmit";
 
@@ -64,8 +65,8 @@ function scratchRepo(): string {
   return dir;
 }
 
-function check(cwd: string) {
-  return spawnSync("node", [SCRIPT], { cwd, encoding: "utf-8" });
+function check(cwd: string, ...args: string[]) {
+  return spawnSync("node", [SCRIPT, ...args], { cwd, encoding: "utf-8" });
 }
 
 function readDist(cwd: string): Record<string, string> {
@@ -178,6 +179,64 @@ describe("bkit-check-dist", () => {
       const result = check(dir);
       expect(result.status).toBe(1);
       expect(result.stderr + result.stdout).toContain(EMPTY_MESSAGE);
+    },
+  );
+
+  it(
+    "--ref of a commit with a stale dist fails as stale while the fix is only staged",
+    { timeout: localLimit(120_000) },
+    () => {
+      const dir = scratchRepo();
+      write(dir, A, "export const a: number = 2;\n");
+      git(dir, "add", A);
+      git(dir, "commit", "-q", "-m", "a changed, dist not rebuilt");
+      const head = git(dir, "rev-parse", "HEAD").trim();
+      build(dir);
+      git(dir, "add", "dist");
+      const result = check(dir, `--ref=${head}`);
+      expect(result.status).toBe(1);
+      expect(result.stderr + result.stdout).toContain(STALE_MESSAGE);
+    },
+  );
+
+  it(
+    "--ref of a correct commit passes while an unrelated engine edit is staged",
+    { timeout: localLimit(120_000) },
+    () => {
+      const dir = scratchRepo();
+      const head = git(dir, "rev-parse", "HEAD").trim();
+      write(dir, B, "export const b: number = 2;\n");
+      git(dir, "add", B);
+      const result = check(dir, `--ref=${head}`);
+      expect(result.stderr + result.stdout).not.toContain("dist/ is stale");
+      expect(result.status).toBe(0);
+    },
+  );
+
+  it(
+    "--ref values starting with a dash, empty or not a commit are refused with no scratch folder left",
+    { timeout: localLimit(120_000) },
+    () => {
+      const dir = scratchRepo();
+      for (const value of ["-x", "--output=x", "", "no-such-commit"]) {
+        const result = check(dir, `--ref=${value}`);
+        expect(result.status, `--ref=${value}`).toBe(1);
+        expect(result.stderr + result.stdout, `--ref=${value}`).toContain(REF_MESSAGE);
+        expect(scratchLeftovers(dir)).toEqual([]);
+      }
+    },
+  );
+
+  it(
+    "without --ref the check still reads the index and not the commit",
+    { timeout: localLimit(120_000) },
+    () => {
+      const dir = scratchRepo();
+      write(dir, A, "export const a: number = 3;\n");
+      git(dir, "add", A);
+      const result = check(dir);
+      expect(result.status).toBe(1);
+      expect(result.stderr + result.stdout).toContain(STALE_MESSAGE);
     },
   );
 });

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// Checks the staged `dist/` against a compile of the staged tree (the index), never the working
-// tree. Exports the staged engine sources into `tmp/check-dist-*`, compiles them there and
-// compares each output's mode and blob hash with `git ls-files -s dist/`. A compile that writes
-// no file under `dist/` fails. Leaves the working tree's `dist/` alone.
+// Checks `dist/` against a compile of the same tree, never the working tree. With no argument the
+// tree is the index (the staged tree). With `--ref=<commit>` the tree is that commit's. Exports the
+// engine sources into `tmp/check-dist-*`, compiles them there and compares each output's mode and
+// blob hash with `git ls-files -s dist/` of the same tree. A compile that writes no file under
+// `dist/` fails. Leaves the working tree's `dist/` alone.
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -34,20 +35,49 @@ function walk(root, rel = "") {
   return files;
 }
 
-function run() {
+const REF_ERROR = "[bkit] --ref value is not a commit";
+
+/** Returns the full commit hash of `--ref=<value>`, null with no `--ref`; throws on a bad value. */
+function parseRef(argv) {
+  let ref = null;
+  for (const arg of argv) {
+    if (!arg.startsWith("--ref=")) throw new Error(`[bkit] unknown argument: ${arg}`);
+    ref = arg.slice("--ref=".length);
+  }
+  if (ref === null) return null;
+  if (ref === "" || ref.startsWith("-")) throw new Error(REF_ERROR);
+  const resolved = spawnSync(
+    "git",
+    ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`],
+    { encoding: "utf-8" },
+  );
+  const hash = resolved.stdout.trim();
+  if (resolved.status !== 0 || !/^[0-9a-f]{40,64}$/.test(hash)) throw new Error(REF_ERROR);
+  return hash;
+}
+
+function run(ref) {
   const repo = git(["rev-parse", "--show-toplevel"]).trim();
   const tmpRoot = path.join(repo, "tmp");
   fs.mkdirSync(tmpRoot, { recursive: true });
   const scratch = fs.mkdtempSync(path.join(tmpRoot, "check-dist-"));
+  const indexFile = `${scratch}.index`;
   try {
+    // With a ref, a temporary index holds that commit's tree; every index read below uses it.
+    let env = process.env;
+    if (ref) {
+      env = { ...process.env, GIT_INDEX_FILE: indexFile };
+      git(["read-tree", ref], { cwd: repo, env });
+    }
     const staged = git(
       ["ls-files", "-z", "--", ".bkit/core/engine", "tsconfig.json", "package.json"],
-      { cwd: repo },
+      { cwd: repo, env },
     )
       .split("\0")
       .filter(Boolean);
     const exported = spawnSync("git", ["checkout-index", "-z", "--stdin", `--prefix=${scratch}/`], {
       cwd: repo,
+      env,
       input: staged.join("\0") + "\0",
       encoding: "utf-8",
     });
@@ -69,7 +99,7 @@ function run() {
     if (fs.existsSync(cli)) fs.chmodSync(cli, 0o755);
 
     const expected = new Map();
-    for (const line of git(["ls-files", "-s", "-z", "--", "dist/"], { cwd: repo })
+    for (const line of git(["ls-files", "-s", "-z", "--", "dist/"], { cwd: repo, env })
       .split("\0")
       .filter(Boolean)) {
       const tab = line.indexOf("\t");
@@ -108,11 +138,12 @@ function run() {
     return 0;
   } finally {
     fs.rmSync(scratch, { recursive: true, force: true });
+    fs.rmSync(indexFile, { force: true });
   }
 }
 
 try {
-  process.exitCode = run();
+  process.exitCode = run(parseRef(process.argv.slice(2)));
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
