@@ -1829,7 +1829,7 @@ function query(ctx) {
 const LEDGER_ROWS_LINE = /^\*\*Ledger rows:\*\*(.*)$/m;
 const CHECKED_LEDGERS = [APPEND_LEDGERS.decisions, APPEND_LEDGERS.deferrals];
 /**
- * Read the plan's `**Ledger rows:**` line — backticked keys, or `None` — and
+ * Read the plan's `**Ledger rows:**` line — keys with or without backticks, or `None` — and
  * return the keys no `decision` / `deferral` row carries. Throws EXIT_ROWS_MISSING
  * when the line is absent or still a placeholder.
  */
@@ -1844,7 +1844,8 @@ export function checkPlanRows(root, plan) {
 }
 /**
  * Read `text`'s `**Ledger rows:**` line and the keys no `decision` / `deferral`
- * row under `root` carries. An absent or placeholder line is `unreadable`.
+ * row under `root` carries. An absent line, a placeholder (`PENDING`, empty, the
+ * template's bracketed text) or a line that names no key is `unreadable`.
  */
 export function readPlanRows(root, text) {
     const match = LEDGER_ROWS_LINE.exec(text);
@@ -1853,10 +1854,11 @@ export function readPlanRows(root, text) {
         return { line: 0, keys: [], missing: [], unreadable: "no **Ledger rows:** line" };
     }
     const at = text.slice(0, match.index).split("\n").length;
-    const keys = [...line.matchAll(/`([^`]+)`/g)].map((m) => m[1] ?? "");
+    const bare = line.replace(/[."\s]/g, "");
+    if (bare === "None")
+        return { line: at, keys: [], missing: [] };
+    const keys = bare === "PENDING" || /^\[.*\]$/.test(line) ? [] : planRowKeys(line);
     if (keys.length === 0) {
-        if (line.replace(/[."\s]/g, "") === "None")
-            return { line: at, keys: [], missing: [] };
         return {
             line: at,
             keys: [],
@@ -1876,6 +1878,31 @@ export function readPlanRows(root, text) {
         }
     }
     return { line: at, keys, missing: keys.filter((k) => !onDisk.has(k)) };
+}
+/**
+ * The keys of a `**Ledger rows:**` value, a comma-separated list: each backticked
+ * key of an entry with backticks, else the entry itself less a trailing full stop.
+ * An entry with backticks but no backticked key, or with no backticks and whitespace,
+ * means no keys.
+ */
+function planRowKeys(line) {
+    const keys = [];
+    for (const raw of line.split(",")) {
+        const entry = raw.trim().replace(/\.$/, "");
+        if (entry.includes("`")) {
+            const ticked = [...entry.matchAll(/`([^`]+)`/g)].map((m) => m[1] ?? "");
+            if (ticked.length === 0)
+                return [];
+            keys.push(...ticked);
+        }
+        else if (/\s/.test(entry)) {
+            return [];
+        }
+        else if (entry !== "") {
+            keys.push(entry);
+        }
+    }
+    return keys;
 }
 function check(ctx) {
     const root = rootOf(ctx);

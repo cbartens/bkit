@@ -1796,6 +1796,91 @@ describe("bkit ledgers check", () => {
     expect((await check(tmp(), "No line here.")).code).toBe(EXIT_ROWS_MISSING);
     expect((await check(tmp(), "**Ledger rows:** PENDING")).code).toBe(EXIT_ROWS_MISSING);
   });
+
+  const unfilled = (res: Awaited<ReturnType<typeof check>>) =>
+    `${res.err}${JSON.stringify(res.json ?? null)}`.includes("**Ledger rows:** is unfilled");
+
+  it("reads bare keys, and a trailing full stop is not part of a key", async () => {
+    const r = tmp();
+    put(r, "docs/decisions.jsonl", `${row("decision", "1338-skip-line")}\n`);
+    put(r, "docs/deferrals.jsonl", `${row("deferral", "1338-later")}\n`);
+    const res = await check(r, "**Ledger rows:** 1338-skip-line, 1338-later.");
+    expect(res.code).toBe(0);
+    expect(res.json).toEqual({
+      plan: "plan.md",
+      keys: ["1338-skip-line", "1338-later"],
+      missing: [],
+    });
+  });
+
+  it("names a bare key no row carries and exits EXIT_ROWS_MISSING", async () => {
+    const r = tmp();
+    put(r, "docs/decisions.jsonl", `${row("decision", "1338-skip-line")}\n`);
+    const res = await check(r, "**Ledger rows:** 1338-skip-line, 1338-nowhere");
+    expect(res.code).toBe(EXIT_ROWS_MISSING);
+    expect(res.json).toMatchObject({
+      keys: ["1338-skip-line", "1338-nowhere"],
+      missing: ["1338-nowhere"],
+    });
+  });
+
+  it("reads every entry of a line that mixes backticked and bare keys", async () => {
+    const r = tmp();
+    put(r, "docs/decisions.jsonl", `${row("decision", "1338-skip-line")}\n`);
+    const res = await check(r, "**Ledger rows:** `1338-skip-line`, 1338-nowhere");
+    expect(res.code).toBe(EXIT_ROWS_MISSING);
+    expect(res.json).toMatchObject({
+      keys: ["1338-skip-line", "1338-nowhere"],
+      missing: ["1338-nowhere"],
+    });
+  });
+
+  it("keeps PENDING, an empty value and the template's bracketed text unfilled", async () => {
+    const template =
+      '**Ledger rows:** [The backticked `key` of every `docs/decisions.jsonl` and `docs/deferrals.jsonl` row written for this plan, comma-separated. **If** none → write "None". Initially set to `PENDING`.]';
+    for (const line of ["**Ledger rows:** PENDING", "**Ledger rows:**", template]) {
+      const res = await check(tmp(), line);
+      expect(res.code, line).toBe(EXIT_ROWS_MISSING);
+      expect(unfilled(res), line).toBe(true);
+    }
+  });
+
+  it("keeps a line unfilled when a prose entry sits next to a backticked key", async () => {
+    const r = tmp();
+    put(r, "docs/decisions.jsonl", `${row("decision", "real-a")}\n`);
+    const res = await check(r, "**Ledger rows:** `real-a`, never-written (deferred to v7)");
+    expect(res.code).toBe(EXIT_ROWS_MISSING);
+    expect(unfilled(res)).toBe(true);
+  });
+
+  it("keeps a line unfilled when an entry holds a backtick but no backticked key", async () => {
+    const r = tmp();
+    put(r, "docs/decisions.jsonl", `${row("decision", "real-a")}\n${row("decision", "real-b")}\n`);
+    for (const line of ["**Ledger rows:** never-written`, real-b", "**Ledger rows:** ``, real-a"]) {
+      const res = await check(r, line);
+      expect(res.code, line).toBe(EXIT_ROWS_MISSING);
+      expect(unfilled(res), line).toBe(true);
+    }
+  });
+
+  it("reads a backticked key with a note in round brackets in the same entry", async () => {
+    const r = tmp();
+    put(r, "docs/decisions.jsonl", `${row("decision", "real-a")}\n${row("decision", "old-a")}\n`);
+    const res = await check(r, "**Ledger rows:** `real-a` (supersedes `old-a`)");
+    expect(res.code).toBe(0);
+    expect(res.json).toMatchObject({ keys: ["real-a", "old-a"], missing: [] });
+  });
+
+  it("keeps a sentence of prose unfilled", async () => {
+    for (const line of [
+      "**Ledger rows:** The rows are written in the next step.",
+      "**Ledger rows:** Written in the next step, probably.",
+    ]) {
+      const res = await check(tmp(), line);
+      expect(res.code, line).toBe(EXIT_ROWS_MISSING);
+      expect(unfilled(res), line).toBe(true);
+    }
+  });
 });
 
 describe("bkit ledgers triage", () => {
