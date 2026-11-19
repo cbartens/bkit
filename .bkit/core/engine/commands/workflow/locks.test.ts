@@ -477,4 +477,37 @@ describe("bkit locks release", () => {
     expect(fs.existsSync(recordAt(FID))).toBe(false);
     expect(fs.existsSync(recordAt("69-other"))).toBe(true);
   });
+
+  it("locks release from a linked worktree removes the FID record under that worktree's git dir", async () => {
+    const cwd = repo();
+    git(cwd, "switch", "-q", "-c", "claude/session");
+    const parent = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-locks-wt-")));
+    dirs.push(parent);
+    const wt = path.join(parent, "wt");
+    git(cwd, "worktree", "add", "-q", wt, "dev");
+    const recordAt = (fid: string) =>
+      path.resolve(wt, git(wt, "rev-parse", "--git-path", `bkit/shared-checkout/${fid}.json`));
+    expect(recordAt(FID)).toContain(path.join(".git", "worktrees"));
+    for (const fid of [FID, "69-other"]) {
+      fs.mkdirSync(path.dirname(recordAt(fid)), { recursive: true });
+      fs.writeFileSync(
+        recordAt(fid),
+        JSON.stringify({
+          fid,
+          branch: "dev",
+          startSha: git(wt, "rev-parse", "HEAD"),
+          originSha: null,
+          aheadAtStart: 0,
+          paths: [],
+          commits: [],
+        }),
+      );
+    }
+    const a = await run(wt, acquire("--month=202610"));
+    const r = await run(wt, rel("workflow", "build", `--token=${a.json.token}`));
+    expect(r.code).toBe(0);
+    expect(r.json.released).toBe(true);
+    expect(fs.existsSync(recordAt(FID))).toBe(false);
+    expect(fs.existsSync(recordAt("69-other"))).toBe(true);
+  });
 });

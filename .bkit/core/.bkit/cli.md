@@ -26,7 +26,7 @@ Mechanical step work runs as `bkit <noun> <verb> --flag=value` (also `--flag val
 | Exit `3`-`79` | Command-specific; listed in that verb's `--help`. |
 | Exit `80` / `81` / `82` | Do it via MCP (`runtimeGithubCli=false`) / hand the wait back to the agent turn loop / needs a human. |
 | Month | `YYYYMM` in UTC. |
-| `status.jsonl` | design / plan / build / debug: `.worktrees/{FID}/` copy when present, else main checkout. ship: current worktree top (`{WORKTREE_PATH}`). |
+| `status.jsonl` | design / plan / build / debug: `.worktrees/{FID}/` copy when present, else the copy in a worktree the host made (the session's linked worktree holding the run), else main checkout. ship: current worktree top (`{WORKTREE_PATH}`). |
 
 **Invocation:** Step 1's first block runs `repo info` through the lookup expression
 

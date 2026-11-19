@@ -1169,6 +1169,65 @@ describe("bkit worktrees setup — a host-made worktree on feat/{fid}", () => {
     expect(git(hostReal, "rev-parse", "HEAD")).toBe(head);
     expect(fs.existsSync(wtOf(f))).toBe(false);
   });
+
+  it("refuses plan from a host-made worktree whose branch carries unpushed dev work", async () => {
+    const f = fixture();
+    fs.writeFileSync(path.join(f.repo, "held.txt"), "unpushed\n");
+    git(f.repo, "add", "held.txt");
+    git(f.repo, "commit", "-q", "-m", "held on local dev");
+    const host = path.join(path.dirname(f.repo), "host-wt");
+    git(f.repo, "worktree", "add", "-q", host, "-b", `feat/${FID}`);
+    const hostReal = fs.realpathSync(host);
+
+    const r = await setup(hostReal, "plan", "--worktrees");
+    expect(r.code).toBe(7);
+    expect(r.err).toContain("1 commit(s) of unpushed dev");
+    expect(fs.existsSync(path.join(hostReal, "docs/plans", MONTH, "logs", FID))).toBe(false);
+
+    // The same worktree adopts for build, whose PR carries dev's work by design.
+    const build = await setup(hostReal, "build", "--worktrees");
+    expect(build.code).toBe(0);
+    expect(build.json).toMatchObject({ mode: "adopted", worktreePath: hostReal });
+  });
+});
+
+describe("bkit worktrees setup — the unpushed-dev check reads the checked-out branch as a branch", () => {
+  /** Local dev one commit ahead of origin/dev. */
+  function holdOnDev(f: Fixture) {
+    fs.writeFileSync(path.join(f.repo, "held.txt"), "unpushed\n");
+    git(f.repo, "add", "held.txt");
+    git(f.repo, "commit", "-q", "-m", "held on local dev");
+  }
+
+  it("adopts plan on a branch named like a top-level path that carries no unpushed dev work", async () => {
+    const f = fixture();
+    holdOnDev(f);
+    git(f.repo, "switch", "-q", "--no-track", "-c", "docs", "origin/dev");
+    fs.mkdirSync(path.join(f.repo, "docs"));
+    fs.writeFileSync(path.join(f.repo, "docs", "readme.md"), "docs\n");
+    git(f.repo, "add", "docs");
+    git(f.repo, "commit", "-q", "-m", "a top-level docs folder");
+
+    const r = await setup(f.repo, "plan");
+    expect(r.err).not.toContain("ambiguous argument");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ mode: "adopted", branch: "docs", worktreePath: f.repo });
+  });
+
+  it("refuses plan on a branch whose name starts with a dash and leaves the file that name points at untouched", async () => {
+    const f = fixture();
+    holdOnDev(f);
+    fs.writeFileSync(path.join(f.repo, "keep.txt"), "keep me\n");
+    const branch = "--output=keep.txt";
+    git(f.repo, "update-ref", `refs/heads/${branch}`, git(f.repo, "rev-parse", "HEAD"));
+    git(f.repo, "symbolic-ref", "HEAD", `refs/heads/${branch}`);
+    expect(git(f.repo, "branch", "--show-current")).toBe(branch);
+
+    const r = await setup(f.repo, "plan");
+    expect(fs.readFileSync(path.join(f.repo, "keep.txt"), "utf-8")).toBe("keep me\n");
+    expect(r.code).toBe(7);
+    expect(r.err).toContain("1 commit(s) of unpushed dev");
+  });
 });
 
 describe("bkit worktrees setup — debug adopts, never mints", () => {

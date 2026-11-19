@@ -210,7 +210,7 @@ Every phase command (`design`, `plan`, `build`, `debug`, `ship`) shares this ske
 
 **Worktree isolation (no Step 1 dev sync gate):** in every phase, Step 1 makes zero commits on `dev` and does not assert that local `dev` is in sync with `origin/dev`. Step 1 only fetches `origin dev` (`bkit repo info --fetch`, which reports `behindDev`). Work happens in `.worktrees/{FID}` on `feat/{FID}`, which Step 2 cuts from, or rebases onto, its base:
 
-- `design` / `plan`: the base is `origin/dev`. Their close lands docs and ledgers only, so it can never land a branch carrying unpushed `dev` work. A resumed branch that carries such work is refused at Step 2 (exit 7).
+- `design` / `plan`: the base is `origin/dev`. Their close lands docs and ledgers only, so it can never land a branch carrying unpushed `dev` work. A resumed or adopted branch that carries such work is refused at Step 2 (exit 7).
 - `build` / `ship`: the base is local `dev` while it is a fast-forward of `origin/dev`. The run narrates the unpushed count, so publish `dev` before the feature PR. The base is `origin/dev` when the two have diverged.
 - `debug`: setup adopts or resumes the existing branch without starting a rebase, preserving the original failed commit for CI evidence ancestry checks. It prepares the worktree's inputs and dependencies, and reports any rebase already in progress for resolution before proceeding.
 

@@ -21,10 +21,24 @@ import {
 } from "./worktrees";
 import { localLimit } from "../../../../../vitest.timeout-budget";
 
+/** Renames the package manager in `installCommand` while `runner` is set, so a test sees where printed install examples come from. */
+const pm = vi.hoisted(() => ({ runner: null as string | null }));
+vi.mock("../../shared/package-manager", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../shared/package-manager")>();
+  return {
+    ...real,
+    installCommand: (opts: Parameters<typeof real.installCommand>[0]) => {
+      const argv = real.installCommand(opts);
+      return pm.runner === null ? argv : [pm.runner, ...argv.slice(1)];
+    },
+  };
+});
+
 const FID = "42-thing";
 const MONTH = "202610";
 const dirs: string[] = [];
 afterEach(() => {
+  pm.runner = null;
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
 
@@ -245,6 +259,104 @@ describe("bkit worktrees setup — adopt the checkout the session is already on"
     }
   });
 
+  it("refuses design, plan and build in place in a submodule's main checkout on feat/{fid}", async () => {
+    for (const workflow of ["design", "plan", "build"]) {
+      const sub = repo("dev");
+      const outer = repo("dev");
+      git(
+        outer,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        "-q",
+        "-b",
+        "dev",
+        sub,
+        "mod",
+      );
+      const inner = path.join(outer, "mod");
+      git(inner, "switch", "-q", "-c", `feat/${FID}`);
+      const r = await setup(inner, workflow, "--worktrees");
+      expect(r.code, workflow).toBe(7);
+      expect(fs.existsSync(path.join(inner, "docs/plans", MONTH, "logs", FID)), workflow).toBe(
+        false,
+      );
+    }
+  });
+
+  it("says so when the adopted worktree has no hooks directory", async () => {
+    const cwd = repo("dev");
+    const wt = hostWorktree(cwd);
+    git(cwd, "config", "core.hooksPath", ".husky/_");
+    pm.runner = "stub-pm";
+    const missing = await setup(wt, "plan", "--worktrees");
+    expect(missing.code).toBe(0);
+    expect(missing.json.hooksMissing).toBe(".husky/_");
+    expect(missing.err).toContain(".husky/_");
+    expect(missing.err).toContain(`is missing in ${wt}`);
+    expect(missing.err).toContain("(for example stub-pm install)");
+    expect(missing.err).not.toContain("pnpm install");
+
+    fs.mkdirSync(path.join(wt, ".husky/_"), { recursive: true });
+    const present = await setup(wt, "plan", "--worktrees");
+    expect(present.code).toBe(0);
+    expect(present.json.hooksMissing).toBeUndefined();
+    expect(present.err).not.toContain(".husky/_");
+
+    const unset = repo("claude/session");
+    const none = await setup(unset, "build");
+    expect(none.json.hooksMissing).toBeUndefined();
+  });
+
+  it("does not report a ~ hooks directory that exists", async () => {
+    const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-wt-home-")));
+    dirs.push(home);
+    fs.mkdirSync(path.join(home, ".githooks"));
+    const cwd = repo("dev");
+    const wt = hostWorktree(cwd);
+    git(cwd, "config", "core.hooksPath", "~/.githooks");
+    vi.stubEnv("HOME", home);
+    try {
+      const present = await setup(wt, "plan", "--worktrees");
+      expect(present.code).toBe(0);
+      expect(present.json.hooksMissing).toBeUndefined();
+      expect(present.err).not.toContain("~/.githooks");
+
+      fs.rmSync(path.join(home, ".githooks"), { recursive: true });
+      const missing = await setup(wt, "plan", "--worktrees");
+      expect(missing.json.hooksMissing).toBeDefined();
+      expect(missing.json.hooksMissing).toBe("~/.githooks");
+      expect(missing.err).toContain(path.join(home, ".githooks"));
+      expect(missing.err).toContain("no git hook runs");
+      expect(missing.err).not.toContain("is missing in");
+      expect(missing.err).not.toContain("install");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("names no package install for a missing hooks directory outside the checkout", async () => {
+    const elsewhere = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-wt-hooks-")));
+    dirs.push(elsewhere);
+    const cwd = repo("dev");
+    const wt = hostWorktree(cwd);
+    for (const [configured, resolved] of [
+      [path.join(elsewhere, "hooks"), path.join(elsewhere, "hooks")],
+      ["../outside-hooks", path.join(path.dirname(wt), "outside-hooks")],
+    ]) {
+      git(cwd, "config", "core.hooksPath", configured);
+      const r = await setup(wt, "plan", "--worktrees");
+      expect(r.code, configured).toBe(0);
+      expect(r.json.hooksMissing, configured).toBe(configured);
+      expect(r.err, configured).toContain(`git hooks directory ${resolved} does not exist`);
+      expect(r.err, configured).toContain("no git hook runs");
+      expect(r.err, configured).toContain("create that directory or change core.hooksPath");
+      expect(r.err, configured).not.toContain("is missing in");
+      expect(r.err, configured).not.toContain("install");
+    }
+  });
+
   it("a plan session on another branch still mints .worktrees/{fid}", async () => {
     const cwd = repo("dev");
     const origin = path.join(path.dirname(cwd), `${path.basename(cwd)}-origin.git`);
@@ -414,6 +526,24 @@ describe("bkit worktrees setup — debug in place on dev shares the checkout", (
         { path: "notes.md", hash: hashOf(cwd, "notes.md") },
         { path: ".bkit/issues.jsonl", hash: hashOf(cwd, ".bkit/issues.jsonl"), lines: 2 },
       ]),
+    );
+  });
+
+  it("debug in place on dev from a linked worktree records its own checkout", async () => {
+    const cwd = shared();
+    git(cwd, "switch", "-q", "-c", "claude/session");
+    const wt = path.join(path.dirname(cwd), `${path.basename(cwd)}-dev-wt`);
+    dirs.push(wt);
+    git(cwd, "worktree", "add", "-q", wt, "dev");
+    const wtReal = fs.realpathSync(wt);
+    fs.writeFileSync(path.join(wtReal, "mine.md"), "linked worktree work\n");
+
+    const r = await setup(wtReal, "debug", "--branch=dev", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(fs.existsSync(recordFile(wtReal))).toBe(true);
+    expect(fs.existsSync(path.join(cwd, ".git/bkit/shared-checkout", `${FID}.json`))).toBe(false);
+    expect(record(wtReal).paths).toEqual(
+      expect.arrayContaining([{ path: "mine.md", hash: hashOf(wtReal, "mine.md") }]),
     );
   });
 

@@ -1,0 +1,38 @@
+Verdict: CONCERNS
+Failures: 1
+Fingerprint: 6b90a224542af05950ab48365895232e0da8798ab39d747310eb03629e451ade
+<!-- verdict:end -->
+
+# Build Challenge
+
+Lens: Security — auth, secrets, input validation, data exposure, OWASP, data-access policies / tenancy.
+
+## Scope
+
+- Diff: `tmp/bkit-diff-1050-host-made-worktrees.md`, read in full. Its first line is not `partial diff coverage`, so every file was in view.
+- Surfaces challenged: `.bkit/core/engine/commands/lib.ts` (`inLinkedWorktree`, `sessionCheckout`, `statusLocation`); `.bkit/core/engine/commands/workflow/worktrees.ts` (main-checkout refusal, `openSharedRecord(root, checkout, ...)`, adopted docs-only refusal, `missingHooksDir` / `hooksMissing`); the three test files; `dist/commands/lib.js` and `dist/commands/workflow/worktrees.js`; `.bkit/core/.bkit/cli.md`, `.bkit/core/.bkit/workflows.md` and their rendered copies; `.bkit/version` hashes; four `docs/deferrals.jsonl` rows.
+- Plan: `docs/plans/202611/1050-host-made-worktrees-plan.md`, tasks 1-9.
+- Docs loaded: `.agents/docs.md`; `docs/security.md` (§ Trust boundaries, § Input validation, § Shell Injection, § Secrets, § PII); `docs/data-schema.md` (invocation fields at lines 40 and 52; no database, so row policies and tenancy do not apply, line 83); `docs/observability.md` (stderr carries diagnostics, line 41); `docs/architecture.md` (outbox lines 99 and 103); `docs/knowledge.jsonl` and `docs/decisions.jsonl` (no row on option injection, `core.hooksPath` or shared-checkout records).
+
+## Notes
+
+- Finding 1, cross-reference: `docs/security.md` § Trust boundaries lists subprocess output as input that crosses the CLI boundary, and § Shell Injection requires argv. The new call passes argv, but it hands `git branch --show-current` output (any ref name) to `rev-list` as a positional argument, and argv alone does not stop git from reading a leading `--` as an option. Before the diff this check ran only on `target` (`feat/{fid}`), which cannot start with `-`. Reaching it needs adopted design / plan, local `dev` ahead of `origin/dev`, and a branch name porcelain refuses, so the severity is LOW. The open deferral row `1050-host-made-worktrees-challenge-low-bkit-core-engine-commands-workflow-worktrees-ts-341` in the diff names a different failure on the same call (a branch named like a path). Its `refs/heads/{branch}` option also closes this finding; its `rev-list {branch} --not origin/dev --` option does not.
+- Authorisation / refusal (row 1): `inLinkedWorktree` (`lib.ts:1164`) fails closed. A git error returns false, so the main-checkout refusal still fires. `gitEnv` (`.bkit/core/engine/ledgers/telemetry.ts:62`) strips `GIT_DIR` and `GIT_WORK_TREE`. It does not strip `GIT_COMMON_DIR`, but the old compare also derived `root` from `--git-common-dir`, so the diff opens nothing new there. Git older than 2.31 (no `--path-format`) already breaks `repoRoot` before this check, so that is not a new gap either.
+- Shared-checkout record (row 2): the writer (`openSharedRecord`, `worktrees.ts:213`) and every reader (`activeRecord`, `recordOnBranch`, `commitBookkeeping` through `rootOf` = cwd, `pushBranch`) now resolve `git rev-parse --git-path` from the same checkout. Record names still pass `RECORD_FID` (`.bkit/core/engine/commands/workflow/ledgers.ts:321`), so no record path leaves the git dir. Before the diff a linked-worktree run on `dev` stopped at `EXIT_NO_RECORD` and pushed nothing. After it, the push carries only the recorded own commits, and `git add -u` keeps the recorded dirty paths out, so another session's uncommitted files are not committed.
+- Missing hooks (row 5): the in-place `dev` push (`pushOwnCommits`, `.bkit/core/engine/commands/workflow/branches.ts:1239`) is a plain `git push`, so in a worktree with no `.husky/_` the pre-push gate does not run. That gate is typecheck, lint and tests (`.husky/pre-push` lines 5-19), not a secret scan, and the debug push carries `--require-ci`, so CI still runs on it. The plan records warning instead of installing as the owner's row 5 decision. `missingHooksDir` reads one config value and tests it with `fs.existsSync`; it runs nothing.
+- Path handling (row 3): the new `statusLocation` branch joins the same `statusRelPath(month, fid)` as the main-checkout fallback, which already returned an unvalidated `--fid` path unconditionally, so a traversal `--fid` reaches nothing new. Both branches follow a symlinked log directory alike. The invocation verb still checks `--file` against the issuing checkout (`.bkit/core/engine/commands/workflow/status.ts:723-754`), unchanged.
+- Data exposure: the new stderr line names `wt`, the same absolute path `worktreePath` already prints, and `hooksMissing` is the raw `core.hooksPath` value. The agent holds setup's output; no step writes it to a tracked file (`.bkit/core/workflows/bkit-plan.md:227-229`). Committed invocation rows keep checkout-relative paths and a worktree fingerprint (`status.ts:801-809`). The deferral rows, docs, tests and `dist/` hold no secret, token, consumer name or personal path.
+- Supply chain: no dependency changed. Both `dist/` files match the TypeScript changes line for line on reading.
+- Tests: `protocol.file.allow=always` is passed with `-c` on one `submodule add` against a temp repo, and `HOME` is stubbed and restored in `finally`.
+- No embedded instruction was found in the diff or the plan.
+- The git behaviour cited in finding 1 comes from probes in a private scratch folder on git 2.56. Nothing in the repo was built, installed or run, and no test was run.
+
+## Findings Log
+
+<!-- bkit:task 1 start -->
+- [ ] **TASK 1:** A checked-out branch named `--output=src/index.ts` (a cloned repo's default branch can carry the name) makes adopted plan / design setup run `git rev-list --output=src/index.ts --not origin/dev`, which empties that file and skips the unpushed-`dev` refusal
+  **Severity:** LOW · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/worktrees.ts:1416` · **Round:** 1
+  - **DONE WHEN:** the adopted docs-only check passes the checked-out branch to `inheritedDevCommits` only as a qualified revision (`refs/heads/{adoptedBranch}` at `worktrees.ts:1416`, or `inheritedDevCommits` itself qualifying `branch` before the `rev-list` at `worktrees.ts:341`), so a branch name that starts with `-` is never parsed as a `git rev-list` option: plan setup in a main checkout on `refs/heads/--output=keep.txt` with local `dev` one commit ahead of `origin/dev` leaves `keep.txt` intact and exits 7 with "1 commit(s) of unpushed dev"; the host-made-worktree refusal and the no-remote adoption tests still pass. Verified on git 2.56: `git rev-list '--output=src/index.ts' --not origin/dev` exits 0 and truncates `src/index.ts` to 0 bytes; `git rev-list 'refs/heads/--output=src/index.ts' --not origin/dev` lists the commit and leaves the file alone; `--end-of-options` before the branch fails because `--not` then counts as a non-option. `git branch` / `git switch -c` refuse such names, but `git update-ref` + `git symbolic-ref` accept them, and `git clone` checks out a remote default branch of that name.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/worktrees.test.ts` `reads an option-shaped adopted branch only as a revision` fails on `keep.txt` being emptied and setup exiting 0, where plan setup (no `--worktrees`) in `repo("dev")` with `refs/remotes/origin/dev` at the first commit, one more commit on `dev`, an untracked `keep.txt` holding "keep me", and HEAD set by `symbolic-ref` to `refs/heads/--output=keep.txt` at `dev`'s tip should leave "keep me" in `keep.txt` and exit 7 with "1 commit(s) of unpushed dev"
+<!-- bkit:task 1 end -->

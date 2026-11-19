@@ -13,7 +13,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { createExclusive, fold, lastRun, statusTimestamp, } from "../../ledgers/status.js";
-import { CommandError, EXIT, git, parseJson, repoRoot, runTool, statusRelPath, utcMonth, } from "../lib.js";
+import { CommandError, EXIT, git, parseJson, repoRoot, runTool, sessionCheckout, statusRelPath, utcMonth, } from "../lib.js";
 import { removeRecord } from "./ledgers.js";
 import { str } from "./status.js";
 /** A workflow lock whose holder shows no sign of life for this long is stale. */
@@ -395,9 +395,14 @@ export const locksCommand = {
                 const root = repoRoot(ctx.cwd);
                 const file = workflowLockPath(root, resolveMonth(root, who.fid, str(ctx.flags.month)), who.fid);
                 const { removeFailed, ...result } = releaseLock(file, who);
-                // The run is over once its lock is released: so is its shared-checkout record.
-                if (!removeFailed && result.heldBy === null)
+                // The run is over once its lock is released: so is its shared-checkout record,
+                // which a run in a linked worktree keeps under that worktree's own git dir.
+                if (!removeFailed && result.heldBy === null) {
                     removeRecord(root, who.fid);
+                    const own = sessionCheckout(ctx.cwd);
+                    if (own !== root)
+                        removeRecord(own, who.fid);
+                }
                 ctx.emit({ kind, ...result });
                 if (removeFailed) {
                     ctx.log(`lock removal failed: ${file}`);

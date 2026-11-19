@@ -29,6 +29,7 @@ import {
   parseJson,
   repoRoot,
   runTool,
+  sessionCheckout,
   statusRelPath,
   utcMonth,
   type CommandSpec,
@@ -529,8 +530,13 @@ export const locksCommand: CommandSpec = {
           who.fid,
         );
         const { removeFailed, ...result } = releaseLock(file, who);
-        // The run is over once its lock is released: so is its shared-checkout record.
-        if (!removeFailed && result.heldBy === null) removeRecord(root, who.fid);
+        // The run is over once its lock is released: so is its shared-checkout record,
+        // which a run in a linked worktree keeps under that worktree's own git dir.
+        if (!removeFailed && result.heldBy === null) {
+          removeRecord(root, who.fid);
+          const own = sessionCheckout(ctx.cwd);
+          if (own !== root) removeRecord(own, who.fid);
+        }
         ctx.emit({ kind, ...result });
         if (removeFailed) {
           ctx.log(`lock removal failed: ${file}`);

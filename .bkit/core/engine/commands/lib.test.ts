@@ -693,6 +693,24 @@ describe("repo facts on a real repository", () => {
     expect(statusLocation(opts)).toEqual({ bookRoot: worktree, path: path.join(worktree, rel) });
   });
 
+  it("a host-made linked worktree holds the run", () => {
+    const { root } = repoWithWorktree();
+    const host = path.join(
+      fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-host-"))),
+      "wt",
+    );
+    dirs.push(path.dirname(host));
+    sh(root, "worktree", "add", "-q", "-b", "feat/7-host", host);
+    const rel = path.join("docs", "plans", "202610", "logs", "7-host", "status.jsonl");
+    const opts = { cwd: host, workflow: "build", fid: "7-host", month: "202610" };
+    // Only the log directory exists: the host worktree still holds the run.
+    fs.mkdirSync(path.dirname(path.join(host, rel)), { recursive: true });
+    expect(statusLocation(opts)).toEqual({ bookRoot: host, path: path.join(host, rel) });
+    // The status file is written: same answer.
+    touch(path.join(host, rel));
+    expect(statusLocation(opts)).toEqual({ bookRoot: host, path: path.join(host, rel) });
+  });
+
   it("ship: the tree it runs in — the worktree being shipped, or the adopted checkout", () => {
     const { root, worktree } = repoWithWorktree();
     const base = { workflow: "ship", fid: "9-x", month: "202610" };

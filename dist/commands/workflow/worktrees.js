@@ -22,7 +22,7 @@ import { APPEND_LEDGERS, gitEnv } from "../../ledgers/telemetry.js";
 import { parseJson } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { COULD_NOT_RUN_EXIT_CODES, installCommand } from "../../shared/package-manager.js";
-import { CommandError, DEV, EXIT, git, isIgnoredPath, isSharedBranch, MAIN, mainCheckoutRoot, repoRoot, runGit, } from "../lib.js";
+import { CommandError, DEV, EXIT, git, inLinkedWorktree, isIgnoredPath, isSharedBranch, MAIN, mainCheckoutRoot, repoRoot, runGit, sessionCheckout, } from "../lib.js";
 import { ensureDiskSpace } from "./disk.js";
 import { RUN_COMMITS_ROW, listRecords, newRecord, readParkedCommits, readRecord, readRunCommits, removeParkedCommits, removeRecord, runCommitsIn, withSetupGuard, writeRecord, } from "./ledgers.js";
 import { workflowLockFresh, workflowLockLive } from "./locks.js";
@@ -156,36 +156,36 @@ function landedRunCommits(root, statusFile, workflow) {
  * shows no closed run after it, which is the only one that fetches. The parked
  * copy is removed once the record is written.
  */
-function openSharedRecord(root, fid, workflow, logDir) {
+function openSharedRecord(root, checkout, fid, workflow, logDir) {
     const busy = (other) => new CommandError(EXIT_SHARED_BUSY, `${other} is running in this checkout (workflow lock held) — wait for it to finish, then re-run`);
     const guarded = withSetupGuard(root, () => {
-        for (const other of listRecords(root)) {
+        for (const other of listRecords(checkout)) {
             if (other.fid === fid)
                 continue;
             // A closed run that has not released its lock still pushes and waits for CI.
             if (workflowLockLive(root, other.fid) || workflowLockFresh(root, other.fid)) {
                 throw busy(other.fid);
             }
-            removeRecord(root, other.fid);
+            removeRecord(checkout, other.fid);
         }
-        const existing = readRecord(root, fid);
+        const existing = readRecord(checkout, fid);
         const statusFile = path.join(logDir, "status.jsonl");
         const last = fs.existsSync(statusFile) ? lastRun(readRuns(statusFile), workflow) : undefined;
         const open = last?.status === "IN_PROGRESS";
         if (existing !== null && existing.branch === DEV && open) {
-            removeParkedCommits(root, fid);
+            removeParkedCommits(checkout, fid);
             return existing;
         }
-        const fresh = newRecord(root, fid, DEV);
+        const fresh = newRecord(checkout, fid, DEV);
         // A closed run in the checkout's log ended the run every copy of the row belongs to.
         const closed = last !== undefined && !open;
-        const parked = closed ? null : readParkedCommits(root, fid, workflow);
+        const parked = closed ? null : readParkedCommits(checkout, fid, workflow);
         const row = parked ??
             (open ? readRunCommits(statusFile, workflow) : null) ??
-            (closed ? null : landedRunCommits(root, statusFile, workflow));
-        const rebuilt = rebuildFromRow(root, fresh, row);
-        writeRecord(root, rebuilt);
-        removeParkedCommits(root, fid);
+            (closed ? null : landedRunCommits(checkout, statusFile, workflow));
+        const rebuilt = rebuildFromRow(checkout, fresh, row);
+        writeRecord(checkout, rebuilt);
+        removeParkedCommits(checkout, fid);
         return rebuilt;
     });
     if (guarded === null)
@@ -247,7 +247,9 @@ export function worktreeBase(cwd, workflow, log) {
 /**
  * The commits `branch` carries that local `dev` holds and `origin/dev` does not:
  * work inherited from unpushed `dev`. A docs-only close lands on `origin/dev` and
- * may bring docs and ledgers only, so such a branch can never land.
+ * may bring docs and ledgers only, so such a branch can never land. `branch` is a
+ * qualified revision (`refs/heads/...`, `refs/remotes/...`, `HEAD`): `rev-list`
+ * reads a bare name that matches a path as a path, and one starting with `-` as an option.
  */
 function inheritedDevCommits(root, branch) {
     if (!hasLocal(root, DEV))
@@ -266,6 +268,31 @@ function inheritedDevCommits(root, branch) {
     return read(["rev-list", branch, "--not", ORIGIN_DEV])
         .split("\n")
         .filter((c) => unpushed.has(c));
+}
+/**
+ * The hooks directory git is told to use (`core.hooksPath`) when it is missing for
+ * `checkout`: the configured value, the directory it resolves to (a `~/` path expands
+ * as git does, a relative path resolves against the checkout) and whether that
+ * directory lies inside the checkout. Null when unset or present.
+ */
+function missingHooksDir(checkout) {
+    const configured = git(checkout, ["config", "--get", "core.hooksPath"]);
+    if (configured === null || configured === "")
+        return null;
+    const expanded = git(checkout, ["config", "--type=path", "--get", "core.hooksPath"]) ?? configured;
+    const dir = path.isAbsolute(expanded) ? expanded : path.join(checkout, expanded);
+    if (fs.existsSync(dir))
+        return null;
+    const rel = path.relative(checkout, dir);
+    return { configured, dir, inside: !rel.startsWith("..") && !path.isAbsolute(rel) };
+}
+/** The stderr line for a missing hooks directory: a package install creates one inside the checkout, never one outside it. */
+function missingHooksLine(wt, missing) {
+    if (missing.inside) {
+        const example = installCommand({ frozen: false }).join(" ");
+        return `git hooks directory ${missing.configured} is missing in ${wt}, so commit and push hooks do not run here — run the package install (for example ${example}) in this worktree to create it`;
+    }
+    return `git hooks directory ${missing.dir} does not exist (core.hooksPath ${missing.configured}), so no git hook runs in ${wt} — create that directory or change core.hooksPath`;
 }
 /** Refuse a publication candidate that imports unpublished local dev ancestry. */
 export function assertShipEligible(root, candidate) {
@@ -993,6 +1020,7 @@ export const worktreesCommand = {
                 bkitEnv: "bkit's own .bkit/.env: linked to the main checkout's copy, or copied where a symlink is refused (a copy bkit made is refreshed on the next setup); unchanged when already linked, differs when a differing file was left to read, none when the main checkout holds none, failed when neither the link nor the copy could be written, null in adopt mode",
                 direnvAllowed: "direnv allow ran on the worktree's .envrc (present and identical to the main checkout's)",
                 installed: "dependencies were installed",
+                hooksMissing: "adopt mode: the hooks directory core.hooksPath names (for example .husky/_), as configured, when the directory it resolves to does not exist, so no git hook runs there; absent when set up or unset",
                 startSha: "in place on dev (debug): HEAD when the run started, recorded in the shared-checkout record; absent otherwise",
                 aheadAtStart: "in place on dev (debug): commits local dev held beyond origin/dev when the run started; absent otherwise",
             },
@@ -1074,7 +1102,7 @@ export const worktreesCommand = {
                 if (worktrees &&
                     session === target &&
                     (workflow === "plan" || workflow === "design" || workflow === "build") &&
-                    real(git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? root) === real(root)) {
+                    !inLinkedWorktree(ctx.cwd)) {
                     throw new CommandError(EXIT_REFUSED, `refusing to run ${workflow} in place in the main checkout on ${target}: its abort and pause handover commits every uncommitted file there. Switch the main checkout off ${target}, or run from the feature's worktree.`);
                 }
                 const wtDir = worktreeDir(root, fid);
@@ -1109,9 +1137,7 @@ export const worktreesCommand = {
                 }
                 // Adopted on the target branch: the session's own checkout, which is a linked
                 // worktree when a host made one; otherwise the main checkout.
-                const adoptRoot = mode === "adopted" && session === target
-                    ? (git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? root)
-                    : root;
+                const adoptRoot = mode === "adopted" && session === target ? sessionCheckout(ctx.cwd) : root;
                 const wt = mode === "adopted" ? adoptRoot : wtDir;
                 const logDir = logDirOf(wt, month, fid);
                 const marker = ownershipMarker(root, fid);
@@ -1143,7 +1169,7 @@ export const worktreesCommand = {
                 // An in-place run on a shared branch records what was dirty before it, so its
                 // commits and push take only its own work.
                 const shared = mode === "adopted" && isSharedBranch(git(adoptRoot, ["branch", "--show-current"]) ?? "")
-                    ? openSharedRecord(root, fid, workflow, logDir)
+                    ? openSharedRecord(root, adoptRoot, fid, workflow, logDir)
                     : undefined;
                 let rebaseConflict = false;
                 let sentinel = null;
@@ -1153,10 +1179,18 @@ export const worktreesCommand = {
                 // now, not after the whole phase. Checked before the resume rebase, which
                 // replays such commits under new SHAs this commit-by-commit check no longer
                 // knows; the close itself names them then.
-                if (DOCS_ONLY_WORKFLOWS.includes(workflow) && mode !== "adopted") {
-                    const inherited = inheritedDevCommits(root, target);
+                if (DOCS_ONLY_WORKFLOWS.includes(workflow)) {
+                    const adoptedBranch = mode === "adopted" ? (git(adoptRoot, ["branch", "--show-current"]) ?? "") : target;
+                    const checkable = mode !== "adopted" ||
+                        (adoptedBranch !== "" &&
+                            git(adoptRoot, ["rev-parse", "-q", "--verify", `refs/remotes/${ORIGIN_DEV}`]) !==
+                                null);
+                    // Qualified, so a branch named like a path (docs) or an option (--output=x) is read as the branch.
+                    const inherited = checkable
+                        ? inheritedDevCommits(adoptRoot, `refs/heads/${adoptedBranch}`)
+                        : [];
                     if (inherited.length > 0) {
-                        throw new CommandError(EXIT_REFUSED, inheritedDevRefusal(root, target, workflow, inherited.length));
+                        throw new CommandError(EXIT_REFUSED, inheritedDevRefusal(adoptRoot, adoptedBranch, workflow, inherited.length));
                     }
                 }
                 if (mode === "resumed" && workflow !== "ship") {
@@ -1240,6 +1274,9 @@ export const worktreesCommand = {
                     : null;
                 if (branchWarning !== null)
                     ctx.log(branchWarning);
+                const hooks = mode === "adopted" ? missingHooksDir(wt) : null;
+                if (hooks !== null)
+                    ctx.log(missingHooksLine(wt, hooks));
                 ctx.emit({
                     worktreePath: wt,
                     repoRoot: root,
@@ -1259,6 +1296,7 @@ export const worktreesCommand = {
                     bkitEnv,
                     direnvAllowed,
                     installed: wantInstall && installStatus === 0,
+                    ...(hooks === null ? {} : { hooksMissing: hooks.configured }),
                     ...(shared === undefined
                         ? {}
                         : { startSha: shared.startSha, aheadAtStart: shared.aheadAtStart }),
