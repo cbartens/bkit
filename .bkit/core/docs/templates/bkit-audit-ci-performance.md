@@ -132,9 +132,9 @@ CI time gets re-argued from impressions, and two mistakes recur. First, a lane's
 Within a severity, list critical-path findings first. Every finding states whether it buys latency or cost.
 
 <!-- prettier-ignore -->
-| ID | Severity | Location | Evidence | Expected |
-| --- | --- | --- | --- | --- |
-| PENDING | PENDING | PENDING | PENDING | PENDING |
+| ID | Severity | Title | Location | Evidence | Expected | Key |
+| --- | --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 **If** the run finds nothing → write one row: `None`.
 

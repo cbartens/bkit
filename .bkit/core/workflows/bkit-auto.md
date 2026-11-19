@@ -79,9 +79,9 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
 ## 🤖 Failure Path
 
 1. <!-- bkit:tracker true start -->
-   Write the error message / tool response to `{OUTBOX_ROOT}/error.md`. `{STDERR_FILE}` = a file holding the failed shell command's stderr — drop `--stderr-file` when the failure was not a shell command. Post the printed `comment` — **Skip if** `{ISSUE_ID}` or `{OUTBOX_ROOT}` is not held:
+   Write the error text with the file tool to `.worktrees/bkit-error-auto.md`. `{STDERR_FILE}` = the last 20 lines of the failed shell command's stderr — drop `--stderr-file` when not a shell failure. Post the printed `comment` — **Skip if** `{ISSUE_ID}` is not held:
    ```bash
-   "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --kind=failure --step-number={N} --step-title="{Step Name}" --sub-step={M} --error-file="{OUTBOX_ROOT}/error.md" --stderr-file="{STDERR_FILE}" --session-dir="{SESSION_DIR}"
+   "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --kind=failure --step-number={N} --step-title="{Step Name}" --sub-step={M} --error-file=".worktrees/bkit-error-auto.md" --stderr-file="{STDERR_FILE}" --session-dir="{SESSION_DIR}"
    ```
    <!-- bkit:tracker true end -->
 2. <!-- bkit:tracker true start -->

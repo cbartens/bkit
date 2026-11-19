@@ -191,9 +191,9 @@ Carry `COINCIDENTAL` and `RULE-OF-THREE-PENDING` forward in `Carried Forward`, s
 Within a severity, list higher blast radius x divergence x user visibility first.
 
 <!-- prettier-ignore -->
-| ID | Severity | Verdict | Location | Evidence | Expected |
-| --- | --- | --- | --- | --- | --- |
-| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| ID | Severity | Title | Verdict | Location | Evidence | Expected | Key |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 **If** the run finds nothing → write one row: `None`.
 

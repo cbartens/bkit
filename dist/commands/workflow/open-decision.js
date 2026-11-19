@@ -1,10 +1,18 @@
-// Read a build Decision Pause file: its header, its items, the run's open pause, and the two
-// rules read from them — whether a resume re-runs a red gate (`gateRerun`) and whether a
-// pause may route `continue` (`skipProblem`). `decisions.ts` writes these files; this module
-// only reads them and imports nothing from the command modules, so `status.ts`, `steps.ts`
-// and `workflows.ts` read it without an import cycle.
+// Read a build Decision Pause: the orchestrator's decision file plus the engine's rows for it in
+// the folder's `status.jsonl` (`decision-counts`: Source changed, Gate, the loop question;
+// `decision-answer`: one row per answer). The module returns the header, the items, the run's
+// open pause, and the two rules read from them — whether a resume re-runs a red gate
+// (`gateRerun`) and whether a pause may route `continue` (`skipProblem`). The row appended last
+// wins for a question; `at` is never compared. An old file (`isOldLayout`) keeps its own answer
+// lines; any other file settles only through rows, and only once `checkProblem` passes. The module imports
+// nothing from the command modules, so `status.ts`, `steps.ts` and `workflows.ts` read it
+// without an import cycle.
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fold, parseStatusLines, } from "../../ledgers/status.js";
+import { CommandError } from "../lib.js";
+/** Exit code: the `status.jsonl` beside the decision file is missing or has a malformed line. */
+export const EXIT_NO_STATUS = 3;
 /** Splits a decision file before each `**Q{n} — ` item line. */
 export const ITEM_SPLIT = /^(?=\*\*Q\d+ — )/m;
 const lineOf = (text, key) => new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, "m").exec(text)?.[1] ?? null;
@@ -34,12 +42,25 @@ export function optionAnswer(answer, options) {
         return name;
     return /[)—:,.-]/.test(m[0]) ? `${name} — ${rest}` : answer;
 }
+/**
+ * Whether a `Recommended:` option name marks a hard blocker: it names none of the item's
+ * `options` and starts with the word `none`, so an option such as `None needed` stays an option.
+ */
+const isHardBlocker = (name, options) => {
+    const bare = bareName(name.trim());
+    return !options.includes(bare) && /^none\b/i.test(bare);
+};
+/**
+ * The loop question of a pause's items: `Q1` when the pause has a loop (`hasLoop`: a
+ * `decision-counts` row holds one, or an old file's `## Progress` block), else none.
+ */
+export const loopItemOf = (items, hasLoop) => hasLoop ? items.find((i) => i.n === 1) : undefined;
 /** A `Fix task:` value as a positive integer, else null. */
 const fixTaskOf = (v) => v !== null && /^[1-9][0-9]*$/.test(v) ? Number(v) : null;
-/** The `Key: value` lines before the file's first blank line. */
+/** The `Key: value` lines before the file's first blank line; a CRLF line reads like LF. */
 export function decisionHeader(text) {
     const out = {};
-    for (const line of text.split("\n")) {
+    for (const line of text.split(/\r?\n/)) {
         if (line.trim() === "" || line.startsWith("**Q"))
             break;
         const m = /^([A-Za-z][\w ]*):[ \t]*(.*?)[ \t]*$/.exec(line);
@@ -57,7 +78,6 @@ export function parseDecisionItems(text) {
         const head = /^\*\*Q(\d+) — (.+?):\*\*/.exec(part);
         const rec = lineOf(part, "Recommended");
         const [option, ...why] = (rec ?? "").split(" — ");
-        const none = /^No recommendation\b/m.test(part) || /^none$/i.test((option ?? "").trim());
         const perLine = [...part.matchAll(/^[A-Z]\)[ \t]+(.+?)[ \t]*$/gm)].map((m) => (m[1] ?? "").split(" — ")[0].trim());
         const options = perLine.length > 0
             ? perLine.filter(Boolean)
@@ -65,6 +85,7 @@ export function parseDecisionItems(text) {
                 .split(" / ")
                 .map((o) => bareName(o.trim()))
                 .filter(Boolean);
+        const none = isHardBlocker(option ?? "", options);
         const answer = lineOf(part, "Decision");
         const decision = answer === null ? null : optionAnswer(answer, options);
         return {
@@ -79,19 +100,284 @@ export function parseDecisionItems(text) {
             assumed: decision !== null && /^Accept \(assumed\)/.test(decision),
             rejected: lineOf(part, "Rejected") !== null,
             deferred: lineOf(part, "Deferred") !== null,
+            by: null,
         };
     });
 }
+const sourceOf = (source, rel = "") => typeof source === "string"
+    ? { read: (r) => (r === "decision.md" ? source : null), rel: "decision.md", text: true }
+    : { read: source, rel, text: false };
+/** Every row of the `status.jsonl` beside `rel`, in file order; none when it is absent. */
+function statusRowsBeside(read, rel) {
+    const statusRel = path.join(path.dirname(rel), "status.jsonl");
+    const text = read(statusRel);
+    if (text === null)
+        return [];
+    const parsed = parseStatusLines(text, statusRel);
+    if ("line" in parsed)
+        throw new CommandError(EXIT_NO_STATUS, `${statusRel} line ${parsed.line} is ${parsed.problem}`);
+    return parsed.rows;
+}
 /**
- * Whether Q1 is the loop question (the text before the first item holds a `## Progress`
- * block), and the questions besides it that nobody answered, rejected or deferred.
+ * The `decision-counts` and `decision-answer` rows naming `rel` in the `status.jsonl` beside it,
+ * in file order. A row names a file by its name: the rows sit in the file's own folder.
+ * `answersOf` keeps only the `decision-answer` rows of that workflow.
  */
-export function undecidedBesidesLoop(text) {
-    const hasLoop = /^## Progress$/m.test(text.split(ITEM_SPLIT, 1)[0] ?? "");
-    const undecided = parseDecisionItems(text)
+export function decisionRows(read, rel, answersOf) {
+    const name = path.basename(rel);
+    return statusRowsBeside(read, rel).filter((r) => (r.type === "decision-counts" || r.type === "decision-answer") &&
+        typeof r.file === "string" &&
+        path.basename(r.file) === name &&
+        (answersOf === undefined || r.type !== "decision-answer" || r.workflow === answersOf));
+}
+/** The value of the `workflow-started` field `decisionLayout` that marks a run whose pause answers are rows. */
+export const DECISION_LAYOUT = "rows";
+/**
+ * Whether the run that wrote `rel` started before the engine marked its start row: run {RUN}
+ * of the name `{workflow}-decision-{RUN}-{N}.md`, counted as `runNumber` counts runs in the
+ * `status.jsonl` beside it, began at a `workflow-started` row with no `decisionLayout` field.
+ * A resume appends no start row, so that row is the run's first. No such row, or a name with no
+ * run number, is false.
+ */
+function startedBeforeMarker(read, rel) {
+    const m = /^(.+)-decision-([0-9]+)-[0-9]+\.md$/.exec(path.basename(rel));
+    if (m === null)
+        return false;
+    const rows = statusRowsBeside(read, rel);
+    const run = fold(rows).filter((r) => r.workflow === m[1])[Number(m[2]) - 1];
+    if (run === undefined)
+        return false;
+    const start = rows.find((r) => r.type === "workflow-started" && r.workflow === m[1] && r.at === run.startedAt);
+    return start !== undefined && !("decisionLayout" in start);
+}
+/**
+ * Whether the file is an old layout, read as written: its header carries the `Status` line only
+ * an old file has, no `decision-counts` row names it, and its run started before the marker
+ * (`startedBeforeMarker`). Answer rows (owner, rerun, ship) override only the question they
+ * name. Any other file's own `Status:`, `Decision:`, `Fix task:`, `Rejected:` and `Deferred:`
+ * lines are never answers.
+ */
+const isOldLayout = (read, rel, header, rows) => "Status" in header &&
+    !rows.some((r) => r.type === "decision-counts") &&
+    startedBeforeMarker(read, rel);
+/** The last row of a type, in file order. */
+const lastOf = (rows, type) => rows.filter((r) => r.type === type).at(-1) ?? null;
+function foldDecision(read, rel, answersOf, textOnly = false) {
+    const text = read(rel) ?? "";
+    const rows = decisionRows(read, rel, answersOf);
+    const header = decisionHeader(text);
+    const own = parseDecisionItems(text);
+    const old = !textOnly && isOldLayout(read, rel, header, rows);
+    if (textOnly || (old && rows.length === 0)) {
+        return { items: own, header, hasLoop: hasProgress(text) };
+    }
+    // A file `checkProblem` refuses settles nothing: no answer row counts for it.
+    const settles = old || checkProblem(read, rel) === null;
+    const counts = lastOf(rows, "decision-counts");
+    const items = own.map((i) => old
+        ? i
+        : {
+            ...i,
+            decision: null,
+            fixTask: null,
+            assumed: false,
+            rejected: false,
+            deferred: false,
+            by: null,
+        });
+    const loop = counts?.loop;
+    if (loop !== undefined && !items.some((i) => i.n === 1)) {
+        items.push({
+            n: 1,
+            title: loop.title,
+            text: [`**Q1 — ${loop.title}:**`, ...loop.options.map((o, k) => `${letterAt(k)}) ${o}`)].join("\n"),
+            options: loop.options,
+            recommended: loop.recommended,
+            reason: loop.reason,
+            decision: null,
+            fixTask: null,
+            assumed: false,
+            rejected: false,
+            deferred: false,
+            by: null,
+        });
+    }
+    items.sort((a, b) => a.n - b.n);
+    // An answer row written before the file's first counts row answers nothing.
+    const firstCounts = rows.findIndex((r) => r.type === "decision-counts");
+    const answers = new Map();
+    for (const [k, r] of rows.entries())
+        if (settles && k > firstCounts && r.type === "decision-answer")
+            answers.set(Number(r.q), r);
+    const folded = items.map((i) => {
+        const a = answers.get(i.n);
+        if (a === undefined)
+            return i;
+        return {
+            ...i,
+            decision: optionAnswer(String(a.answer), i.options),
+            assumed: a.assumed === true,
+            rejected: a.rejected === true,
+            deferred: a.deferred !== undefined && a.deferred !== false,
+            by: typeof a.by === "string" ? a.by : null,
+            fixTask: fixTaskOf(a.fixTask === undefined ? null : String(a.fixTask)),
+        };
+    });
+    const out = { ...header };
+    if (!old)
+        for (const k of ["Status", "Source changed", "Gate"])
+            delete out[k];
+    if (counts?.sourceChanged !== undefined)
+        out["Source changed"] = String(counts.sourceChanged);
+    if (counts?.gate !== undefined)
+        out.Gate = counts.gate;
+    return { items: folded, header: out, hasLoop: loop !== undefined || (old && hasProgress(text)) };
+}
+/** Whether a file's text before its first item holds the `## Progress` block. */
+const hasProgress = (text) => text != null && /^## Progress$/m.test(text.split(ITEM_SPLIT, 1)[0] ?? "");
+/**
+ * The items of the decision file `rel`: its questions, the loop question `Q1` from the last
+ * `decision-counts` row, each answer from the row appended last for its question. `read` returns
+ * a path's text, or null when the file is absent. An old file (`isOldLayout`) is the base: its
+ * in-file answers stand, and a row overrides only the question it names. Any other file reads
+ * no answer while `checkProblem` refuses it. `answersOf` keeps only that workflow's answer rows.
+ */
+export function decisionItems(read, rel, answersOf) {
+    return foldDecision(read, rel, answersOf).items;
+}
+/** The header of the decision file `rel`, `Source changed` and `Gate` read from its `decision-counts` row. */
+export function decisionFileHeader(read, rel) {
+    return foldDecision(read, rel).header;
+}
+/**
+ * The `Status` a pause's items leave it in: `OPEN` while a question has no answer (and for a
+ * file with no readable question), except that the loop question `Q1` (`hasLoop`: a
+ * `decision-counts` row holds it, or an old file's `## Progress` block) answered `Try again`
+ * settles the pause; then `ASSUMED` while an assumed `Accept` remains; else `DECIDED`.
+ */
+export function statusOf(items, hasLoop = false) {
+    if (items.length === 0)
+        return "OPEN";
+    const loop = loopItemOf(items, hasLoop);
+    const settled = /^Try again\b/.test(loop?.decision ?? "");
+    if (!settled && items.some((i) => i.decision === null))
+        return "OPEN";
+    return items.some((i) => i.assumed && !i.deferred) ? "ASSUMED" : "DECIDED";
+}
+/**
+ * The `Status` of a pause: an old file (`isOldLayout`) that no row names is read as its
+ * written `Status:` line; otherwise the status its folded items leave it in.
+ */
+export function pauseStatus(source, rel) {
+    const { read, rel: r, text } = sourceOf(source, rel);
+    const header = decisionHeader(read(r) ?? "");
+    const rows = decisionRows(read, r);
+    if (header.Status !== undefined &&
+        rows.length === 0 &&
+        (text || isOldLayout(read, r, header, rows)) &&
+        parseDecisionItems(read(r) ?? "").length > 0)
+        return header.Status;
+    const { items, hasLoop } = foldDecision(read, r, undefined, text);
+    return statusOf(items, hasLoop);
+}
+/**
+ * Whether Q1 is the loop question (a `decision-counts` row holds one, or an old file's text
+ * before its first item holds the `## Progress` block), and the questions besides it that
+ * nobody answered, rejected or deferred.
+ */
+export function undecidedBesidesLoop(source, rel) {
+    const { read, rel: r, text } = sourceOf(source, rel);
+    const { items, hasLoop } = foldDecision(read, r, undefined, text);
+    const undecided = items
         .filter((i) => (hasLoop ? i.n !== 1 : true) && i.decision === null && !i.rejected && !i.deferred)
         .map((i) => `Q${i.n}`);
     return { hasLoop, undecided };
+}
+/**
+ * The first item rule a decision file breaks, naming the question, or null. Each question needs
+ * lettered options in order (`A) {name} — {effect}`), a `Recommended:` line that names one of
+ * them (or `none` for a hard blocker) and a `Default if unanswered:` line; no number repeats; and
+ * `Q1` is the engine's when the `decision-counts` row holds the loop question, and the questions
+ * start at `Q1` when it holds none.
+ */
+export function itemProblem(text, loop) {
+    const seen = new Set();
+    const engineHasLoop = loop !== null;
+    for (const name of ["Status", "Source changed", "Gate"]) {
+        if (name in decisionHeader(text))
+            return `the header holds a "${name}:" line; the engine writes it as a row, so delete it`;
+    }
+    const stray = /^(?:\*\*Q\d+(?!\d| — )|#+[ \t]*Q\d+\b|[ \t]*(?:[-*+]|\d+[.)])[ \t]+\*\*Q(?:uestion[ \t]*)?\d+|\*\*Question[ \t]*\d+).*$/m.exec(text);
+    if (stray !== null)
+        return `"${stray[0].slice(0, 60)}" opens like a question but not as "**Q{n} — {title}:** {question}" at the start of a line; write an em dash (—) after the number, no list marker, close the bold after the colon`;
+    if (!engineHasLoop && !/^\*\*Q\d+ — /m.test(text))
+        return 'the file holds no question; write each as "**Q{n} — {title}:** {question}" (the `decision-counts` row holds no loop question)';
+    const first = Math.min(...[...text.matchAll(/^\*\*Q(\d+) — /gm)].map((m) => Number(m[1])));
+    if (!engineHasLoop && first > 1)
+        return `the first question is Q${first}, so Q1 is a loop question, but the \`decision-counts\` row holds none; re-run \`decisions counts\` with the pause's loop flags, or number the questions from Q1`;
+    if (engineHasLoop) {
+        // The loop question was built for the question count `decisions counts` saw.
+        const own = text.split(ITEM_SPLIT).length - 1;
+        const offersStop = loop.options.includes("Stop");
+        const offersDecide = loop.options.includes("Decide");
+        if ((own > 0 && offersStop) || (own === 0 && offersDecide))
+            return "the `decision-counts` row's loop question was built for a different question count; re-run Decision Pause step 2's `decisions counts` block with the pause's own count flags, since the last row wins and a flag left out drops what it wrote (`Gate: FAIL` from `--base-check`, the `Source changed` header from `--source-changed`), then check again; a resume does not re-run it, so there this ends in the Failure Path";
+    }
+    for (const part of text.split(ITEM_SPLIT).slice(1)) {
+        const n = Number(/^\*\*Q(\d+) — /.exec(part)?.[1] ?? 0);
+        const headLine = part.split("\n", 1)[0] ?? "";
+        if (!/^\*\*Q\d+ — .+?:\*\*/.test(headLine))
+            return `"${headLine.slice(0, 60)}" is not "**Q{n} — {title}:** {question}"; close the bold after the colon (\`:**\`)`;
+        const q = `Q${n}`;
+        if (seen.has(n))
+            return `${q} appears twice; number each question once`;
+        seen.add(n);
+        if (n === 1 && engineHasLoop)
+            return "Q1 is the loop question the `decision-counts` row holds; number your questions from Q2";
+        const answerLine = /^(Decision|Fix task|Rejected|Deferred):/m.exec(part);
+        if (answerLine !== null)
+            return `${q} holds a "${answerLine[1]}:" line; answers are rows the engine writes (\`decisions apply\`), so delete it`;
+        const optionLines = [...part.matchAll(/^([A-Z])\)[ \t]+(.*?)[ \t]*$/gm)];
+        if (optionLines.length === 0)
+            return `${q} has no lettered options; write one line per option: "A) {name} — {what happens}"`;
+        for (const [i, m] of optionLines.entries()) {
+            if (m[1] !== letterAt(i))
+                return `${q}: option letters must run A, B, C in order; found ${m[1]}) where ${letterAt(i)}) belongs`;
+            const [name, ...effect] = (m[2] ?? "").split(" — ");
+            if ((name ?? "").trim() === "" || effect.join(" — ").trim() === "")
+                return `${q}: option ${m[1]} needs a name and an effect: "${m[1]}) {name} — {what happens}"`;
+        }
+        const rec = /^Recommended:[ \t]*(.+?)[ \t]*$/m.exec(part)?.[1];
+        if (rec === undefined)
+            return `${q} has no Recommended: line; write "Recommended: A) {name} — {reason}" or "Recommended: none — {why}"`;
+        const names = optionLines.map((m) => (m[2] ?? "").split(" — ")[0].trim());
+        const recName = (rec.split(" — ")[0] ?? "").replace(/^[A-Z]\)[ \t]*/, "").trim();
+        if (!isHardBlocker(recName, names) && !names.includes(recName))
+            return `${q}: the recommended option "${recName}" is not one of its options`;
+        if (!/^Default if unanswered:[ \t]*\S/m.test(part))
+            return `${q} has no Default if unanswered: line`;
+    }
+    return null;
+}
+/**
+ * The first rule a pause file breaks, or null: no `decision-counts` row names it, or its text
+ * breaks an item rule (`itemProblem`, the loop question from the last counts row). `decisions
+ * check`, `decisions apply` and the fold (`foldDecision`) refuse a file on it.
+ */
+export function checkProblem(read, rel) {
+    const counts = lastOf(decisionRows(read, rel), "decision-counts");
+    if (counts === null)
+        return `no \`decision-counts\` row names ${path.basename(rel)}; run Decision Pause step 2's \`decisions counts\` block for it, then check again`;
+    return itemProblem(read(rel) ?? "", counts.loop ?? null);
+}
+/**
+ * The `checkProblem` of a pause a resume reads; null for an old file (`isOldLayout`), which is
+ * read as written. `decisions apply --by=owner` and `--by=rerun` refuse a file on it.
+ */
+export function pauseProblem(read, rel) {
+    if (isOldLayout(read, rel, decisionHeader(read(rel) ?? ""), decisionRows(read, rel)))
+        return null;
+    return checkProblem(read, rel);
 }
 /** The checks a red-gate pause re-runs, by the decision file's `From` header. */
 export const RERUN_FROM = ["verify", "holistic", "tests"];
@@ -100,10 +386,12 @@ export const RERUN_FROM = ["verify", "holistic", "tests"];
  * `FAIL`, its `Status` is `OPEN`, the loop question is its only undecided question, and its
  * `From` names a check that re-runs. `rerunFrom` is that check, null when `gateRerun` is false.
  */
-export function gateRerun(open, text) {
+export function gateRerun(open, source, rel) {
     const from = RERUN_FROM.find((f) => f === open?.from);
-    const { hasLoop, undecided } = undecidedBesidesLoop(text);
-    const rerun = open?.gate === "FAIL" &&
+    const { hasLoop, undecided } = undecidedBesidesLoop(source, rel);
+    const src = sourceOf(source, rel);
+    const rerun = (src.text || pauseProblem(src.read, src.rel) === null) &&
+        open?.gate === "FAIL" &&
         open.status === "OPEN" &&
         from !== undefined &&
         hasLoop &&
@@ -119,15 +407,14 @@ const ACCEPTED = /^Accept(?: \(assumed\))?(?:$|[ \t]+—)/;
  * header that reads `false`. Headers count only in the header block, so a line inside an item
  * never stands in for one. A missing fact refuses; it is never guessed.
  */
-export function skipProblem(text) {
-    const header = decisionHeader(text);
+export function skipProblem(source, rel) {
+    const { read, rel: r, text } = sourceOf(source, rel);
+    const { items, header, hasLoop } = foldDecision(read, r, undefined, text);
     const from = header.From;
     if (from === undefined)
         return "no From header";
     if (from !== "verify" && from !== "holistic")
         return `From is "${from}", not verify or holistic`;
-    const { hasLoop } = undecidedBesidesLoop(text);
-    const items = parseDecisionItems(text);
     for (const it of items) {
         if (hasLoop && it.n === 1)
             continue;
@@ -136,7 +423,7 @@ export function skipProblem(text) {
         if (it.decision === null || !ACCEPTED.test(it.decision))
             return `Q${it.n} is ${it.decision === null ? "undecided" : `"${it.decision}"`}, not Accept`;
     }
-    const loop = hasLoop ? items.find((i) => i.n === 1) : undefined;
+    const loop = loopItemOf(items, hasLoop);
     if (loop !== undefined && !/^Decide\b/.test(loop.decision ?? ""))
         return `the loop question Q1 is ${loop.decision === null ? "undecided" : `"${loop.decision}"`}, not Decide`;
     if (/^FAIL\b/.test(header.Gate ?? ""))
@@ -148,12 +435,31 @@ export function skipProblem(text) {
         return `Source changed is "${changed}", not false`;
     return null;
 }
+/** The pauses whose `decisions counts` takes no flags, so a resume can write their row. */
+export const BARE_COUNT_QUESTIONS = ["CHALLENGE", "CHANGED_TESTS", "UNPROVEN"];
+/**
+ * Whether the pause file `rel` reads as never written: no `decision-counts` row names it, it
+ * holds no question a resume reads (`pauseProblem` refuses it, or an old file has none), and its
+ * `Question` is not one of `BARE_COUNT_QUESTIONS`. Its counts need the gate's flags, which a
+ * resume does not hold, so `openDecision` skips it and the build summary does not list it.
+ */
+export function unwrittenPause(read, rel) {
+    if (decisionRows(read, rel).some((r) => r.type === "decision-counts"))
+        return false;
+    const { header, items } = foldDecision(read, rel);
+    if (BARE_COUNT_QUESTIONS.includes(header.Question ?? ""))
+        return false;
+    return pauseProblem(read, rel) !== null || items.length === 0;
+}
 /**
  * The highest-numbered `{workflow}-decision-{run}-{N}.md` in `logDir` whose header holds
  * `Status: OPEN`, or a `DECIDED` / `ASSUMED` file that none of the run's `{workflow}-decision`
  * rows names (a pause stopped after its answers were written, before the step finished), or
- * null. Only the given run's files count, so an earlier run's pause never resurfaces.
- * `file` is relative to `tree`; `finished` lists the paths the run's decision rows name.
+ * null. Only the given run's files count, so an earlier run's pause never resurfaces. A file
+ * that reads as never written (`unwrittenPause`) is skipped as if absent: the step rows route
+ * the resume, and a pause it reaches again takes the same number, since no `{workflow}-decision`
+ * row was written for it. `file` is relative to `tree`; `finished` lists the paths the run's
+ * decision rows name.
  */
 export function openDecision(logDir, tree, workflow, run, finished = []) {
     if (!fs.existsSync(logDir))
@@ -166,33 +472,37 @@ export function openDecision(logDir, tree, workflow, run, finished = []) {
         .map(({ f, m }) => ({ f, n: Number(m[1]) }))
         .sort((a, b) => b.n - a.n);
     for (const { f, n } of found) {
-        const text = fs.readFileSync(path.join(logDir, f), "utf-8");
-        const field = (key) => new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, "m").exec(text)?.[1] ?? null;
-        const status = field("Status");
         const rel = path.relative(tree, path.join(logDir, f));
+        const read = (r) => {
+            const abs = path.join(tree, r);
+            return fs.existsSync(abs) ? fs.readFileSync(abs, "utf-8") : null;
+        };
+        const { header, items } = foldDecision(read, rel);
+        const status = pauseStatus(read, rel);
         const unfinished = (status === "DECIDED" || status === "ASSUMED") && !finished.includes(rel);
-        if (status !== "OPEN" && !unfinished)
+        if ((status !== "OPEN" && !unfinished) || unwrittenPause(read, rel))
             continue;
-        // `Gate:` counts only in the header block (the lines before the first blank line).
-        const header = text.split(/\r?\n[ \t]*\r?\n/, 1)[0] ?? "";
-        const gate = /^Gate:[ \t]*(.+?)[ \t]*$/m.exec(header)?.[1] ?? null;
+        const counted = decisionRows(read, rel).some((r) => r.type === "decision-counts");
+        const questions = pauseProblem(read, rel) === null ? items.length : 0;
         const num = (key) => {
-            const v = field(key);
-            return v !== null && /^[0-9]+$/.test(v) ? Number(v) : null;
+            const v = header[key];
+            return v !== undefined && /^[0-9]+$/.test(v) ? Number(v) : null;
         };
         return {
             file: rel,
             decision: n,
-            question: field("Question"),
-            from: field("From"),
+            question: header.Question ?? null,
+            from: header.From ?? null,
             pauseStep: num("Pause step"),
             group: num("Group"),
             verifyAttempt: num("Verify attempt"),
             testAttempt: num("Test attempt"),
-            plan: field("Plan"),
-            gate,
-            sourceChanged: field("Source changed"),
-            status: status ?? "OPEN",
+            plan: header.Plan ?? null,
+            gate: header.Gate ?? null,
+            sourceChanged: header["Source changed"] ?? null,
+            status,
+            questions,
+            counted,
         };
     }
     return null;

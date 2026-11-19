@@ -23,6 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
+_(refreshed 2026-11-19T13:56:12Z)_
 _(refreshed 2026-11-19T15:42:26Z)_
 _(refreshed 2026-11-19T15:00:23Z)_
 _(refreshed 2026-11-19T10:48:38Z)_
@@ -88,6 +89,7 @@ _(refreshed 2026-11-19T10:40:25Z)_
 | 914-build-planned-test | 914-build-planned-test | 1794815291907 |
 | 918-ad-hoc-agent | 918-ad-hoc-agent | 1794476513474 |
 | 919-worktree-setup-tries | 919-worktree-setup-tries | 1794997902102 |
+| 958-agents-orchestrator-write | 958-agents-orchestrator-write | 1795096572680 |
 | 985-install-settings-merge | 985-install-settings-merge | 1795102946893 |
 | 992-ledger-commands-six | 992-ledger-commands-six | 1794952547396 |
 | 994-build-cannot-start | 994-build-cannot-start | 1795100423603 |

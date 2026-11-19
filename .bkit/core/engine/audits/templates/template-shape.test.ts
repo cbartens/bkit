@@ -28,6 +28,20 @@ function managed(file: string): string {
   return text.slice(start, end);
 }
 
+/** True when the Findings table's header has `Title` right after `Severity` and `Key` last. */
+function findingsColumnsOk(text: string): boolean {
+  const head = /^\| ID \|.*$/m.exec(text.slice(text.indexOf("\n## Findings")))?.[0] ?? "";
+  const cells = head
+    .split("|")
+    .slice(1, -1)
+    .map((c) => c.trim());
+  return (
+    cells.includes("Title") &&
+    cells.indexOf("Title") === cells.indexOf("Severity") + 1 &&
+    cells.at(-1) === "Key"
+  );
+}
+
 const planTemplate = () => managed(path.join(templatesDir(), "bkit-plan.md"));
 
 const auditTemplates = () =>
@@ -194,6 +208,13 @@ describe("template shape", () => {
       lostSteps,
       promptDefers: /Follow all instruction in template|Template read-only rules/.test(prompt),
     }).toEqual({ leftovers: [], lostSteps: [], promptDefers: false });
+  });
+
+  it("audit templates carry Title and Key columns in their Findings table", () => {
+    const wrong = auditTemplates().filter(
+      (name) => !findingsColumnsOk(managed(path.join(templatesDir(), name))),
+    );
+    expect(wrong).toEqual([]);
   });
 
   it("audit gate boxes say what they check", () => {

@@ -14,10 +14,12 @@ import {
   ciSelectionIdentity,
   allRunsDoneSteps,
   appendLine,
+  ENGINE_ROW_TYPES,
   type InvocationEvent,
   fold,
   lastDoneStepAllRuns,
   lastRun,
+  parseStatusLines,
   repeatStrategy,
   runNumber,
   runOrStepField,
@@ -115,20 +117,13 @@ const RENAMED_STEPS: Readonly<Record<string, string>> = {
 
 /** Parse NDJSON status text; `label` names it in errors. Malformed is an error, never "no rows". */
 function parseStatusRows(text: string, label: string): StatusRow[] {
-  return text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l !== "")
-    .map((l, i) => {
-      const parsed = parseJson(l);
-      if (!parsed.ok) throw new CommandError(EXIT_NO_STATUS, `${label} line ${i + 1} is not JSON`);
-      if (typeof parsed.value !== "object" || parsed.value === null) {
-        throw new CommandError(EXIT_NO_STATUS, `${label} line ${i + 1} is not a JSON object`);
-      }
-      const row = parsed.value as StatusRow;
-      const renamed = typeof row.step === "string" ? RENAMED_STEPS[row.step] : undefined;
-      return renamed === undefined ? row : { ...row, step: renamed };
-    });
+  const parsed = parseStatusLines(text, label);
+  if ("line" in parsed)
+    throw new CommandError(EXIT_NO_STATUS, `${label} line ${parsed.line} is ${parsed.problem}`);
+  return parsed.rows.map((row) => {
+    const renamed = typeof row.step === "string" ? RENAMED_STEPS[row.step] : undefined;
+    return renamed === undefined ? row : { ...row, step: renamed };
+  });
 }
 
 /** The rows as the fold reads them; the fold skips types it does not model. */
@@ -847,6 +842,10 @@ export const statusCommand: CommandSpec = {
           "true when the active run's open decision file (as `workflows start` prints it in openDecision) has a Gate: FAIL header, Status: OPEN, From verify, holistic or tests, and the loop question as its only undecided question: re-run that gate instead of asking again; else false",
         rerunFrom:
           "verify | holistic | tests: the open decision file's From header, the check whose gate re-runs; null when gateRerun is false",
+        questions:
+          "the number of questions in the active run's open decision file (the loop question included; 0 while its text or its missing decision-counts row fails decisions check), or null when no decision is open",
+        counted:
+          "whether a decision-counts row names the active run's open decision file (false only for an old file with questions, or a CHALLENGE, CHANGED_TESTS or UNPROVEN pause), or null when no decision is open",
         testVerdict:
           "debug: the verdict of the active run's last DONE debug-run-tests row (PASS|CONCERNS|FAIL), or null; other workflows null",
         testSource: "debug: that row's source (local|ci), or null; other workflows null",
@@ -888,8 +887,16 @@ export const statusCommand: CommandSpec = {
           ...point,
           ...gateRerun(
             open,
-            open === null ? "" : fs.readFileSync(path.resolve(root, open.file), "utf-8"),
+            open === null
+              ? ""
+              : (rel) => {
+                  const abs = path.resolve(root, rel);
+                  return fs.existsSync(abs) ? fs.readFileSync(abs, "utf-8") : null;
+                },
+            open?.file,
           ),
+          questions: open?.questions ?? null,
+          counted: open?.counted ?? null,
           ...round,
         });
         if (workflow === "debug" && point.number > 3 && round.testVerdict === null) {
@@ -1013,6 +1020,11 @@ export const statusCommand: CommandSpec = {
           throw new CommandError(
             EXIT.USAGE,
             `--type ${type} is folded; write it with its own verb`,
+          );
+        if (ENGINE_ROW_TYPES.has(type))
+          throw new CommandError(
+            EXIT.USAGE,
+            `--type ${type} is written by the engine; use \`${type === "decision-counts" ? "decisions counts" : "decisions apply"}\``,
           );
         const fields = Object.fromEntries(
           ((ctx.flags.field as string[] | undefined) ?? []).map(extraField),

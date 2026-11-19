@@ -141,9 +141,9 @@ Search engines rank pages, and answer engines quote facts, so plain factual copy
 Within a severity, list indexing findings first.
 
 <!-- prettier-ignore -->
-| ID | Severity | Location | Evidence | Expected |
-| --- | --- | --- | --- | --- |
-| PENDING | PENDING | PENDING | PENDING | PENDING |
+| ID | Severity | Title | Location | Evidence | Expected | Key |
+| --- | --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 **If** the run finds nothing → write one row: `None`.
 

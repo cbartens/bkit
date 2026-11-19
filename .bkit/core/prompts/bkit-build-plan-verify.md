@@ -107,18 +107,14 @@ autoCompactWindow: 300000
    - A gap you leave `Fixable: false` is a `FAIL`.
 9. For each task, check that the codebase satisfies its `DONE WHEN` (a file exists, a signature matches, a test passes, a behaviour shows) and that the task has no test-first audit gap:
    - `BLOCKED` log lines, `docs/deferrals.jsonl` rows and out-of-scope notes never satisfy it.
-   - A gap that a supplied decision record accepts (`Decision: Accept` or `Decision: Accept (assumed)`) is no gap. Name the record in `Notes`.
-   - **If** the accept is `Decision: Accept (assumed)` → add `assumed, not the owner's acceptance` to that note, because an assumed accept is taken without the owner.
+   - A gap that a supplied decision record accepts (per `bkit decisions answers --file=<the record>`) is no gap. Name the record in `Notes`.
+   - **If** it shows `assumed: true` → add `assumed, not the owner's acceptance` to that note, because an assumed accept is taken without the owner.
    - **If** the task is satisfied → name its number on the header's `Tasks` line. The workflow ticks the plan.
    - **If** the task is not satisfied, or its work is missing:
      - Leave it off that line, and append its log entry.
      - **If** the gap is `Fixable: false` → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
 10. Update **Create** via `Edit`:
     - Set `Failures` = the count of unresolved gaps.
-    - **If** your Context names a structured result file (`Result:`) → write it as one JSON object with only these keys: `findings` (array; each item has `severity` (`CRITICAL`, `HIGH`, `MEDIUM` or `LOW`), boolean `fixable`, `location` (`path:line`) and `doneWhen`, plus optional `title`, `cls` and `tests`), `judgments` (object of header-field name to text, number or boolean; it holds `Verdict` and each header field the engine does not derive, never `Failures` or `Fixable`), `body` (the report text below the header, written in full: Scope, Notes and every section of your Output format except the generated Findings Log; omit it and the report keeps nothing but the header) and `evidenceComplete` (always `true` or `false`; `false` when you could not check everything). The engine sets `Failures` to the number of entries in `findings`, of every severity, in place of any other count in your steps, so list there only items that need a fix and keep the rest in `body`. A missing or invalid result file makes `bkit steps stub` exit 6 and sends the step to its Failure Path, so write the file before you finish; the caller deletes any older file at that path before it launches you, so a file there is always yours. If you cannot write it, say so in your final reply and do not leave the step to fail silently. The caller renders **Create** with `bkit steps stub --agent=bkit-build-plan-verify --result-file`, and the engine derives `Failures`, the header `Fixable` and the `Fingerprint`, so write none of them by hand.
-      - Put `Tasks` and `Loosened` in `judgments`, because the engine never derives them and the workflow reads them from the header.
-      - Put the `## Identified Gaps Log` section, with one `TASK {N}` line per gap, in `body`, because the remediate step reads it from the report.
-      - The engine never overrides a `Verdict` that depends on evidence: `CONCERNS` and the `Loosened` decision stay yours.
     - Set `Fixable`:
       - **If** any of those gaps is `Fixable: true` → `true`.
       - **Else** → `false`.
@@ -133,7 +129,7 @@ autoCompactWindow: 300000
 
 ```markdown
 Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
-Failures: <integer >= 0>
+Failures: <count of Fixable lines under ## Identified Gaps Log>
 Fixable: true | false
 Tasks: <the task numbers you judged satisfied, comma-separated; none when there are none>
 Loosened: <the tests logged test-loosened at Fixable: true, each as `{file}` `{name}`, comma-separated; none when there are none>
@@ -164,7 +160,7 @@ Loosened: <the tests logged test-loosened at Fixable: true, each as `{file}` `{n
 
 ## Identified Gaps Log
 
-[The gap count, and a brief description of each gap ending `— Fixable: true` or `— Fixable: false`. **If** none → `None`. Empty in the stub, and filled by appending with Bash `echo >>` as the work goes.]
+[An optional gap-count line (not counted), then one line per gap ending `— Fixable: true` or `— Fixable: false`. **If** none → `None`. Empty in the stub, and filled by appending with Bash `echo >>` as the work goes.]
 ```
 
 > ⛔ **STOP** once every task in scope is judged and `Verdict` is set. Do not apply fixes.

@@ -110,6 +110,21 @@ const rows = (file: string): Array<Record<string, unknown>> =>
         .map((l) => JSON.parse(l) as Record<string, unknown>)
     : [];
 
+/** An audit report whose Findings table holds `rows` (ID, Severity, Title, Location). */
+const auditReport = (rows: Array<[string, string, string, string]>): string =>
+  [
+    "# Security Audit",
+    "",
+    "## Findings",
+    "",
+    "| ID | Severity | Title | Location | Evidence | Expected | Key |",
+    "| --- | --- | --- | --- | --- | --- | --- |",
+    ...rows.map(
+      ([id, sev, title, loc]) => `| ${id} | ${sev} | ${title} | ${loc} | seen | fix | new |`,
+    ),
+    "",
+  ].join("\n");
+
 describe("the dispatch seam on a real worktree", () => {
   it("writes friction to the run's own book root", async () => {
     const { code, err } = await run(worktree, ["widgets", "odd", "--step=build-summary"]);
@@ -785,34 +800,23 @@ describe("replay-safe ledger appends on real files", () => {
     expect(inv.code).toBe(0);
     const invocation = inv.json!["invocation"] as string;
 
-    const result = {
-      slug: "security",
-      status: "COMPLETE",
-      report: "docs/audits/202611/security.md",
-      findings: [
-        { severity: "HIGH", title: "Token logged", location: "src/a.ts:10" },
-        { severity: "LOW", title: "Verbose error", location: "src/b.ts:2" },
-        { severity: "LOW", title: "Old cipher", location: "src/c.ts:7" },
-      ],
-      notChecked: ["Mobile client: no device available"],
-    };
-    fs.writeFileSync(path.join(repo, "result.json"), JSON.stringify(result));
+    fs.writeFileSync(
+      path.join(repo, "report.md"),
+      auditReport([
+        ["security-1", "HIGH", "Token logged", "src/a.ts:10"],
+        ["security-2", "LOW", "Verbose error", "src/b.ts:2"],
+        ["security-3", "LOW", "Old cipher", "src/c.ts:7"],
+      ]),
+    );
     const totals = "CRITICAL 0 \u00b7 HIGH 1 \u00b7 MEDIUM 0 \u00b7 LOW 2";
 
-    // 1. The report header and ledger payloads come from the one result.
-    const stub = await call(repo, COMMANDS, [
-      "steps",
-      "stub",
-      "--agent=bkit-audit-generate",
-      "--result-file=result.json",
-      "--to=docs/audits/202611/security-summary.md",
-    ]);
-    expect(stub.code).toBe(0);
-    const summary = fs.readFileSync(
-      path.join(repo, "docs/audits/202611/security-summary.md"),
-      "utf-8",
+    // 1. The ledger payloads come from the report's Findings table.
+    const stub = await call(
+      repo,
+      [ledgersCommand],
+      ["ledgers", "findings", "--report=report.md", "--slug=security"],
     );
-    expect(summary).toContain(`Findings: ${totals}`);
+    expect(stub.code).toBe(0);
 
     // 2. The same payloads append once under one operation, with the standalone invocation.
     const payload = (stub.json!["ledgerRows"] as Array<Record<string, unknown>>).map(
@@ -833,7 +837,7 @@ describe("replay-safe ledger appends on real files", () => {
     const persisted = rows(path.join(repo, "docs", "failures.jsonl"));
     expect(persisted).toHaveLength(3);
 
-    // 3. The tracker draft is rendered from the same result; the audit body file in its
+    // 3. The tracker draft is rendered from the same report; the audit body file in its
     // own audit outbox folder is the run proof.
     const auditDir = path.join(
       git(repo, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
@@ -847,13 +851,14 @@ describe("replay-safe ledger appends on real files", () => {
       "comment",
       "--kind=audit",
       "--audit-slug=security",
-      "--result-file=result.json",
+      "--report=report.md",
+      "--field=Status=COMPLETE",
       `--body-file=${path.join(auditDir, "body.md")}`,
     ]);
     expect(draft.code).toBe(0);
     expect(draft.json!["comment"]).toContain(`Findings: ${totals}`);
 
-    // The three surfaces agree: header, persisted rows and draft.
+    // The two surfaces agree: persisted rows and draft.
     const bySeverity = (sev: string) => persisted.filter((r) => r["severity"] === sev).length;
     expect(
       `CRITICAL ${bySeverity("CRITICAL")} \u00b7 HIGH ${bySeverity("HIGH")} \u00b7 MEDIUM ${bySeverity("MEDIUM")} \u00b7 LOW ${bySeverity("LOW")}`,
@@ -939,25 +944,17 @@ describe("replay-safe ledger appends on real files", () => {
     ]);
     expect(inv.code).toBe(0);
     fs.writeFileSync(
-      path.join(repo, "result.json"),
-      JSON.stringify({
-        slug: "security",
-        status: "COMPLETE",
-        report: "docs/audits/202611/security.md",
-        findings: [
-          { severity: "HIGH", title: "Token logged", location: "src/a.ts:10" },
-          { severity: "LOW", title: "Verbose error", location: "src/b.ts:2" },
-        ],
-        notChecked: [],
-      }),
+      path.join(repo, "report.md"),
+      auditReport([
+        ["security-1", "HIGH", "Token logged", "src/a.ts:10"],
+        ["security-2", "LOW", "Verbose error", "src/b.ts:2"],
+      ]),
     );
-    const stub = await call(repo, COMMANDS, [
-      "steps",
-      "stub",
-      "--agent=bkit-audit-generate",
-      "--result-file=result.json",
-      "--to=docs/audits/202611/security-summary.md",
-    ]);
+    const stub = await call(
+      repo,
+      [ledgersCommand],
+      ["ledgers", "findings", "--report=report.md", "--slug=security"],
+    );
     expect(stub.code).toBe(0);
     // The printed rows go in exactly as printed, `by` included.
     const printed = stub.json!["ledgerRows"] as Array<Record<string, unknown>>;

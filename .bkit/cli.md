@@ -42,7 +42,7 @@ and holds its `bkit` key as `{BKIT}` (plus `repoRoot` as `{REPO_ROOT}`, `outboxR
 
 **Progress output:** Successful numbered completions expose `progressLine` in the ordinary text object and `--json` object. The string is derived from the selected run, current plan groups and saved retry allowance; it adds no status fields. Completion writers expose it only after their write and commit succeed. `steps gate --progress-number=N` renders an explicitly numbered gate completion after its existing validation, using a status file or the held Step 1 feature/month lock context. A gate without that flag emits no line. The workflow narration, formulas and duplicate handling live in `.bkit/workflows.md` § Progress Lines.
 
-**`{OUTBOX}`** = `{OUTBOX_ROOT}/{FID}` = `<main checkout>/.git/bkit-outbox/{FID}/` (git common dir): temporary command inputs and outputs — re-read issue files from `bkit issues fetch --outbox`, related-issue hits, close artifact and telemetry lines, ship's pre-merge snapshot and close worktree, the `.worktree-owned` marker. `{OUTBOX_ROOT}/error.md` carries the Failure Path's error text to `bkit workflows fail --error-file`. Outside every worktree, so it survives worktree removal; never committed.
+**`{OUTBOX}`** = `{OUTBOX_ROOT}/{FID}` = `<main checkout>/.git/bkit-outbox/{FID}/` (git common dir): temporary command inputs and outputs — re-read issue files from `bkit issues fetch --outbox`, related-issue hits, close artifact and telemetry lines, ship's pre-merge snapshot and close worktree, the `.worktree-owned` marker. The Failure Path's error text is `{LOG_DIR}/{workflow}-error.md`, written with the file tool and passed to `bkit workflows fail --error-file`; it sits in the run's log folder and the abort commit carries it.
 
 CI check names come from `package.json` `bkit.testing.ciCapstone` (default `bkit-tests-check`) and `bkit.testing.ciWorkflow` (default `bkit-ci.yml`) — no command hard-codes a check, workflow file, or app folder.
 
@@ -167,13 +167,15 @@ Attempt counters derived from status.jsonl, and the ask points' limits.
 
 ### `decisions`
 
-Build decision files: write questions, apply recommendations, list assumed items.
+Build decision files: check the orchestrator's questions, write the engine's counts, apply recommendations, list assumed items.
 
 <!-- prettier-ignore -->
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
-| `compose` | workflow | **`--out`** `--header` `--items` `--loop` `--file` `--group` `--attempt` `--max` `--base-check` | Write a decision file in the one question layout, with loop progress when asked. |
-| `apply` | workflow | **`--file`** **`--by`** `--q` `--confirm` `--reject` `--reason` `--root` | Settle a decision file's items: --by=headless takes each recommendation; --by=owner confirms or rejects one assumed item. |
+| `check` | workflow | **`--file`** | Check the orchestrator's decision file: a decision-counts row names it, lettered options with effects, a Recommended and a Default if unanswered line per question, no repeated number, no Q1 beside the engine's loop question. |
+| `counts` | workflow | **`--decision`** `--source-changed` `--loop` `--file` `--group` `--attempt` `--max` `--base-check` | Append the engine's pause counts as a decision-counts row to the status.jsonl beside the decision file (Source changed, Gate, with --loop the loop question Q1; with no count flag a bare row) and print the lines the owner is shown. |
+| `apply` | workflow | **`--file`** **`--by`** `--q` `--confirm` `--reject` `--answer` `--fix-task` `--reason-file` `--root` | Settle a pause's questions, appending decision-answer rows to the status.jsonl beside the decision file: --by=headless takes each recommendation; --by=owner confirms or rejects one assumed item, answers questions, or adds the fix task to a recorded Fix now; --by=rerun answers the loop question Try again. |
+| `answers` | workflow | **`--file`** | Print a decision file's folded answers: the answer last appended for each question, who gave it and its flags. Writes nothing. |
 | `skip` | workflow | **`--file`** | Whether a settled verify or holistic pause may route continue: exit 0 and route=continue when all five conditions hold, else exit 1 naming the first fact that fails. |
 | `pending` | workflow | **`--fid`** **`--month`** `--root` `--defer` | List the feature's assumed Accepts nobody confirmed; --defer writes one needs-decision deferral per item. |
 
@@ -212,7 +214,7 @@ Tracker payloads (issue text, label transitions, comments); --post / --write sen
 | `related` | workflow | **`--hits-file`** **`--out`** `--top` `--fid` `--issue` | Fetch each hit of the orchestrator's related-issue search and write the related-issues file. |
 | `blocked-by` | by hand | `--fid` `--issue` | The issues blocking the run's issue, with their states and the ones still open. |
 | `labels` | workflow | `--label` `--phase` `--failed` `--board` `--issue` `--owner-repo` `--write` `--fid` | Label arithmetic for a transition, the tracker state, and the board payload. |
-| `comment` | workflow | `--kind` `--purpose` `--audit-slug` `--result-file` `--step-number` `--step-title` `--workflow` `--workflow-heading` `--verdict` `--failures` `--scope` `--group` `--group-count` `--attempt` `--strategy` `--field` `--owner-repo` `--tree` `--pr-number` `--pr-url` `--run-id` `--artifact` `--ref` `--line` `--body-file` `--section` `--sub-step` `--error` `--error-file` `--stderr-file` `--post` `--session-dir` `--fid` `--issue` `--file` | The exact body of a ###### bkit:generated step, failure, handover, or audit comment; workflow steps only, never for ad-hoc comments. |
+| `comment` | workflow | `--kind` `--purpose` `--audit-slug` `--report` `--step-number` `--step-title` `--workflow` `--workflow-heading` `--verdict` `--failures` `--scope` `--group` `--group-count` `--attempt` `--strategy` `--field` `--owner-repo` `--tree` `--pr-number` `--pr-url` `--run-id` `--artifact` `--ref` `--line` `--body-file` `--section` `--sub-step` `--error` `--error-file` `--stderr-file` `--post` `--session-dir` `--fid` `--issue` `--file` | The exact body of a ###### bkit:generated step, failure, handover, or audit comment; workflow steps only, never for ad-hoc comments. |
 
 ### `ledgers`
 
@@ -228,6 +230,7 @@ Stage and commit bookkeeping by allow-list; union ledgers; check a range is book
 | `query` | by hand | `--root` **`--ledger`** `--key` `--status` `--limit` `--cursor` | Read one ledger's canonical winners (filtered after the fold), paged, with line diagnostics and coverage. Writes nothing. |
 | `triage` | workflow | `--root` **`--fid`** **`--plan`** | Bucket each deferral row the FID declared by the four Deferral Reason tests, and write the unjustified ones. |
 | `check` | by hand | `--root` **`--plan`** | Check that every decision / deferral key on a plan's `**Ledger rows:**` line is on disk. |
+| `findings` | workflow | **`--report`** `--slug` `--root` | Print an audit report's finding IDs, severity totals and `failure` ledger rows, read from its Findings table. |
 | `compact` | by hand | `--root` `--ledger` `--dry-run` | Rewrite keyed ledgers to their fold winners, stamping each winner's firstTs + updates. |
 
 ### `locks`
@@ -357,9 +360,9 @@ Write a step's status row, finish a step in one call, read a verdict header, che
 | --- | --- | --- | --- |
 | `done` | workflow | **`--file`** **`--workflow`** **`--step`** `--status` `--verdict` `--agent` `--allowed` `--failures` `--attempt` `--group` `--strategy` `--artifact` `--field` `--parent-sha` `--commit` `--message` | Append a step-done row and commit it (parentSha captured first). |
 | `finish` | workflow | **`--file`** **`--workflow`** **`--step`** `--artifact` `--optional-artifact` `--derived-artifact` `--agent` `--verdict` `--allowed` `--failures` `--attempt` `--attempt-of` `--count-field` `--group` `--strategy` `--scope` `--field` `--clamp-log` `--docs-only` `--plan` `--parent-sha` `--commit` `--message` `--done-fallback` `--verbose-ci-local` `--number` `--title` `--post` `--group-count` `--link-ref` `--tree` `--owner-repo` `--comment-body` `--comment-field` | End a step: read the verdict header(s), derive the attempt, check the gate, write the row, commit, print the tracker comment. Exit 11 on a build tests step that changed an earlier task's recorded test no open task of the group names, and on a code step that changed a planned test; for each BLOCKED test a ticked task owns, a code step first adds a takeover task to the plan and its build-takeover row, and prints them under contradicts. |
-| `verdict` | by hand | **`--file`** `--agent` `--allowed` `--field` `--result-file` | Read an artifact's header down to <!-- verdict:end -->. |
+| `verdict` | by hand | **`--file`** `--agent` `--allowed` `--field` | Read an artifact's header down to <!-- verdict:end -->. |
 | `gate` | workflow | `--file` `--ref` **`--workflow`** **`--step`** `--group` `--progress-number` `--attempt` `--attempt-of` `--artifact` `--verdict-required` `--agent` `--allowed` `--placeholder` `--fid` `--issue` `--month` `--token` | Mechanical gate checks for one step: placeholders, FID, lock, artifacts, verdict, status row (with its attempt / strategy / scope where the step writes them). |
-| `stub` | workflow | `--from` **`--to`** `--agent` `--result-file` `--invocation` `--strip-header` | Seed a versioned artifact: copy the prior version, then put a PENDING verdict header on top. |
+| `stub` | workflow | `--from` **`--to`** `--strip-header` | Seed a versioned artifact: copy the prior version, then put a PENDING verdict header on top. |
 
 ### `tasks`
 

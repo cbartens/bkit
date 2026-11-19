@@ -173,9 +173,9 @@ Give each candidate one verdict.
 A candidate takes the severity of the class its gate would catch. Within a severity, list the higher `Score` first.
 
 <!-- prettier-ignore -->
-| ID | Severity | Verdict | Location | Evidence | Expected |
-| --- | --- | --- | --- | --- | --- |
-| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| ID | Severity | Title | Verdict | Location | Evidence | Expected | Key |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 **If** the run finds nothing → write one row: `None`.
 

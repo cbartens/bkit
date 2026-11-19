@@ -172,9 +172,9 @@ The failure this audit targets is a gate that stays green while the defects sit 
 Within a severity, list blocked primary tasks first.
 
 <!-- prettier-ignore -->
-| ID | Severity | Location | Evidence | Expected |
-| --- | --- | --- | --- | --- |
-| PENDING | PENDING | PENDING | PENDING | PENDING |
+| ID | Severity | Title | Location | Evidence | Expected | Key |
+| --- | --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 **If** the run finds nothing → write one row: `None`.
 

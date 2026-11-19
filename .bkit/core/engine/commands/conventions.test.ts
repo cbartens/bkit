@@ -168,6 +168,8 @@ const HELPER_SOURCES = new Set([
   path.join("commands", "workflow", "plan-versions.ts"),
   // The plan's group and task blocks, read by `tests`, `challenge`, the summary and run-facts.
   path.join("commands", "workflow", "plan-blocks.ts"),
+  // The audit report's Findings table and its totals and ledger rows, read by `ledgers findings` and `issues comment`.
+  path.join("commands", "workflow", "audit-report.ts"),
   // Where a named test sits in its file and what it runs, read by `tests` and `branches`.
   path.join("commands", "workflow", "test-blocks.ts"),
   // The commit a feature's work starts after and its diff range, read by `context diff`, `challenge`, `branches` and `status`.

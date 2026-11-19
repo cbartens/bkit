@@ -139,6 +139,11 @@ tools:
    - **Else** → `Checked`.
    - Do not invent findings for absent surfaces.
 9. Populate `Findings`, with IDs `{slug}-{n}`.
+   - Fill `Key` with `new` or the `key` of an open row, so the same problem keeps one ledger row across runs.
+   - Open rows = the winners of `bkit ledgers query --ledger=failures` (follow `nextCursor` until it is null, then route on `coverage.status`: `missing` = the ledger has no rows, `partial` = use the rows and report the diagnosed lines, `unreadable` = stop and report), `status` != `CLOSED`, covering every `key`, whichever workflow wrote it.
+   - Same problem = the same defect at the same `file:line`, test title, or error signature. A finding that only cites an open row's `file:line` is a different problem.
+   - **If** an open row with `key` prefix `audit-{slug}-` names the same problem → `Key` = its `key`.
+   - **Else** → `Key` = `new`; the engine derives `audit-{slug}-{content-slug}`.
 10. Populate `Report` from the steps that feed each section:
     - `Suggested Issues`: group `Findings` into issues to create, one row per change landed in one go.
       - Group by shared root cause, then module, then fix, never by severity alone.
@@ -157,15 +162,7 @@ tools:
     - The engine fills `by` and the model fields from the invocation; never write `by` or a model name into a row.
     - **If** the template audits `docs/failures.jsonl` or `docs/deferrals.jsonl` → skip this step.
     - Complete the report first.
-    - Serialize the findings once: write the audit result JSON `{slug, status, report, findings: [{severity, title, location, priorKey}], notChecked}` (plus `stopped`, `overview`, `issue`, `parent` when they apply) to a scratch file, then render the summary with `bkit steps stub --agent=bkit-audit-generate --result-file=<json> --to=<Create>`. A report that already exists at `<Create>` is never overwritten: the summary goes to `<json>`'s sibling `.summary.md` (printed as `file`). The engine assigns the finding IDs, the totals and the header, and prints `ledgerRows` for the append below. Leave `priorKey` out for a new problem; the engine derives its `key`.
-    - Open rows = the winners of `bkit ledgers query --ledger=failures` (follow `nextCursor` until it is null, then route on `coverage.status`: `missing` = the ledger has no rows, `partial` = use the rows and report the diagnosed lines, `unreadable` = stop and report), `status` != `CLOSED`, covering every `key`, whichever workflow wrote it.
-    - Same problem = the same defect at the same `file:line`, test title, or error signature. A finding that only cites an open row's `file:line` is a different problem.
-    - For each `MEDIUM`+ finding:
-      - **If** an open row names the same problem → reuse its `key`, with the higher of the finding's and the row's `severity`.
-      - **Else** → a new `key` `audit-{slug}-{content-slug}`, never the finding ID.
-    - For each `LOW` finding:
-      - **If** an open row names the same problem → reuse its `key`, and keep the row's `severity`.
-      - **Else** → a new `key` `audit-{slug}-{content-slug}`, with `severity: "LOW"`.
+    - Run `bkit ledgers findings --report=<Create>` and append its printed `ledgerRows`. The engine reads the `Findings` table, so the rows match the report. **If** it exits non-zero → fix the table row it names and run it again.
     - Never lower a row's `severity` from an audit run.
     - For each open row with `key` prefix `audit-{slug}-` that no finding matches:
       - **If** its surface was checked this run → `CLOSED`.
@@ -214,7 +211,7 @@ tools:
          - **If** `BRANCH` is null → the **Create** path, unlinked.
          - **If** there is no **Create** → `None`.
        ```bash
-       "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" issues comment --post --issue="{ISSUE_ID}" --kind=audit --audit-slug="{slug}" --field="Status={STATUS}" --field="Findings=CRITICAL {n} · HIGH {n} · MEDIUM {n} · LOW {n}" --line="Report: {REPORT}" --body-file="{OUTBOX_ROOT}/audit-{slug}/comment.md"
+       "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" issues comment --post --issue="{ISSUE_ID}" --kind=audit --audit-slug="{slug}" --field="Status={STATUS}" --report="{Create}" --line="Report: {REPORT}" --body-file="{OUTBOX_ROOT}/audit-{slug}/comment.md"
        ```
        - **If** it exits non-zero → `Issue` = `{ISSUE_ID} failed`, and skip posting the comment.
          - **If** `ISSUE_ID` is not set → `Issue` = `None`, and `PARENT_COMMENT` is empty.

@@ -25,6 +25,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { promptHeader } from "../../commands/workflow/steps";
+
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 const WORKFLOW_DIR = ".bkit/core/workflows";
 const PROMPT_DIR = ".bkit/core/prompts";
@@ -401,5 +403,59 @@ describe("verdict vocabulary: variable names match their step", () => {
   it("every multi-word verdict name has no conflict-free shortening", () => {
     const shortenable = shortenableVerdictNames();
     expect(shortenable, `these names can now be shortened: ${shortenable.join(", ")}`).toEqual([]);
+  });
+});
+
+const COUNT_RULES: Record<string, string> = {
+  "bkit-plan-review-1": "items under ## CRITICAL",
+  "bkit-plan-review-2": "items under ## CRITICAL",
+  "bkit-plan-scope-check": "items under ## CRITICAL",
+  "bkit-build-challenge-1": "CRITICAL task blocks under ## Findings Log",
+  "bkit-build-challenge-2": "CRITICAL task blocks under ## Findings Log",
+  "bkit-build-plan-verify": "Fixable lines under ## Identified Gaps Log",
+};
+
+const promptName = (f: string) => path.basename(f, ".md");
+
+const undeclaredRules = () =>
+  Object.entries(COUNT_RULES)
+    .filter(
+      ([agent, rule]) =>
+        !read(`${PROMPT_DIR}/${agent}.md`).includes(`Failures: <count of ${rule}>`),
+    )
+    .map(([agent]) => agent);
+
+const strayCountDeclarations = () =>
+  listMd(PROMPT_DIR).filter((f) => !(promptName(f) in COUNT_RULES) && /<count of /.test(read(f)));
+
+/** `agent: Field` for each judgment field a prompt names that its header does not declare. */
+const undeclaredJudgments = (f: string): string[] => {
+  const agent = promptName(f);
+  if (!/^Verdict: /m.test(read(f))) return [];
+  const named = /You supply only judgment fields \(([^)]*)\)/.exec(read(f))?.[1] ?? "";
+  const declared = new Set(["Verdict", ...promptHeader(agent).fields.map((x) => x.name)]);
+  return [...named.matchAll(/`([A-Za-z]+)`/g)]
+    .map((x) => x[1]!)
+    .filter((name) => !declared.has(name))
+    .map((name) => `${agent}: ${name}`);
+};
+
+describe("verdict vocabulary: the Failures count rule is declared in the prompt header", () => {
+  it("every count-checked prompt declares a known count rule", () => {
+    expect(undeclaredRules()).toEqual([]);
+    expect(strayCountDeclarations()).toEqual([]);
+  });
+
+  it("no prompt leaves an incomplete finding out of the Failures count", () => {
+    const carriers = listMd(PROMPT_DIR).filter((f) =>
+      read(f).includes("counting only complete ones"),
+    );
+    expect(carriers).toEqual([]);
+  });
+});
+
+describe("verdict vocabulary: judgment fields are header fields", () => {
+  it("every judgment field a result prompt names is a header line promptHeader reads", () => {
+    expect(listMd(PROMPT_DIR).flatMap(undeclaredJudgments)).toEqual([]);
   });
 });

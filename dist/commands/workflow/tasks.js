@@ -16,7 +16,7 @@ import * as path from "node:path";
 import { parseJson } from "../../shared/json.js";
 import { CommandError, EXIT, git, runGit } from "../lib.js";
 import { EXIT_DIFF_FAILED, fetchRemoteRef } from "./branches.js";
-import { decisionHeader, parseDecisionItems } from "./open-decision.js";
+import { decisionFileHeader, decisionItems } from "./open-decision.js";
 const DIFF_BASE = "origin/dev";
 import { derivedTestMatrix, NO_MARKERS_REASON, parsePlanBlocks, testTier, } from "./plan-blocks.js";
 import { positiveInt, readStatusRows, str } from "./status.js";
@@ -123,10 +123,9 @@ export function gapsShortfall(text) {
 /**
  * The first header fact that stops `--decision` from ticking, or null: `From` is `verify` or
  * `holistic`, no `Gate: FAIL` header, and a verify file's `Group` is `group`. Headers count
- * only in the header block (`decisionHeader`).
+ * only in the header block, merged with the `decision-counts` row (`decisionFileHeader`).
  */
-function decisionProblem(text, group) {
-    const header = decisionHeader(text);
+function decisionProblem(header, group) {
     const from = header.From;
     if (from === undefined)
         return "no From header";
@@ -361,16 +360,16 @@ export const tasksCommand = {
                     throw new CommandError(EXIT.USAGE, "--decision must be non-empty");
                 if (tasksFlag === undefined && greenArg === undefined && decisionArg === undefined)
                     throw new CommandError(EXIT.USAGE, "give one of --tasks, --green and --decision");
-                let decisionText;
+                let decisionFile;
+                const readDecision = (p) => (fs.existsSync(p) ? fs.readFileSync(p, "utf-8") : null);
                 if (decisionArg !== undefined) {
-                    const decisionFile = path.resolve(ctx.cwd, decisionArg);
+                    decisionFile = path.resolve(ctx.cwd, decisionArg);
                     if (fs.statSync(decisionFile, { throwIfNoEntry: false })?.isFile() !== true)
                         throw new CommandError(EXIT.USAGE, `--decision ${decisionArg} does not exist`);
-                    decisionText = fs.readFileSync(decisionFile, "utf-8");
                 }
                 // Only a holistic decision alone may leave out --group: its accepted tasks span groups.
-                const holisticOnly = decisionText !== undefined &&
-                    decisionHeader(decisionText).From === "holistic" &&
+                const holisticOnly = decisionFile !== undefined &&
+                    decisionFileHeader(readDecision, decisionFile).From === "holistic" &&
                     tasksFlag === undefined &&
                     greenArg === undefined;
                 if (group === undefined && !holisticOnly)
@@ -385,12 +384,12 @@ export const tasksCommand = {
                     if (task.group !== group)
                         throw new CommandError(EXIT.USAGE, `TASK ${n} is in group ${task.group}, not group ${group}`);
                 }
-                if (decisionText !== undefined) {
-                    const problem = decisionProblem(decisionText, group);
+                if (decisionFile !== undefined) {
+                    const problem = decisionProblem(decisionFileHeader(readDecision, decisionFile), group);
                     if (problem !== null)
                         throw new CommandError(EXIT.USAGE, `--decision ${decisionArg}: ${problem}, so nothing is ticked`);
                     // A title names its task only at its start (`Task {N}`): a gap that mentions a task elsewhere ticks nothing.
-                    const accepted = parseDecisionItems(decisionText)
+                    const accepted = decisionItems(readDecision, decisionFile)
                         .filter((it) => it.decision !== null && /^Accept\b/.test(it.decision))
                         .map((it) => /^task\s+(\d+)\b/i.exec(it.title.trim()))
                         .filter((m) => m !== null)

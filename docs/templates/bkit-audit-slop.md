@@ -129,9 +129,9 @@ Each suppression made sense in the PR that added it, and nothing reads them agai
 Within a severity, list security and data findings first.
 
 <!-- prettier-ignore -->
-| ID | Severity | Verdict | Location | Evidence | Expected |
-| --- | --- | --- | --- | --- | --- |
-| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| ID | Severity | Title | Verdict | Location | Evidence | Expected | Key |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 **If** the run finds nothing → write one row: `None`.
 

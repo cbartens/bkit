@@ -196,9 +196,9 @@ Taxonomy names match `bkit-audit-red-team`, so a finding here and its live proof
 Within a severity, list data loss and exfiltration first. An absent limit is at least `HIGH`. A design question recorded in `Governance` is not a finding unless the code contradicts `docs/decisions.jsonl`.
 
 <!-- prettier-ignore -->
-| ID | Severity | Location | Evidence | Expected |
-| --- | --- | --- | --- | --- |
-| PENDING | PENDING | PENDING | PENDING | PENDING |
+| ID | Severity | Title | Location | Evidence | Expected | Key |
+| --- | --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 **If** the run finds nothing → write one row: `None`.
 

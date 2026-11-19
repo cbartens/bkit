@@ -160,9 +160,9 @@ Automated checks never look at a screen. They pass when a title is centred on on
 Within a severity, list blocked tasks first. Set the bucket from frequency (how many users meet it), impact (whether they can get past it) and persistence (whether it bothers them every time). A task the user cannot finish is `HIGH`, or `CRITICAL` when there is no workaround. A drawing mismatch that stops nobody is `MEDIUM` or `LOW`.
 
 <!-- prettier-ignore -->
-| ID | Severity | Location | Evidence | Expected |
-| --- | --- | --- | --- | --- |
-| PENDING | PENDING | PENDING | PENDING | PENDING |
+| ID | Severity | Title | Location | Evidence | Expected | Key |
+| --- | --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 **If** the run finds nothing → write one row: `None`.
 

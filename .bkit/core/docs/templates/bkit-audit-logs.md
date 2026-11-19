@@ -189,9 +189,9 @@ A test-origin tag narrows the lane. It does not make something noise, and it doe
 Within a severity, list production first, then order by blast radius. A test-origin tag does not lower severity. A quiet board is not a pass.
 
 <!-- prettier-ignore -->
-| ID | Severity | Verdict | Location | Evidence | Expected |
-| --- | --- | --- | --- | --- | --- |
-| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| ID | Severity | Title | Verdict | Location | Evidence | Expected | Key |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 **If** the run finds nothing → write one row: `None`.
 

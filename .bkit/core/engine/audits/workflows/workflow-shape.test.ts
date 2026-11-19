@@ -111,6 +111,120 @@ describe("engine calls", () => {
     for (const name of ALL)
       expect(workflow(name), name).not.toMatch(/--sub-plan|--plan-source|--brief=|--children/);
   });
+
+  it("no prompt names a Result: launch line or a structured result file", () => {
+    const dir = path.join(REPO_ROOT, ".bkit", "core", "prompts");
+    const hits = fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith(".md"))
+      .filter((f) =>
+        /structured result file|`Result:`/.test(fs.readFileSync(path.join(dir, f), "utf-8")),
+      );
+    expect(hits).toEqual([]);
+  });
+
+  it("no workflow names a Result: line, a -result.json file or a result-file render", () => {
+    for (const name of ALL) {
+      const text = workflow(name);
+      expect(text, name).not.toMatch(/^\s*Result: /m);
+      expect(text, name).not.toContain("-result.json");
+      expect(text, name).not.toContain("--result-file");
+      expect(text, name).not.toContain("steps stub --agent");
+    }
+  });
+
+  it("no prompt or workflow names --result-file", () => {
+    const dir = path.join(REPO_ROOT, ".bkit", "core", "prompts");
+    const prompts = fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith(".md"))
+      .filter((f) => fs.readFileSync(path.join(dir, f), "utf-8").includes("--result-file"));
+    const workflows = ALL.filter((name) => workflow(name).includes("--result-file"));
+    expect({ prompts, workflows }).toEqual({ prompts: [], workflows: [] });
+  });
+
+  it("no workflow names decision-items.json or decisions compose", () => {
+    const naming = ALL.filter((name) =>
+      /decision-items\.json|decisions compose/.test(workflow(name)),
+    );
+    expect(naming).toEqual([]);
+  });
+
+  it("no workflow names {OUTBOX_ROOT}/error.md or {OUTBOX}/stderr.log", () => {
+    const naming = ALL.filter((name) =>
+      /\{OUTBOX_ROOT\}\/error\.md|\{OUTBOX\}\/stderr\.log/.test(workflow(name)),
+    );
+    expect(naming).toEqual([]);
+  });
+
+  it("every workflow that passes --stderr-file says the file holds only the last 20 lines of stderr", () => {
+    const passing = ALL.filter((name) => workflow(name).includes("--stderr-file"));
+    expect(passing.length).toBeGreaterThan(0);
+    const without = passing.filter(
+      (name) =>
+        !/last 20 lines of (?:the failed (?:shell )?command's )?stderr/.test(workflow(name)),
+    );
+    expect(without).toEqual([]);
+  });
+
+  it("no prompt or workflow writes a file with a shell heredoc", () => {
+    const dir = path.join(REPO_ROOT, ".bkit", "core", "prompts");
+    const heredoc = /<<-?\s*['"]?[A-Z_]{3,}['"]?/;
+    const prompts = fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith(".md"))
+      .filter((f) => heredoc.test(fs.readFileSync(path.join(dir, f), "utf-8")));
+    const workflows = ALL.filter((name) => heredoc.test(workflow(name)));
+    expect({ prompts, workflows }).toEqual({ prompts: [], workflows: [] });
+  });
+
+  it("no bkit-build bash block puts the owner's words inside a double-quoted argument", () => {
+    const text = workflow("build");
+    const blocks = [...text.matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => String(m[1]));
+    const quoted = blocks
+      .flatMap((b) => b.split("\n"))
+      .filter((l) => /"[^"\n]*\{owner's words\}[^"\n]*"/.test(l));
+    expect(quoted).toEqual([]);
+  });
+
+  it("no workflow names the engine decision file or the build reason file, or passes the owner's words in --reason", () => {
+    const naming = ALL.filter((name) =>
+      /-engine\.md|build-owner-reason-|decisions apply[^\n]*--reason="/.test(
+        workflow(name).replace(/\\\n\s*/g, " "),
+      ),
+    );
+    expect(naming).toEqual([]);
+  });
+
+  it("bkit-build records owner answers with one decisions apply call and routes a resumed pause with no question to decisions check", () => {
+    const text = workflow("build");
+    const step6 = /\n6\. Write the decisions[\s\S]*?\n7\. /.exec(
+      section(text, /Decision Pause/),
+    )?.[0];
+    expect(step6, "Decision Pause step 6").toBeDefined();
+    expect(step6).toContain("--answer=Q{n}={letter}");
+    expect(step6).not.toContain('--q=1 --answer="{Try again|Decide|Stop}"');
+    expect(step6).not.toContain("--reason-file");
+    const start = text.indexOf("  - **Open decision:**");
+    expect(start, "no Open decision bullet").toBeGreaterThanOrEqual(0);
+    const open = text.slice(start, text.indexOf("  - **Gate rerun:**", start));
+    expect(open).toMatch(/`questions` = 0/);
+    expect(open).toContain("decisions check");
+  });
+
+  it("the steps finish re-ask passes the printed problem", () => {
+    const asks = ALL.flatMap((name) =>
+      workflow(name)
+        .split("\n")
+        .filter((l) => l.includes("Your prior output"))
+        .map((l) => ({ name, l })),
+    );
+    expect(asks.length).toBeGreaterThan(0);
+    const without = asks
+      .filter(({ l }) => !l.includes("was refused: <problem>"))
+      .map((a) => a.name);
+    expect(without).toEqual([]);
+  });
 });
 
 describe("bkit lookup", () => {
@@ -335,7 +449,7 @@ describe("Failure Path", () => {
     const calls = commandLines(failure, "workflows fail");
     expect(calls, name).toHaveLength(1);
     expect(calls[0]).toContain(`--workflow=${name}`);
-    expect(calls[0]).toContain('--error-file="{OUTBOX_ROOT}/error.md"');
+    expect(calls[0]).toMatch(new RegExp(`--error-file="[^"]*${name}-error\\.md"`));
     expect(failure).not.toContain("BKIT_ERROR");
     expect(failure).not.toContain("cat <<");
   });
@@ -884,18 +998,17 @@ describe("build", () => {
     expect(green[0]).toContain("--group={GROUP}");
   });
 
-  it("the Decision Pause checks a red gate against the base commit before composing", () => {
+  it("the Decision Pause checks a red gate against the base commit before counting", () => {
     const pause = section(build, /Decision Pause/);
     const base = commandLines(pause, "tests base");
     expect(base).toHaveLength(1);
     expect(base[0]).toContain("tests base --log=");
-    const compose = commandLines(pause, "decisions compose");
-    expect(compose).toHaveLength(1);
-    expect(compose[0]).toContain("{BASE_FLAGS}");
-    expect(pause.indexOf("tests base --log=")).toBeLessThan(pause.indexOf("decisions compose"));
+    const counts = commandLines(pause, "decisions counts");
+    expect(counts).toHaveLength(1);
+    expect(counts[0]).toContain("{COUNT_FLAGS}");
+    expect(pause.indexOf("tests base --log=")).toBeLessThan(pause.indexOf("decisions counts"));
     expect(pause).toContain("GATE_LOG");
     expect(pause).toContain("--base-check");
-    expect(pause).toContain("Gate=FAIL");
     // The check runs only for a red-gate or TESTS_LOOP pause, and a failed check is a Failure Path.
     expect(pause).toMatch(
       /`GATE_VERDICT` = FAIL[^\n]*`TESTS_LOOP`|`TESTS_LOOP`[^\n]*`GATE_VERDICT` = FAIL/,
@@ -930,7 +1043,7 @@ describe("build", () => {
     // Step 10 sets no route of its own; the pause's continue route is the engine's.
     expect(step10).not.toContain("`DECISION_ROUTE`");
     const pause = section(build, /Decision Pause/);
-    expect(pause).toMatch(/\{BASE_FLAGS\}` = `--header=Gate=FAIL` when the base check ran/);
+    expect(pause).toMatch(/--base-check="\{OUTBOX\}\/base-check\.json"` \(base check ran\)/);
     expect(pause).toMatch(/decisions skip[\s\S]*exit 0 → `DECISION_ROUTE` = `continue`/);
   });
 
@@ -1047,15 +1160,10 @@ describe("build", () => {
       pause.indexOf("5. Apply each decision"),
       pause.indexOf("6. Write the decisions"),
     );
-    expect(step5).toContain("`Fix task:`");
-    expect(step5).toMatch(/already has a `Fix task:` line/);
+    expect(step5).toContain("--fix-task=Q{n}={N}");
+    expect(step5).toMatch(/already lists the item with a `fixTask`/);
     expect(step5).toMatch(/reuse/i);
-    const step6 = pause.slice(
-      pause.indexOf("6. Write the decisions"),
-      pause.indexOf("Set the route"),
-    );
-    expect(step6).toContain("Fix task: {N}");
-    expect(pause.indexOf("Fix task: {N}", pause.indexOf("6. Write the decisions"))).toBeLessThan(
+    expect(pause.indexOf("--fix-task")).toBeLessThan(
       pause.indexOf("--step=build-decision", pause.indexOf("6. Write the decisions")),
     );
   });
@@ -1066,14 +1174,9 @@ describe("build", () => {
       pause.indexOf("5. Apply each decision"),
       pause.indexOf("6. Write the decisions"),
     );
-    expect(step5).toContain("Fix task: {N}");
+    expect(step5).toContain("--fix-task=Q{n}={N}");
     expect(step5).toContain("tests plan-check");
-    expect(step5.indexOf("Fix task: {N}")).toBeLessThan(step5.indexOf("tests plan-check"));
-    const step6 = pause.slice(
-      pause.indexOf("6. Write the decisions"),
-      pause.indexOf("--step=build-decision", pause.indexOf("6. Write the decisions")),
-    );
-    expect(step6).toMatch(/still missing/);
+    expect(step5.indexOf("--fix-task")).toBeLessThan(step5.lastIndexOf("tests plan-check"));
   });
 
   it("the owner decisions contract names the task block as the Fix now carrier", () => {
@@ -1084,7 +1187,7 @@ describe("build", () => {
     expect(bullet).not.toContain("only by reading the decision file");
     expect(bullet).toContain("NEVER restate, summarise or paraphrase an owner's answer");
     const gate = build.slice(build.indexOf("### 🔒 Gate — Decision Pause"));
-    expect(gate.slice(0, gate.indexOf("---"))).toContain("Fix task");
+    expect(gate.slice(0, gate.indexOf("---"))).toContain("--fix-task");
   });
 
   it("Decision Pause step 5 writes no second acceptance for a reopened DECIDED or ASSUMED pause", () => {
@@ -1094,13 +1197,9 @@ describe("build", () => {
       pause.indexOf("6. Write the decisions"),
     );
     expect(step5).toMatch(/reopened `DECIDED` \/ `ASSUMED`/);
+    expect(step5).toContain("`decisions answers`");
     expect(step5).toMatch(/no second `docs\/decisions\.jsonl` row/);
     expect(step5).toMatch(/no second title suffix/);
-    const step6 = pause.slice(
-      pause.indexOf("6. Write the decisions"),
-      pause.indexOf("--step=build-decision", pause.indexOf("6. Write the decisions")),
-    );
-    expect(step6).toMatch(/only under an item that has none/);
   });
 
   it("an Accept replaces the task's TEST EXCEPTION field with the owner's reason and date", () => {
@@ -2596,7 +2695,7 @@ describe("build Decision Pause continue route", () => {
   it("continue sends holistic to Step 11 and verify to the decision tick then Step 7", () => {
     const routes = continueRoutes(pause()).join("\n");
     expect(routes).toMatch(/holistic[^\n]*Step 11/);
-    expect(routes).toMatch(/verify[^\n]*"\{BKIT\}" tasks tick[^\n]*--decision=[^\n]*Step 7/);
+    expect(routes).toMatch(/verify[^\n]*tasks tick[^\n]*Step 7/);
   });
 
   it("the continue decision tick runs before the build-decision row is recorded", () => {
@@ -2631,10 +2730,10 @@ describe("build Decision Pause continue route", () => {
 
   it("a verify or holistic decision file records Source changed and a resume holds it", () => {
     const text = pause().replace(/\\\n\s*/g, " ");
-    expect(text).toContain('--header="Source changed={SOURCE_CHANGED}"');
+    expect(text).toContain("--source-changed={SOURCE_CHANGED}");
     const headerLines = text
       .split("\n")
-      .filter((l) => l.includes('--header="Source changed={SOURCE_CHANGED}"'));
+      .filter((l) => l.includes("--source-changed={SOURCE_CHANGED}"));
     expect(headerLines.join("\n")).toMatch(/verify/);
     expect(headerLines.join("\n")).toMatch(/holistic/);
     const resume = bulletBlock(workflow("build"), "Resume");

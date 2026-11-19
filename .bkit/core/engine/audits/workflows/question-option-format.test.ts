@@ -265,7 +265,7 @@ function ownerConfirmViolations(file: string, text: string): string[] {
     "**Else** → ask again",
   ];
   return steps(text)
-    .filter(({ lines }) => lines.some((l) => l.includes(OWNER_APPLY)))
+    .filter(({ lines }) => lines.some((l) => l.includes(OWNER_APPLY) && !l.includes("--answer=")))
     .flatMap(({ no, lines }) =>
       want
         .filter((part) => !lines.join("\n").includes(part))
@@ -682,8 +682,8 @@ describe("question option format: the build Decision Pause in the shared shape",
 
   it("bkit-build: every decision item option carries an effect", () => {
     const step = numberedStep(pause(), 2);
-    expect(step).toContain('{"name", "effect"}');
-    expect(step).toContain(STOP_EFFECT);
+    expect(step).toContain("A) {name} — {what happens if the owner picks it}");
+    expect(step).toContain("`Stop` = `the run stops and hands over; the next run resumes here`");
     expect(step, "a bare-string option list is still named").not.toMatch(/\["Accept", "Fix now"/);
   });
 

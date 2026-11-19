@@ -144,9 +144,9 @@ Give each annotation one verdict. **SILENT FAILURE** outranks every other verdic
 Within a severity, list silent failures first.
 
 <!-- prettier-ignore -->
-| ID | Severity | Verdict | Location | Evidence | Expected |
-| --- | --- | --- | --- | --- | --- |
-| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| ID | Severity | Title | Verdict | Location | Evidence | Expected | Key |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 **If** the run finds nothing → write one row: `None`.
 

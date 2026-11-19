@@ -167,9 +167,9 @@ bkit ships three folders. A file's path inside its folder is the path it lands a
 Within a severity, list missing gates first, then unwired copies, then drift.
 
 <!-- prettier-ignore -->
-| ID | Severity | Folder | Location | Evidence | Expected |
-| --- | --- | --- | --- | --- | --- |
-| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| ID | Severity | Title | Folder | Location | Evidence | Expected | Key |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 **If** the run finds nothing → write one row: `None`.
 

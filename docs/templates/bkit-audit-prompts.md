@@ -118,9 +118,9 @@ Guides disagree. The guide for the model that runs the prompt wins. A prompt tha
 Within a severity, list write paths first, then prompts whose model changed. A departure recorded in `docs/decisions.jsonl` with a reason is not a finding.
 
 <!-- prettier-ignore -->
-| ID | Severity | Prompt | Location | Evidence | Expected | Verify |
-| --- | --- | --- | --- | --- | --- | --- |
-| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| ID | Severity | Title | Prompt | Location | Evidence | Expected | Verify | Key |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 **If** the run finds nothing → write one row: `None`. `Verify` = the eval that confirms the fix, or `unverified`.
 

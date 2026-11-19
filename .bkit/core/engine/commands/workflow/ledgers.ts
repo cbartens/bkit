@@ -70,6 +70,7 @@ import {
   type RunContext,
 } from "../lib.js";
 import { CORRECTION_LIMIT, spendCorrection, type CorrectionSpend } from "./counters.js";
+import { auditLedgerRows, auditTotals, ledgerKeys, parseAuditReport } from "./audit-report.js";
 import { FID_PATTERNS } from "./fids.js";
 import { readStatusRows, str } from "./status.js";
 import {
@@ -88,6 +89,8 @@ export const EXIT_STAGE = 4;
 export const EXIT_COMMIT = 5;
 /** The bookkeeping pathspec matched nothing; refusing to reach `git commit`. */
 export const EXIT_EMPTY = 6;
+/** findings: the audit report's Findings table is missing or malformed. */
+export const EXIT_BAD_REPORT = 6;
 /** only-bookkeeping: a non-bookkeeping path changed, or from is not an ancestor of to. */
 export const EXIT_NOT_BOOKKEEPING = 7;
 /** append: a row was refused (supplied `ts`, wrong kind, invalid, unlisted writer). */
@@ -1109,6 +1112,35 @@ export const ledgersCommand: CommandSpec = {
           "no `**Ledger rows:**` line, the line is unfilled, or a key it names has no row",
       },
       run: (ctx) => check(ctx),
+    },
+    findings: {
+      summary:
+        "Print an audit report's finding IDs, severity totals and `failure` ledger rows, read from its Findings table.",
+      use: "workflow",
+      flags: [
+        { name: "report", type: "string", required: true, help: "the audit report file" },
+        {
+          name: "slug",
+          type: "string",
+          help: "the audit template slug (default: the report's file name without a timestamp)",
+        },
+        {
+          name: "root",
+          type: "string",
+          help: "checkout whose failures ledger to read (default: cwd)",
+        },
+      ],
+      output: {
+        ids: "the report's finding IDs, in table order",
+        totals: "findings per severity: CRITICAL, HIGH, MEDIUM, LOW",
+        ledgerRows:
+          "one failure ledger payload per finding, ready for `bkit ledgers append`; a finding keeps its prior key, else gets a unique `audit-<slug>-` key",
+      },
+      exitCodes: {
+        [EXIT_BAD_REPORT]:
+          "the report's Findings table is missing or malformed: a row with no ID, an empty or unknown Severity, an empty Title or an unknown Key",
+      },
+      run: (ctx) => findings(ctx),
     },
     compact: {
       summary:
@@ -2745,6 +2777,26 @@ export function triageDeferrals(root: string, fid: string, planPath: string): Tr
   }
   if (write.length > 0) appendLedgerRows(root, "deferrals", write);
   return { fid, plan: planPath, rows: out, total: out.length, written: write.length };
+}
+
+function findings(ctx: RunContext): number {
+  const file = path.resolve(ctx.cwd, required(ctx, "report"));
+  if (!fs.existsSync(file))
+    throw new CommandError(EXIT.USAGE, `--report ${required(ctx, "report")} does not exist`);
+  const slug = str(ctx.flags.slug) ?? path.basename(file, ".md").replace(/-\d{8}T\d{6}Z$/, "");
+  let report;
+  try {
+    report = parseAuditReport(fs.readFileSync(file, "utf-8"), slug);
+  } catch (e) {
+    if (e instanceof CommandError) throw new CommandError(EXIT_BAD_REPORT, e.message);
+    throw e;
+  }
+  ctx.emit({
+    ids: report.findings.map((f) => f.id),
+    totals: auditTotals(report.findings),
+    ledgerRows: auditLedgerRows(report, ledgerKeys(rootOf(ctx))),
+  });
+  return EXIT.OK;
 }
 
 function triage(ctx: RunContext): number {

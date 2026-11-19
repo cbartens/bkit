@@ -198,9 +198,9 @@ Within a severity, list security-band mistakes first.
 Ranked issues are not findings; their output is the proposed priority. The findings are stale, duplicate, not-ready, mis-ranked, stuck and off-board issues, and broken links.
 
 <!-- prettier-ignore -->
-| ID | Severity | Location | Evidence | Expected |
-| --- | --- | --- | --- | --- |
-| PENDING | PENDING | PENDING | PENDING | PENDING |
+| ID | Severity | Title | Location | Evidence | Expected | Key |
+| --- | --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 **If** the run finds nothing → write one row: `None`.
 

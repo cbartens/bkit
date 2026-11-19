@@ -86,8 +86,7 @@ autoCompactWindow: 300000
    - A plan task that re-enters a known-broken pattern, or touches a surface with an unacknowledged known failure or without acknowledging its prior fixes → `CRITICAL`.
 9. Sort findings into the three categories `CRITICAL`, `OPTIONAL` and `OUT OF SCOPE`.
 10. Mark each `CRITICAL` finding `(plan edit)` when an edit to the plan resolves it, or `(design change)` when only a change to the source design resolves it.
-11. Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings, counting only complete ones.
-    - **If** your Context names a structured result file (`Result:`) → write it as one JSON object with only these keys: `findings` (array; each item has `severity` (`CRITICAL`, `HIGH`, `MEDIUM` or `LOW`), boolean `fixable`, `location` (`path:line`) and `doneWhen`, plus optional `title`, `cls` and `tests`), `judgments` (object of header-field name to text, number or boolean; it holds `Verdict` and each header field the engine does not derive, never `Failures` or `Fixable`), `body` (the report text below the header, written in full: Scope, Notes and every section of your Output format except the generated Findings Log; omit it and the report keeps nothing but the header) and `evidenceComplete` (always `true` or `false`; `false` when you could not check everything). The engine sets `Failures` to the number of entries in `findings`, of every severity, in place of any other count in your steps, so list there only items that need a fix and keep the rest in `body`. A missing or invalid result file makes `bkit steps stub` exit 6 and sends the step to its Failure Path, so write the file before you finish; the caller deletes any older file at that path before it launches you, so a file there is always yours. If you cannot write it, say so in your final reply and do not leave the step to fail silently. The caller renders **Create** with `bkit steps stub --agent=bkit-plan-review-2 --result-file`, and the engine derives `Failures` and the header `Fingerprint`, so write neither by hand.
+11. Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings: each top-level item under `## CRITICAL`, or each `CRITICAL` task block under `## Findings Log`.
 12. Set `Redesign` in **Create** with `Edit` = `true` when at least one `CRITICAL` finding is marked `(design change)`, and `false` otherwise.
 13. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = no `CRITICAL` items.
@@ -98,7 +97,7 @@ autoCompactWindow: 300000
 
 ```markdown
 Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
-Failures: <integer >= 0>
+Failures: <count of items under ## CRITICAL>
 Redesign: true | false
 
 <!-- verdict:end -->
@@ -113,7 +112,7 @@ Lens: Regression risk — touched surfaces, backwards compatibility, design-cove
 
 ## CRITICAL
 
-[Regression-risk gaps that block plan progress: uncovered high-risk surfaces, backwards-compat breaks without shims, missing migration ordering, design-coverage gaps for touched surfaces, and re-entry into known-broken patterns. **If** none → `None`. Initially set to `PENDING`.]
+[Regression-risk gaps that block plan progress: uncovered high-risk surfaces, backwards-compat breaks without shims, missing migration ordering, design-coverage gaps for touched surfaces, and re-entry into known-broken patterns. One top-level `-` item per finding. **If** none → `None`. Initially set to `PENDING`.]
 
 ## OPTIONAL
 

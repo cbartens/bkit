@@ -5,7 +5,7 @@
 
 import { coversList, type Plan, type Workstream } from "./plans.js";
 import { issueIdOf, type FidTracker } from "./fids.js";
-import { decisionHeader, parseDecisionItems } from "./open-decision.js";
+import { decisionFileHeader, decisionItems, unwrittenPause } from "./open-decision.js";
 import { parsePlanBlocks } from "./plan-blocks.js";
 import { parseJson } from "../../shared/json.js";
 import { oneLine } from "../../shared/text.js";
@@ -431,14 +431,13 @@ export function buildSummary(input: SummaryInput): Summary {
     input.rows.forEach((row, index) => {
       if (row.type !== "step-done" || row.step !== "build-decision") return;
       for (const rel of artifactsOf(row)) {
-        const text = read(rel);
-        if (text === null) continue;
-        const header = decisionHeader(text);
+        if (read(rel) === null) continue;
+        const header = decisionFileHeader(read, rel);
         const rule = PAUSE_RULES[header.From ?? ""];
         if (rule === undefined) continue;
         const group = /^[0-9]+$/.test(header.Group ?? "") ? Number(header.Group) : undefined;
         if (rule.grouped && group === undefined) continue;
-        const items = parseDecisionItems(text);
+        const items = decisionItems(read, rel, "build");
         const gaps = items.filter((i) => i.title !== rule.loop);
         const loop = items.filter((i) => i.title === rule.loop);
         if (gaps.length === 0) continue;
@@ -584,7 +583,7 @@ export function buildSummary(input: SummaryInput): Summary {
     .filter((g) => g.step === "build-decision")
     .flatMap((g) => g.rows.flatMap(({ row }) => artifactsOf(row)));
   const acceptItems = decided.flatMap((rel) =>
-    parseDecisionItems(read(rel) ?? "")
+    decisionItems(read, rel, "build")
       .filter((i) => /^Accept\b/.test(i.decision ?? ""))
       .map((i) => ({ assumed: i.assumed, line: `${rel}: Decision: ${i.decision}` })),
   );
@@ -601,7 +600,7 @@ export function buildSummary(input: SummaryInput): Summary {
   const unconfirmed =
     workflow === "ship"
       ? input.decisionFiles.flatMap((rel) =>
-          parseDecisionItems(read(rel) ?? "")
+          decisionItems(read, rel)
             .filter((i) => i.assumed)
             .map((i) => `\`${rel}\` Q${i.n} — ${i.title}${i.rejected ? " (rejected)" : ""}`),
         )
@@ -833,7 +832,10 @@ export function buildSummary(input: SummaryInput): Summary {
   items.push(...accepted.map((a) => `- Accepted: ${a}`));
   items.push(...assumed.map((a) => `- Assumed, not confirmed: ${a}`));
   for (const rel of workflow === "build" ? input.decisionFiles : []) {
-    if (!/^Decision:/m.test(read(rel) ?? "")) items.push(`- \`${rel}\`: no decision recorded`);
+    // A pause file the resume reads as never written asked nothing.
+    if (unwrittenPause(read, rel)) continue;
+    if (decisionItems(read, rel, "build").every((i) => i.decision === null))
+      items.push(`- \`${rel}\`: no decision recorded`);
   }
   for (const p of input.plans) {
     const lines = p.text.split(/\r?\n/);

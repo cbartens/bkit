@@ -164,9 +164,9 @@ A performance number only matters beside the previous number, taken the same way
 Within a severity, list first what unblocks the next measurement, in this order: instrument and pollution fixes; one-line config changes (region, project settings); contained client trims; decisions; and packages shared with native that need a local repro. **If** a finding needs diagnosis before it can be sized → its `Expected` says so.
 
 <!-- prettier-ignore -->
-| ID | Severity | Location | Evidence | Expected |
-| --- | --- | --- | --- | --- |
-| PENDING | PENDING | PENDING | PENDING | PENDING |
+| ID | Severity | Title | Location | Evidence | Expected | Key |
+| --- | --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 **If** the run finds nothing → write one row: `None`.
 

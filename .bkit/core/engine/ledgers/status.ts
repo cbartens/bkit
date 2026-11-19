@@ -381,7 +381,14 @@ export type WorkflowRun = {
 // One appended line of `status.jsonl`. `step-done` carries the full `Step` shape
 // plus the routing `type`/`workflow`; the rest are workflow-level transitions.
 export type StatusEvent =
-  | { type: "workflow-started"; workflow: string; at: string; progress?: string }
+  // `decisionLayout`: a build run whose pause answers are rows (`open-decision.ts`).
+  | {
+      type: "workflow-started";
+      workflow: string;
+      at: string;
+      progress?: string;
+      decisionLayout?: string;
+    }
   | ({ type: "step-done"; workflow: string } & Step)
   | ({ type: "workflow-meta"; workflow: string; at: string } & Record<string, unknown>)
   // `parentSha`: HEAD at close, the run's join key (`run.parentSha` on its ledger rows).
@@ -473,6 +480,89 @@ export function fold(events: StatusEvent[]): WorkflowRun[] {
 // Any status.jsonl row. The fold reads only StatusEvent types; the log also carries
 // rows it skips (runtime-resolved, transport-fallback, close-transport, ...).
 export type StatusRow = { type: string } & Record<string, unknown>;
+
+/** Row types only the engine appends: `decisions counts` and `decisions apply`; `status row` refuses them. */
+export const ENGINE_ROW_TYPES: ReadonlySet<string> = new Set([
+  "decision-counts",
+  "decision-answer",
+]);
+
+/** The loop question a `decision-counts` row holds. */
+export type DecisionCountsLoop = {
+  title: string;
+  question?: string;
+  options: string[];
+  recommended: string | null;
+  reason: string;
+  /** The attempt the loop is on and its limit, as the pause's `attempt X of Y` line gives them. */
+  attempt?: string;
+  max?: string;
+  /** The `loopProgress` numbers the `## Progress` block prints. */
+  progress?: {
+    problems: string;
+    gateFailures?: string;
+    codeChanged: boolean | null;
+    lastStrategy: string | null;
+    nextStrategy: string;
+    finalSpent: boolean;
+    minutesPerRound: number | null;
+    trend: string;
+  };
+};
+
+/** The engine's counts for one decision file, appended by `decisions counts`. */
+export type DecisionCountsRow = {
+  type: "decision-counts";
+  workflow: string;
+  at: string;
+  file: string;
+  sourceChanged?: boolean;
+  gate?: string;
+  loop?: DecisionCountsLoop;
+  baseCheck?: Record<string, unknown>;
+} & Record<string, unknown>;
+
+/** One answer to one question of a decision file, appended by `decisions apply`. */
+export type DecisionAnswerRow = {
+  type: "decision-answer";
+  workflow: string;
+  at: string;
+  file: string;
+  q: number;
+  answer: string;
+  by: string;
+  assumed?: boolean;
+  rejected?: boolean;
+  /** `needs-decision` once ship deferred the assumed item. */
+  deferred?: string | boolean;
+  fixTask?: number;
+  reasonFile?: string;
+  runtime?: string;
+} & Record<string, unknown>;
+
+/**
+ * Parse NDJSON status text in file order. A line that is not a JSON object comes back as
+ * `{ line, problem }` (1-based among the non-blank lines), never as "no rows". Imports nothing
+ * from `commands/`, so a reader of decision rows needs no command module.
+ */
+export function parseStatusLines(
+  text: string,
+  _label: string,
+): { rows: StatusRow[] } | { line: number; problem: "not JSON" | "not a JSON object" } {
+  const rows: StatusRow[] = [];
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l !== "");
+  for (const [i, l] of lines.entries()) {
+    const parsed = parseJson(l);
+    if (!parsed.ok) return { line: i + 1, problem: "not JSON" };
+    if (typeof parsed.value !== "object" || parsed.value === null)
+      return { line: i + 1, problem: "not a JSON object" };
+    rows.push(parsed.value as StatusRow);
+  }
+  return { rows };
+}
 
 /**
  * The `invocation` row a run's `status.jsonl` carries for one engine-issued workflow-mode

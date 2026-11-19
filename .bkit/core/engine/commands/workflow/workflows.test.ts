@@ -263,6 +263,7 @@ describe("bkit workflows start", () => {
         workflow: "build",
         at: r.json.row.at,
         parentSha: git(cwd, "rev-parse", "HEAD"),
+        decisionLayout: "rows",
         limits: {
           "build.verify": { ask: true, max: 2 },
           "build.holistic": { ask: true, max: 2 },
@@ -572,6 +573,8 @@ describe("bkit workflows start — resume facts", () => {
       gate: null,
       sourceChanged: null,
       status: "OPEN",
+      questions: 1,
+      counted: false,
       plan: `docs/plans/${M}/${FID}-plan.md`,
     });
   });
@@ -941,9 +944,661 @@ describe("bkit workflows fail", () => {
     expect(r.json.trackerState).toBe(state);
   });
 
+  it("rewrites the error and stderr files with configured secret values redacted and stderr cut to 20 lines", async () => {
+    const cwd = repo();
+    const secret = "ghp_fakeSecretValue1234567890";
+    const before = process.env["BKIT_GH_TOKEN"];
+    process.env["BKIT_GH_TOKEN"] = secret;
+    try {
+      const stderr = Array.from({ length: 30 }, (_, i) => `line ${i + 1} token=${secret}`);
+      write(cwd, `${REL}/build-error.md`, `tests failed with ${secret}\n`);
+      write(cwd, `${REL}/build-stderr.md`, `${stderr.join("\n")}\n`);
+      const r = await run(
+        cwd,
+        wf(
+          "fail",
+          "build",
+          "--step-number=14",
+          "--step-title=Run Tests",
+          `--error-file=${REL}/build-error.md`,
+          `--stderr-file=${REL}/build-stderr.md`,
+        ),
+      );
+      expect(r.code).toBe(0);
+      const errorText = fs.readFileSync(path.join(cwd, `${REL}/build-error.md`), "utf8");
+      const stderrText = fs.readFileSync(path.join(cwd, `${REL}/build-stderr.md`), "utf8");
+      expect(errorText).not.toContain(secret);
+      expect(errorText).toContain("<BKIT_GH_TOKEN>");
+      expect(stderrText).not.toContain(secret);
+      expect(stderrText).toContain("<BKIT_GH_TOKEN>");
+      expect(stderrText.split("\n").filter((l) => l !== "")).toHaveLength(20);
+      expect(stderrText).toContain("line 30 ");
+      expect(stderrText).not.toContain("line 10 ");
+    } finally {
+      restoreEnvironment("BKIT_GH_TOKEN", before);
+    }
+  });
+
+  it("redacts credentials beyond the tracker keys from the error and stderr files", async () => {
+    const cwd = repo();
+    const token = "svc_fakeTokenValue9876543210";
+    const password = "fakePassw0rdValue";
+    const before = process.env["BKIT_TEST_SERVICE_TOKEN"];
+    process.env["BKIT_TEST_SERVICE_TOKEN"] = token;
+    try {
+      const body = `migration failed: ${token} at postgres://app:${password}@db/app\n`;
+      write(cwd, `${REL}/build-error.md`, body);
+      write(cwd, `${REL}/build-stderr.md`, body);
+      const r = await run(
+        cwd,
+        wf(
+          "fail",
+          "build",
+          "--step-number=14",
+          "--step-title=Run Tests",
+          `--error-file=${REL}/build-error.md`,
+          `--stderr-file=${REL}/build-stderr.md`,
+        ),
+      );
+      expect(r.code).toBe(0);
+      for (const f of [`${REL}/build-error.md`, `${REL}/build-stderr.md`]) {
+        const text = fs.readFileSync(path.join(cwd, f), "utf8");
+        expect(text, f).not.toContain(token);
+        expect(text, f).not.toContain(password);
+        expect(text, f).toContain("<BKIT_TEST_SERVICE_TOKEN>");
+        expect(text, f).toContain("<redacted>");
+      }
+    } finally {
+      restoreEnvironment("BKIT_TEST_SERVICE_TOKEN", before);
+    }
+  });
+
+  it("redacts token-shaped values that no environment variable holds from the error and stderr files", async () => {
+    const cwd = repo();
+    const bearer = ["fakeBearer", "Value", "0123456789abcdef"].join("");
+    const pemBody = ["MIIFakeKeyBody", "LineOne0123456789", "LineTwoABCDEFGHIJ"].join("");
+    const ghp = ["ghp", "_", "fakeGithubTokenValue", "1234567890"].join("");
+    const body = [
+      `curl failed: Authorization: Bearer ${bearer}`,
+      "-----BEGIN RSA PRIVATE KEY-----",
+      pemBody,
+      "-----END RSA PRIVATE KEY-----",
+      `read from .env: ${ghp}`,
+      "",
+    ].join("\n");
+    write(cwd, `${REL}/build-error.md`, body);
+    write(cwd, `${REL}/build-stderr.md`, body);
+    const r = await run(
+      cwd,
+      wf(
+        "fail",
+        "build",
+        "--step-number=14",
+        "--step-title=Run Tests",
+        `--error-file=${REL}/build-error.md`,
+        `--stderr-file=${REL}/build-stderr.md`,
+      ),
+    );
+    expect(r.code).toBe(0);
+    for (const f of [`${REL}/build-error.md`, `${REL}/build-stderr.md`]) {
+      const text = fs.readFileSync(path.join(cwd, f), "utf8");
+      expect(text, f).not.toContain(bearer);
+      expect(text, f).not.toContain(pemBody);
+      expect(text, f).not.toContain(ghp);
+      expect(text, f).toContain("<redacted>");
+    }
+  });
+
+  it("redacts refresh_token and id_token values and the ghu_, ghr_, sk_live_, rk_live_, ASIA, AIza and npm_ prefixes", async () => {
+    const cwd = repo();
+    const fake = (prefix: string) => [prefix, "fakeTokenValue", "0123456789AB"].join("");
+    const values = [
+      ["refreshFake", "TokenValue", "0123"].join(""),
+      ["idFake", "TokenValue", "4567"].join(""),
+      fake("ghu_"),
+      fake("ghr_"),
+      fake("sk_live_"),
+      fake("rk_live_"),
+      ["ASIA", "FAKEKEYID0123456"].join(""),
+      ["AIza", "FakeGoogleKey0123456789abcdefghij-_"].join(""),
+      ["npm_", "FakeNpmToken0123456789abcdefghijklm"].join("") + "n",
+    ];
+    const body = [
+      `oauth failed: refresh_token=${values[0]}&id_token=${values[1]}`,
+      ...values.slice(2).map((v) => `read: ${v}`),
+      "",
+    ].join("\n");
+    write(cwd, `${REL}/build-error.md`, body);
+    write(cwd, `${REL}/build-stderr.md`, body);
+    const r = await run(
+      cwd,
+      wf(
+        "fail",
+        "build",
+        "--step-number=14",
+        "--step-title=Run Tests",
+        `--error-file=${REL}/build-error.md`,
+        `--stderr-file=${REL}/build-stderr.md`,
+      ),
+    );
+    expect(r.code).toBe(0);
+    for (const f of [`${REL}/build-error.md`, `${REL}/build-stderr.md`]) {
+      const text = fs.readFileSync(path.join(cwd, f), "utf8");
+      for (const v of values) expect(text, `${f} ${v.slice(0, 8)}`).not.toContain(v);
+      expect(text, f).toContain("refresh_token=<redacted>");
+      expect(text, f).toContain("id_token=<redacted>");
+    }
+  });
+
+  it("redacts JSON-quoted access_token, refresh_token and id_token values and keeps their keys", async () => {
+    const cwd = repo();
+    const values = [
+      ["ya29.fakeAccess", "Value0123"].join(""),
+      ["1//0gFakeRefresh", "Value4567"].join(""),
+      ["eyJfakeId", "Value89AB"].join(""),
+    ];
+    const body = `oauth: {"access_token":"${values[0]}", "refresh_token" : "${values[1]}","id_token":"${values[2]}"}\n`;
+    write(cwd, `${REL}/build-error.md`, body);
+    write(cwd, `${REL}/build-stderr.md`, body);
+    const r = await run(
+      cwd,
+      wf(
+        "fail",
+        "build",
+        "--step-number=14",
+        "--step-title=Run Tests",
+        `--error-file=${REL}/build-error.md`,
+        `--stderr-file=${REL}/build-stderr.md`,
+      ),
+    );
+    expect(r.code).toBe(0);
+    for (const f of [`${REL}/build-error.md`, `${REL}/build-stderr.md`]) {
+      const text = fs.readFileSync(path.join(cwd, f), "utf8");
+      for (const v of values) expect(text, f).not.toContain(v);
+      expect(text, f).toContain('"access_token":"<redacted>"');
+      expect(text, f).toContain('"id_token":"<redacted>"');
+    }
+  });
+
+  it("keeps npm_ environment names and ASIA- or AKIA-led words that are not token-shaped", async () => {
+    const cwd = repo();
+    const body = [
+      "TypeError: process.env.npm_package_version is undefined",
+      "npm_config_registry=https://registry.npmjs.org/ npm_lifecycle_event=test",
+      "region ASIA_PACIFIC_REGION and AKIA_STYLE_NAME",
+      "",
+    ].join("\n");
+    write(cwd, `${REL}/build-error.md`, body);
+    const r = await run(
+      cwd,
+      wf(
+        "fail",
+        "build",
+        "--step-number=14",
+        "--step-title=Run Tests",
+        `--error-file=${REL}/build-error.md`,
+      ),
+    );
+    expect(r.code).toBe(0);
+    expect(fs.readFileSync(path.join(cwd, REL, "build-error.md"), "utf8")).toBe(body);
+  });
+
+  it("scrubs the log folder of a linked worktree that sits outside the main checkout", async () => {
+    const cwd = repo();
+    const outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-fail-wt-")));
+    try {
+      const wt = path.join(outside, "wt");
+      git(cwd, "worktree", "add", "-q", "-b", `feat/${FID}`, wt);
+      const secret = ["refreshFake", "Worktree", "0123"].join("");
+      write(wt, `${REL}/build-error.md`, `oauth failed: refresh_token=${secret}\n`);
+      const r = await run(
+        wt,
+        wf(
+          "fail",
+          "build",
+          `--month=${M}`,
+          "--step-number=14",
+          "--step-title=Run Tests",
+          `--error-file=${path.join(wt, REL, "build-error.md")}`,
+        ),
+      );
+      expect(r.err).not.toContain("log folder");
+      expect(r.code).toBe(0);
+      const text = fs.readFileSync(path.join(wt, REL, "build-error.md"), "utf8");
+      expect(text).not.toContain(secret);
+      expect(text).toContain("refresh_token=<redacted>");
+    } finally {
+      git(cwd, "worktree", "remove", "--force", path.join(outside, "wt"));
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("redacts a private-key body whose BEGIN or END line is missing from the error and stderr files", async () => {
+    const cwd = repo();
+    const tail = ["MIIFakeTailBody", "LineOne0123456789+/"].join("");
+    const tailTwo = ["FakeTailBody", "LineTwoABCDEFGHIJ=="].join("");
+    const head = ["MIIFakeHeadBody", "LineOne0123456789"].join("");
+    const body = [
+      "stderr tail starts mid-key:",
+      tail,
+      tailTwo,
+      "-----END RSA PRIVATE KEY-----",
+      "then a key that never ends:",
+      "-----BEGIN PRIVATE KEY-----",
+      head,
+      "",
+    ].join("\n");
+    write(cwd, `${REL}/build-error.md`, body);
+    write(cwd, `${REL}/build-stderr.md`, body);
+    const r = await run(
+      cwd,
+      wf(
+        "fail",
+        "build",
+        "--step-number=14",
+        "--step-title=Run Tests",
+        `--error-file=${REL}/build-error.md`,
+        `--stderr-file=${REL}/build-stderr.md`,
+      ),
+    );
+    expect(r.code).toBe(0);
+    for (const f of [`${REL}/build-error.md`, `${REL}/build-stderr.md`]) {
+      const text = fs.readFileSync(path.join(cwd, f), "utf8");
+      expect(text, f).not.toContain(tail);
+      expect(text, f).not.toContain(tailTwo);
+      expect(text, f).not.toContain(head);
+      expect(text, f).toContain("stderr tail starts mid-key:");
+      expect(text, f).toContain("then a key that never ends:");
+    }
+  });
+
+  it("skips an error or stderr file outside the run's log folder, names it in refusedFiles, and still records the failure", async () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-fail-outside-"));
+    try {
+      const abs = path.join(outside, "notes.md");
+      const secret = ["fakeOutside", "Value", "1234"].join("");
+      const original = `kept as is: token=${secret}\n${"x\n".repeat(30)}`;
+      fs.writeFileSync(abs, original);
+      for (const bad of ["package.json", abs]) {
+        const cwd = repo();
+        const pkg = `${JSON.stringify({ name: "x", note: secret }, null, 2)}\n${"\n".repeat(25)}`;
+        write(cwd, "package.json", pkg);
+        const valid = `tests failed: token=${["fakeInside", "Value", "5678"].join("")}\n`;
+        write(cwd, `${REL}/build-error.md`, valid);
+        const started = await run(cwd, wf("start", "build"));
+        const r = await run(
+          cwd,
+          wf(
+            "fail",
+            "build",
+            `--month=${M}`,
+            `--token=${started.json.lock.token}`,
+            "--step-number=14",
+            "--step-title=Run Tests",
+            `--error-file=${REL}/build-error.md`,
+            `--stderr-file=${bad}`,
+          ),
+        );
+        expect(r.code, bad).toBe(0);
+        expect(r.json.refusedFiles, bad).toEqual([bad]);
+        expect(rows(statusOf(cwd)).at(-1), bad).toMatchObject({ type: "workflow-failed" });
+        expect(r.json.lock, bad).toMatchObject({ released: true });
+        expect(fs.existsSync(path.join(cwd, REL, ".lock")), bad).toBe(false);
+        expect(String(r.json.comment), bad).not.toContain(secret);
+        expect(fs.readFileSync(path.join(cwd, "package.json"), "utf8"), bad).toBe(pkg);
+        expect(fs.readFileSync(path.join(cwd, REL, "build-error.md"), "utf8"), bad).toContain(
+          "token=<redacted>",
+        );
+      }
+      expect(fs.readFileSync(abs, "utf8")).toBe(original);
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("skips an error or stderr file that is a symbolic link to a file outside the log folder and leaves that file unchanged", async () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-fail-outside-"));
+    try {
+      const target = path.join(outside, "notes.md");
+      const secret = ["fakeOutside", "Value", "1234"].join("");
+      const original = `kept as is: token=${secret}\n${"x\n".repeat(30)}`;
+      fs.writeFileSync(target, original);
+      for (const [flag, name, other, otherName] of [
+        ["--error-file", "build-error.md", "--stderr-file", "build-stderr.md"],
+        ["--stderr-file", "build-stderr.md", "--error-file", "build-error.md"],
+      ]) {
+        const cwd = repo();
+        write(cwd, `${REL}/${otherName}`, "tests failed\n");
+        const link = path.join(cwd, REL, name);
+        fs.symlinkSync(target, link);
+        const started = await run(cwd, wf("start", "build"));
+        const r = await run(
+          cwd,
+          wf(
+            "fail",
+            "build",
+            `--month=${M}`,
+            `--token=${started.json.lock.token}`,
+            "--step-number=14",
+            "--step-title=Run Tests",
+            `${flag}=${REL}/${name}`,
+            `${other}=${REL}/${otherName}`,
+          ),
+        );
+        expect(r.code, flag).toBe(0);
+        expect(r.json.refusedFiles, flag).toEqual([`${REL}/${name}`]);
+        expect(rows(statusOf(cwd)).at(-1), flag).toMatchObject({ type: "workflow-failed" });
+        expect(fs.existsSync(path.join(cwd, REL, ".lock")), flag).toBe(false);
+        expect(String(r.json.comment), flag).not.toContain(secret);
+        expect(fs.readFileSync(target, "utf8"), flag).toBe(original);
+        expect(fs.lstatSync(link).isSymbolicLink(), flag).toBe(true);
+        expect(fs.readFileSync(path.join(cwd, REL, otherName), "utf8"), flag).toBe(
+          "tests failed\n",
+        );
+      }
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("skips a log-folder file other than {workflow}-error.md and {workflow}-stderr.md, such as status.jsonl", async () => {
+    const cwd = repo();
+    const started = await run(cwd, wf("start", "build"));
+    const secret = ["fakeNotes", "Value", "1357"].join("");
+    const notes = `token=${secret}\n`;
+    write(cwd, `${REL}/notes.md`, notes);
+    fs.appendFileSync(
+      statusOf(cwd),
+      jsonl(Array.from({ length: 25 }, (_, n) => ({ type: "padding", n }))),
+    );
+    const before = fs.readFileSync(statusOf(cwd), "utf8");
+    const r = await run(
+      cwd,
+      wf(
+        "fail",
+        "build",
+        `--month=${M}`,
+        `--token=${started.json.lock.token}`,
+        "--step-number=14",
+        "--step-title=Run Tests",
+        `--error-file=${REL}/notes.md`,
+        `--stderr-file=${REL}/status.jsonl`,
+      ),
+    );
+    expect(r.code).toBe(0);
+    expect(r.json.refusedFiles).toEqual([`${REL}/notes.md`, `${REL}/status.jsonl`]);
+    expect(fs.readFileSync(path.join(cwd, REL, "notes.md"), "utf8")).toBe(notes);
+    expect(fs.readFileSync(statusOf(cwd), "utf8").startsWith(before)).toBe(true);
+    expect(rows(statusOf(cwd)).at(-1)).toMatchObject({ type: "workflow-failed" });
+    expect(String(r.json.comment)).not.toContain(secret);
+  });
+
+  it("skips an error file it cannot rewrite, quotes none of it, and still records the failure", async () => {
+    const cwd = repo();
+    const started = await run(cwd, wf("start", "build"));
+    const secret = ["fakeReadOnly", "Value", "2468"].join("");
+    write(cwd, `${REL}/build-error.md`, `tests failed: token=${secret}\n`);
+    fs.chmodSync(path.join(cwd, REL, "build-error.md"), 0o444);
+    const r = await run(
+      cwd,
+      wf(
+        "fail",
+        "build",
+        `--month=${M}`,
+        `--token=${started.json.lock.token}`,
+        "--step-number=14",
+        "--step-title=Run Tests",
+        `--error-file=${REL}/build-error.md`,
+      ),
+    );
+    expect(r.code).toBe(0);
+    expect(r.json.refusedFiles).toEqual([`${REL}/build-error.md`]);
+    expect(String(r.json.comment)).not.toContain(secret);
+    // Scrubbing leaves "tests failed" in place, so its absence shows the file was never quoted.
+    expect(String(r.json.comment)).not.toContain("tests failed");
+    expect(String(r.json.comment)).toMatch(
+      /^Error: \(error file skipped: cannot be opened for writing \(EACCES\)\)$/m,
+    );
+    expect(rows(statusOf(cwd)).at(-1)).toMatchObject({ type: "workflow-failed" });
+    expect(fs.existsSync(path.join(cwd, REL, ".lock"))).toBe(false);
+  });
+
+  /** Runs `workflows fail` for a started build with `flags`, and asserts the failure is recorded and the lock released. */
+  async function failRecorded(cwd: string, ...flags: string[]) {
+    const started = await run(cwd, wf("start", "build"));
+    const r = await run(
+      cwd,
+      wf(
+        "fail",
+        "build",
+        `--month=${M}`,
+        `--token=${started.json.lock.token}`,
+        "--step-number=14",
+        "--step-title=Run Tests",
+        ...flags,
+      ),
+    );
+    expect(r.code).toBe(0);
+    expect(rows(statusOf(cwd)).at(-1)).toMatchObject({ type: "workflow-failed" });
+    expect(fs.existsSync(path.join(cwd, REL, ".lock"))).toBe(false);
+    return r;
+  }
+
+  it("keeps the --error text and says on the Error line that the error file was skipped, and why", async () => {
+    const cwd = repo();
+    fs.mkdirSync(path.join(cwd, REL), { recursive: true });
+    const r = await failRecorded(cwd, "--error=gate red", `--error-file=${REL}/build-error.md`);
+    expect(String(r.json.comment)).toMatch(
+      /^Error: gate red \(error file skipped: does not resolve to a file \(ENOENT\)\)$/m,
+    );
+  });
+
+  it("skips a stderr file in the log folder that is a hard link to a file outside it, and leaves that file unchanged", async () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-fail-hardlink-"));
+    try {
+      const target = path.join(outside, "notes.md");
+      const original = `kept as is, line 0\n${Array.from({ length: 40 }, (_, i) => `kept as is, line ${i + 1}\n`).join("")}`;
+      fs.writeFileSync(target, original);
+      const cwd = repo();
+      fs.mkdirSync(path.join(cwd, REL), { recursive: true });
+      fs.linkSync(target, path.join(cwd, REL, "build-stderr.md"));
+      const r = await failRecorded(cwd, `--stderr-file=${REL}/build-stderr.md`);
+      expect(r.json.refusedFiles).toEqual([`${REL}/build-stderr.md`]);
+      expect(String(r.json.comment)).not.toContain("kept as is");
+      expect(fs.readFileSync(target, "utf8")).toBe(original);
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("skips an error file in the log folder that is a directory", async () => {
+    const cwd = repo();
+    fs.mkdirSync(path.join(cwd, REL, "build-error.md"), { recursive: true });
+    const r = await failRecorded(cwd, `--error-file=${REL}/build-error.md`);
+    expect(r.json.refusedFiles).toEqual([`${REL}/build-error.md`]);
+  });
+
+  it("skips a stderr file in the log folder that is a FIFO, without waiting on it", async () => {
+    const cwd = repo();
+    fs.mkdirSync(path.join(cwd, REL), { recursive: true });
+    const fifo = path.join(cwd, REL, "build-stderr.md");
+    expect(spawnSync("mkfifo", [fifo]).status).toBe(0);
+    const r = await failRecorded(cwd, `--stderr-file=${REL}/build-stderr.md`);
+    expect(r.json.refusedFiles).toEqual([`${REL}/build-stderr.md`]);
+  });
+
+  it.each<[string, (cwd: string) => void]>([
+    ["a missing error file", () => undefined],
+    [
+      "an error file that is a dangling symbolic link",
+      (cwd) => fs.symlinkSync(path.join(cwd, "gone.md"), path.join(cwd, REL, "build-error.md")),
+    ],
+  ])("skips %s, still prints the comment and names it in refusedFiles", async (_name, place) => {
+    const cwd = repo();
+    fs.mkdirSync(path.join(cwd, REL), { recursive: true });
+    place(cwd);
+    write(cwd, `${REL}/build-stderr.md`, "tests failed\n");
+    const r = await failRecorded(
+      cwd,
+      `--error-file=${REL}/build-error.md`,
+      `--stderr-file=${REL}/build-stderr.md`,
+    );
+    expect(r.json.refusedFiles).toEqual([`${REL}/build-error.md`]);
+    expect(String(r.json.comment)).toContain("tests failed");
+  });
+
+  it("scrubs an AWS key ID followed by more letters, digits or an underscore", async () => {
+    const cwd = repo();
+    const keys = [
+      "AKIAIOSFODNN7EXAMPLE_backup",
+      "AKIAIOSFODNN7EXAMPLE2X9",
+      "ASIAIOSFODNN7EXAMPLEZZ",
+      "KEY_AKIAIOSFODNN7EXAMPLE",
+      "backup_ASIAIOSFODNN7EXAMPLE",
+    ];
+    write(cwd, `${REL}/build-error.md`, `${keys.map((k) => `aws key ${k}`).join("\n")}\n`);
+    const r = await run(
+      cwd,
+      wf(
+        "fail",
+        "build",
+        "--step-number=14",
+        "--step-title=Run Tests",
+        `--error-file=${REL}/build-error.md`,
+      ),
+    );
+    expect(r.code).toBe(0);
+    const text = fs.readFileSync(path.join(cwd, REL, "build-error.md"), "utf8");
+    expect(text).not.toContain("IOSFODNN7EXAMPLE");
+    expect(text.match(/<redacted>/g)).toHaveLength(5);
+  });
+
+  it("redacts the values of credential env vars named KEY, PASS or WEBHOOK from the error and stderr files", async () => {
+    const cwd = repo();
+    const values: Record<string, string> = {
+      BKIT_TEST_SERVICE_ROLE_KEY: ["fakeServiceRole", "Value", "98765"].join(""),
+      BKIT_TEST_SMTP_PASS: ["fakeSmtp", "Pass", "Value4321"].join(""),
+      BKIT_TEST_ALERT_WEBHOOK_URL: `https://hooks.example.test/services/${["T0FAKE", "B0FAKE", "xyz123"].join("/")}`,
+    };
+    const before = Object.fromEntries(Object.keys(values).map((k) => [k, process.env[k]]));
+    for (const [k, v] of Object.entries(values)) process.env[k] = v;
+    try {
+      const body = `${Object.values(values)
+        .map((v) => `failed with ${v}`)
+        .join("\n")}\n`;
+      write(cwd, `${REL}/build-error.md`, body);
+      write(cwd, `${REL}/build-stderr.md`, body);
+      const r = await run(
+        cwd,
+        wf(
+          "fail",
+          "build",
+          "--step-number=14",
+          "--step-title=Run Tests",
+          `--error-file=${REL}/build-error.md`,
+          `--stderr-file=${REL}/build-stderr.md`,
+        ),
+      );
+      expect(r.code).toBe(0);
+      for (const f of [`${REL}/build-error.md`, `${REL}/build-stderr.md`]) {
+        const text = fs.readFileSync(path.join(cwd, f), "utf8");
+        for (const [k, v] of Object.entries(values)) {
+          expect(text, `${f} ${k}`).not.toContain(v);
+          expect(text, `${f} ${k}`).toContain(`<${k}>`);
+        }
+      }
+    } finally {
+      for (const [k, v] of Object.entries(before)) restoreEnvironment(k, v);
+    }
+  });
+
+  it("redacts the password of a URL with an empty user name from the error and stderr files", async () => {
+    const cwd = repo();
+    const password = ["fakeRedis", "Passw0rd", "Value"].join("");
+    const body = `connect failed: redis://:${password}@cache:6379/0\n`;
+    write(cwd, `${REL}/build-error.md`, body);
+    write(cwd, `${REL}/build-stderr.md`, body);
+    const r = await run(
+      cwd,
+      wf(
+        "fail",
+        "build",
+        "--step-number=14",
+        "--step-title=Run Tests",
+        `--error-file=${REL}/build-error.md`,
+        `--stderr-file=${REL}/build-stderr.md`,
+      ),
+    );
+    expect(r.code).toBe(0);
+    for (const f of [`${REL}/build-error.md`, `${REL}/build-stderr.md`]) {
+      const text = fs.readFileSync(path.join(cwd, f), "utf8");
+      expect(text, f).not.toContain(password);
+      expect(text, f).toContain("redis://:<redacted>@cache:6379/0");
+    }
+  });
+
+  it("redacts a Bearer value in a quoted or JSON Authorization header from the error and stderr files", async () => {
+    const cwd = repo();
+    const dump = ["eyJfakeRuntime", "MintedJwt", "Value.abc123"].join("");
+    const jsonDump = ["eyJfakeJson", "BearerJwt", "Value.def456"].join("");
+    const body = [
+      `AxiosError: Request failed { headers: { Authorization: 'Bearer ${dump}' } }`,
+      `{"Authorization":"Bearer ${jsonDump}"}`,
+      "",
+    ].join("\n");
+    write(cwd, `${REL}/build-error.md`, body);
+    write(cwd, `${REL}/build-stderr.md`, body);
+    const r = await run(
+      cwd,
+      wf(
+        "fail",
+        "build",
+        "--step-number=14",
+        "--step-title=Run Tests",
+        `--error-file=${REL}/build-error.md`,
+        `--stderr-file=${REL}/build-stderr.md`,
+      ),
+    );
+    expect(r.code).toBe(0);
+    for (const f of [`${REL}/build-error.md`, `${REL}/build-stderr.md`]) {
+      const text = fs.readFileSync(path.join(cwd, f), "utf8");
+      expect(text, f).not.toContain(dump);
+      expect(text, f).not.toContain(jsonDump);
+      expect(text, f).toContain("<redacted>");
+    }
+  });
+
+  it("writes the stderr file with the checkout path made relative and the home directory as ~", async () => {
+    const cwd = repo();
+    const home = os.homedir();
+    write(
+      cwd,
+      `${REL}/build-stderr.md`,
+      [`Error at ${cwd}/src/a.ts:10`, `    at load (${home}/.cache/tool/index.js:3)`, ""].join(
+        "\n",
+      ),
+    );
+    const r = await run(
+      cwd,
+      wf(
+        "fail",
+        "build",
+        "--step-number=14",
+        "--step-title=Run Tests",
+        `--stderr-file=${REL}/build-stderr.md`,
+      ),
+    );
+    expect(r.code).toBe(0);
+    const text = fs.readFileSync(path.join(cwd, `${REL}/build-stderr.md`), "utf8");
+    expect(text).not.toContain(cwd);
+    expect(text).not.toContain(home);
+    expect(text).toContain("src/a.ts:10");
+    expect(text).toContain("~/.cache/tool/index.js:3");
+  });
+
   it("prints the failure comment from --error-file, naming a lock it could not remove", async () => {
     const cwd = repo();
-    write(cwd, "tmp/error.md", "tests failed: 3\n\n");
+    write(cwd, `${REL}/build-error.md`, "tests failed: 3\n\n");
     const r = await run(
       cwd,
       wf(
@@ -952,7 +1607,7 @@ describe("bkit workflows fail", () => {
         "--step-number=14",
         "--step-title=Run Tests",
         "--sub-step=2",
-        "--error-file=tmp/error.md",
+        `--error-file=${REL}/build-error.md`,
       ),
     );
     expect(r.json.comment).toContain("### Workflow Failure");
@@ -963,7 +1618,7 @@ describe("bkit workflows fail", () => {
 
   it("bkit workflows fail --next-step adds a Next step line to the failure comment and prints nextStep", async () => {
     const cwd = repo();
-    write(cwd, "tmp/error.md", "CI is red\n\n");
+    write(cwd, `${REL}/ship-error.md`, "CI is red\n\n");
     const r = await run(
       cwd,
       wf(
@@ -971,7 +1626,7 @@ describe("bkit workflows fail", () => {
         "ship",
         "--step-number=10",
         "--step-title=Merge Gate + Merge PR",
-        "--error-file=tmp/error.md",
+        `--error-file=${REL}/ship-error.md`,
         "--next-step=/bkit-debug 911-ship-failed-merge",
       ),
     );
@@ -1049,7 +1704,7 @@ describe("bkit workflows fail", () => {
 
   it("bkit workflows fail treats an empty --next-step as absent", async () => {
     const cwd = repo();
-    write(cwd, "tmp/error.md", "CI is red\n\n");
+    write(cwd, `${REL}/ship-error.md`, "CI is red\n\n");
     const r = await run(
       cwd,
       wf(
@@ -1057,7 +1712,7 @@ describe("bkit workflows fail", () => {
         "ship",
         "--step-number=10",
         "--step-title=Merge Gate + Merge PR",
-        "--error-file=tmp/error.md",
+        `--error-file=${REL}/ship-error.md`,
         "--next-step=",
       ),
     );
@@ -3675,6 +4330,76 @@ describe("bkit workflows summary", () => {
     const md = fs.readFileSync(path.join(cwd, SREL, "ship-summary.md"), "utf-8");
     expect(md).toContain("ship-failure-diagnose");
     expect(md).toContain("ship-failure-remediate");
+  });
+
+  it("counts an assumed item in an engine file once", async () => {
+    const decisionRel = `${SREL}/build-decision-1-1.md`;
+    const orchestrator = [
+      "Question: CHALLENGE",
+      "From: challenge",
+      "",
+      "**Q1 — Task 3 [src/a.ts:10]:** MEDIUM: the retry has no cap. Accept it?",
+      "A) Accept — the item is recorded as accepted",
+      "B) Fix now — a fix task is added to the plan",
+      "Recommended: A) Accept — the caller already caps it",
+      "Default if unanswered: the run waits for you",
+      "",
+    ].join("\n");
+    const answer = (workflow: string, at: string, extra: object) => ({
+      type: "decision-answer",
+      workflow,
+      at,
+      file: decisionRel,
+      q: 1,
+      ...extra,
+    });
+    const countsRow = {
+      type: "decision-counts",
+      workflow: "build",
+      at: "2020-01-01T00:04:30Z",
+      file: decisionRel,
+    };
+    const assumedRow = answer("build", "2020-01-01T00:05:00Z", {
+      answer: "Accept (assumed) — the caller already caps it (headless, GITHUB_ACTION, 2026-10-28)",
+      by: "headless",
+      assumed: true,
+    });
+    const shipRow = answer("ship", "2020-01-01T00:11:00Z", {
+      answer: "Accept — confirmed at ship",
+      by: "owner",
+    });
+
+    // A ship summary: the assumed item is read once, from its row, with no -engine.md file.
+    const shipTree = tree(
+      [countsRow, assumedRow, done("ship-merge-pr", "2020-01-01T00:10:00Z", { workflow: "ship" })],
+      undefined,
+      "ship",
+    );
+    write(shipTree, decisionRel, orchestrator);
+    const r = await summarize(shipTree, "ship");
+    expect(r.code).toBe(0);
+    expect(r.json.reasons).toContain("shipped with 1 assumed item(s) the owner did not confirm");
+    expect(fs.existsSync(path.join(shipTree, `${SREL}/build-decision-1-1-engine.md`))).toBe(false);
+
+    // A build summary: a ship answer row for the same question is not a build answer, so the
+    // item stays assumed and is counted once as accepted without the owner.
+    const buildTree = tree(
+      [
+        done("build-plan-verify", "2020-01-01T00:04:00Z", { verdict: "PASS", failures: 0 }),
+        countsRow,
+        done("build-decision", "2020-01-01T00:06:00Z", { artifacts: [decisionRel] }),
+        assumedRow,
+        shipRow,
+      ],
+      planOf(task(1, true)),
+    );
+    write(buildTree, decisionRel, orchestrator);
+    const b = await summarize(buildTree);
+    expect(b.code).toBe(0);
+    expect(b.json.reasons).toContain(
+      "1 item(s) accepted without the owner (assumed; ship asks to confirm)",
+    );
+    expect(b.json.reasons).not.toContain("1 item(s) accepted at the Decision Pause");
   });
 
   it("summary is FAIL when a plan task is not done", async () => {

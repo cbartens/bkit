@@ -139,9 +139,9 @@ Failure paths are the least tested. The happy path is tested, while a vendor out
 Within a severity, list money and data first, then a broken core action. A silent write, or a charge or send that can happen twice, is at least `HIGH`. Do not lower either because traffic is low.
 
 <!-- prettier-ignore -->
-| ID | Severity | Location | Evidence | Expected |
-| --- | --- | --- | --- | --- |
-| PENDING | PENDING | PENDING | PENDING | PENDING |
+| ID | Severity | Title | Location | Evidence | Expected | Key |
+| --- | --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 **If** the run finds nothing → write one row: `None`.
 

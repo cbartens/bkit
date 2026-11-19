@@ -132,9 +132,9 @@ Give one verdict per vendor, and one per paid resource inside a vendor that has 
 Within a severity, list the larger monthly amount first. No cap and no alert on a usage-billed vendor is at least `HIGH`, even when today's spend is small.
 
 <!-- prettier-ignore -->
-| ID | Severity | Verdict | Location | Evidence | Expected |
-| --- | --- | --- | --- | --- | --- |
-| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| ID | Severity | Title | Verdict | Location | Evidence | Expected | Key |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 **If** the run finds nothing → write one row: `None`.
 

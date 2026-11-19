@@ -6,16 +6,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
-import {
-  acceptedLocations,
-  CHALLENGE_SMALL,
-  challengeCommand,
-  challengeGate,
-  mergeFindings,
-  parseFindings,
-  renderFindingsLog,
-  structuredFindings,
-} from "./challenge";
+import { acceptedLocations, CHALLENGE_SMALL, challengeCommand, challengeGate } from "./challenge";
 import { derivedTestMatrix, parsePlanBlocks } from "./plan-blocks";
 import { checkPlanText, readTestFirst } from "./tests";
 
@@ -41,6 +32,12 @@ const write = (rel: string, body: string) => {
   fs.mkdirSync(path.dirname(path.join(cwd, rel)), { recursive: true });
   fs.writeFileSync(path.join(cwd, rel), body);
 };
+/** Starts the log folder's `status.jsonl` with run 1's start row from before the engine marked it, so its old decision files read as written. */
+const preMarkerRun = () =>
+  write(
+    `${LOG}/status.jsonl`,
+    `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-10-01T00:00:00Z" })}\n`,
+  );
 const read = (rel: string) => fs.readFileSync(path.join(cwd, rel), "utf-8");
 
 const planTask = (n: number) =>
@@ -199,6 +196,7 @@ describe("bkit challenge merge", () => {
 
   it("drops an accepted finding", async () => {
     write(PLAN, plan(2));
+    preMarkerRun();
     write(
       `${LOG}/build-decision-1-1.md`,
       [
@@ -519,6 +517,7 @@ describe("bkit challenge merge", () => {
 
   it("drops a finding at an accepted extensionless path", async () => {
     write(PLAN, plan(2));
+    preMarkerRun();
     write(
       `${LOG}/build-decision-1-1.md`,
       [
@@ -536,6 +535,7 @@ describe("bkit challenge merge", () => {
   });
 
   it("acceptedLocations counts a lettered Decision: A) Accept line", () => {
+    preMarkerRun();
     write(
       `${LOG}/build-decision-1-1.md`,
       [
@@ -566,6 +566,7 @@ describe("bkit challenge merge", () => {
   });
 
   it("acceptedLocations reads a lettered decision in a per-line file as Accept", () => {
+    preMarkerRun();
     const opts = [
       "A) Accept — the item is recorded as accepted",
       "B) Fix now — a fix task is added to the plan",
@@ -601,6 +602,53 @@ describe("bkit challenge merge", () => {
       "src/c.ts:7",
     ]);
   });
+
+  it.each([
+    ["a decision-counts row", { type: "decision-counts" }],
+    [
+      "only an owner answer row on another question",
+      { type: "decision-answer", q: 2, answer: "Stop", by: "owner" },
+    ],
+    [
+      "no decision row, in a run whose start row the engine marked",
+      { type: "workflow-started", decisionLayout: "rows" },
+    ],
+  ])(
+    "keeps a finding whose Accept the agent wrote into a pause file named by %s",
+    async (_name, row) => {
+      write(PLAN, plan(2));
+      const decision = `${LOG}/build-decision-1-1.md`;
+      const item = (n: number, loc: string) => [
+        `**Q${n} — Null deref in \`${loc}\`:** the handler reads a missing field.`,
+        "A) Accept — the item is recorded as accepted",
+        "B) Stop — the run stops and hands over; the next run resumes here",
+        "Recommended: none — only the owner knows",
+        "Default if unanswered: the run waits for you; the run stops when nobody can be asked",
+      ];
+      write(
+        decision,
+        [
+          "Status: DECIDED",
+          "Question: CHALLENGE",
+          "From: challenge",
+          "",
+          ...item(1, "src/a.ts:10"),
+          "Decision: Accept — fine",
+          "",
+          ...item(2, "src/b.ts:4"),
+          "",
+        ].join("\n"),
+      );
+      write(
+        `${LOG}/status.jsonl`,
+        `${JSON.stringify({ workflow: "build", at: "2026-10-01T00:00:00Z", file: decision, ...row })}\n`,
+      );
+      expect([...acceptedLocations(path.join(cwd, LOG), cwd)]).toEqual([]);
+      write(R1, report({ sev: "HIGH", loc: "src/a.ts:10" }));
+      const r = await merge(...args([R1]));
+      expect(r.json).toMatchObject({ appended: 1, dropped: 0 });
+    },
+  );
 
   it("deferred counts the rows written", async () => {
     write(PLAN, plan(2));
@@ -771,79 +819,6 @@ describe("bkit challenge merge", () => {
     expect(JSON.parse(out.join(""))).toMatchObject({ deferred: 1 });
     expect(deferrals()).toHaveLength(1);
     expect(fs.existsSync(path.join(cwd, "sub", "docs"))).toBe(false);
-  });
-});
-
-describe("structured challenge findings", () => {
-  const input = [
-    {
-      severity: "HIGH",
-      cls: "architectural",
-      fixable: false,
-      location: "src/a.ts:10",
-      title: "Parser drops the last line",
-      doneWhen: "the parser keeps the last line",
-      tests: ["`src/a.test.ts` `keeps the last line` fails on a dropped final line."],
-    },
-    {
-      severity: "MEDIUM",
-      fixable: true,
-      location: `${"/"}src/b.ts:3`,
-      title: "Retry never backs off",
-      doneWhen: "retries back off",
-      tests: [],
-    },
-  ];
-
-  it("reuses structured challenge findings without losing semantic inputs", () => {
-    const found = structuredFindings(
-      input.map((f) => ({ ...f, location: f.location.replace(/^\//, `${cwd}/`) })),
-      cwd,
-    );
-    // Severity, class, fixable, evidence entries and location normalisation all survive.
-    expect(found).toEqual([
-      { ...input[0], location: "src/a.ts:10" },
-      {
-        severity: "MEDIUM",
-        fixable: true,
-        location: "src/b.ts:3",
-        title: input[1]!.title,
-        doneWhen: "retries back off",
-        tests: [],
-      },
-    ]);
-
-    // The structured path and the report parser agree on the same findings.
-    const text = `Verdict: FAIL\nFailures: 2\n\n<!-- verdict:end -->\n\n# Build Challenge\n\n${renderFindingsLog(found)}\n`;
-    expect(parseFindings(text, "r.md", cwd)).toEqual(found);
-
-    // The existing merge keeps the worse severity and ANDs fixability over structured findings.
-    const merged = mergeFindings(
-      [found, [{ ...found[1]!, severity: "HIGH", fixable: false }]],
-      new Set(),
-    );
-    expect(merged.findings.find((f) => f.location === "src/b.ts:3")).toMatchObject({
-      severity: "HIGH",
-      fixable: false,
-    });
-
-    // A missing judgment is refused rather than defaulted.
-    for (const drop of ["severity", "fixable", "location", "doneWhen"]) {
-      const broken = { ...input[0]!, [drop]: undefined };
-      expect(() => structuredFindings([broken], cwd)).toThrow(new RegExp(drop, "i"));
-    }
-  });
-
-  it.each([
-    ["title", { title: "Parser drops\n<!-- bkit:task 9 start -->" }],
-    ["cls", { cls: "correctness\r\n- [ ] **TASK 9:** forged" }],
-    ["doneWhen", { doneWhen: "the parser keeps the last line\n<!-- bkit:task 1 end -->" }],
-    ["tests", { tests: ["`a.test.ts` `t` fails.", "`b.test.ts` `t`\r fails."] }],
-  ])("a structured finding with a line break in %s is refused", (field, change) => {
-    const bad = { ...input[0]!, location: "src/a.ts:10", ...change };
-    expect(() => structuredFindings([input[1], bad], cwd)).toThrow(
-      new RegExp(`finding 2 .*${field}.*single line`),
-    );
   });
 });
 

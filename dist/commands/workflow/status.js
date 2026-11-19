@@ -6,7 +6,7 @@ import { BKIT_DEBUG_GATES } from "../../install/manifest.js";
 import { appendFrictionRow, journalEnabled, pauseFrictionRow } from "../../ledgers/journal.js";
 import { resolveGitSha } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
-import { activeDoneSteps, validateCiSelection, ciSelectionIdentity, allRunsDoneSteps, appendLine, fold, lastDoneStepAllRuns, lastRun, repeatStrategy, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
+import { activeDoneSteps, validateCiSelection, ciSelectionIdentity, allRunsDoneSteps, appendLine, ENGINE_ROW_TYPES, fold, lastDoneStepAllRuns, lastRun, parseStatusLines, repeatStrategy, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
 import { CommandError, EXIT, git, parseJson, resolveActiveRun, statusLocation, worktreeFingerprint, writeInvocation, } from "../lib.js";
 import { fixTestStep, gatedCheckStep } from "./loops.js";
 import { gateRerun, openDecision } from "./open-decision.js";
@@ -79,18 +79,10 @@ const RENAMED_STEPS = {
 };
 /** Parse NDJSON status text; `label` names it in errors. Malformed is an error, never "no rows". */
 function parseStatusRows(text, label) {
-    return text
-        .split("\n")
-        .map((l) => l.trim())
-        .filter((l) => l !== "")
-        .map((l, i) => {
-        const parsed = parseJson(l);
-        if (!parsed.ok)
-            throw new CommandError(EXIT_NO_STATUS, `${label} line ${i + 1} is not JSON`);
-        if (typeof parsed.value !== "object" || parsed.value === null) {
-            throw new CommandError(EXIT_NO_STATUS, `${label} line ${i + 1} is not a JSON object`);
-        }
-        const row = parsed.value;
+    const parsed = parseStatusLines(text, label);
+    if ("line" in parsed)
+        throw new CommandError(EXIT_NO_STATUS, `${label} line ${parsed.line} is ${parsed.problem}`);
+    return parsed.rows.map((row) => {
         const renamed = typeof row.step === "string" ? RENAMED_STEPS[row.step] : undefined;
         return renamed === undefined ? row : { ...row, step: renamed };
     });
@@ -704,6 +696,8 @@ export const statusCommand = {
                 challengeDone: "build: true once the last allowed challenge round has merged, so Step 11 goes on to Step 12; null for other workflows",
                 gateRerun: "true when the active run's open decision file (as `workflows start` prints it in openDecision) has a Gate: FAIL header, Status: OPEN, From verify, holistic or tests, and the loop question as its only undecided question: re-run that gate instead of asking again; else false",
                 rerunFrom: "verify | holistic | tests: the open decision file's From header, the check whose gate re-runs; null when gateRerun is false",
+                questions: "the number of questions in the active run's open decision file (the loop question included; 0 while its text or its missing decision-counts row fails decisions check), or null when no decision is open",
+                counted: "whether a decision-counts row names the active run's open decision file (false only for an old file with questions, or a CHALLENGE, CHANGED_TESTS or UNPROVEN pause), or null when no decision is open",
                 testVerdict: "debug: the verdict of the active run's last DONE debug-run-tests row (PASS|CONCERNS|FAIL), or null; other workflows null",
                 testSource: "debug: that row's source (local|ci), or null; other workflows null",
                 normalAttempt: "debug: the active run's DONE debug-run-tests rows (the round Steps 4-11 name their artifacts by), or null when there is none; other workflows null",
@@ -730,7 +724,14 @@ export const statusCommand = {
                 const round = debugTestRound(runs, workflow);
                 ctx.emit({
                     ...point,
-                    ...gateRerun(open, open === null ? "" : fs.readFileSync(path.resolve(root, open.file), "utf-8")),
+                    ...gateRerun(open, open === null
+                        ? ""
+                        : (rel) => {
+                            const abs = path.resolve(root, rel);
+                            return fs.existsSync(abs) ? fs.readFileSync(abs, "utf-8") : null;
+                        }, open?.file),
+                    questions: open?.questions ?? null,
+                    counted: open?.counted ?? null,
                     ...round,
                 });
                 if (workflow === "debug" && point.number > 3 && round.testVerdict === null) {
@@ -843,6 +844,8 @@ export const statusCommand = {
                     throw new CommandError(EXIT.USAGE, `--type ${type} is not kebab-case`);
                 if (FOLDED_TYPES.has(type))
                     throw new CommandError(EXIT.USAGE, `--type ${type} is folded; write it with its own verb`);
+                if (ENGINE_ROW_TYPES.has(type))
+                    throw new CommandError(EXIT.USAGE, `--type ${type} is written by the engine; use \`${type === "decision-counts" ? "decisions counts" : "decisions apply"}\``);
                 const fields = Object.fromEntries((ctx.flags.field ?? []).map(extraField));
                 const clash = ["type", "workflow", "at"].filter((k) => k in fields);
                 if (clash.length > 0)

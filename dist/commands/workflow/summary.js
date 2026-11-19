@@ -4,7 +4,7 @@
 // disk and passes `read` for the log files.
 import { coversList } from "./plans.js";
 import { issueIdOf } from "./fids.js";
-import { decisionHeader, parseDecisionItems } from "./open-decision.js";
+import { decisionFileHeader, decisionItems, unwrittenPause } from "./open-decision.js";
 import { parsePlanBlocks } from "./plan-blocks.js";
 import { parseJson } from "../../shared/json.js";
 import { oneLine } from "../../shared/text.js";
@@ -341,17 +341,16 @@ export function buildSummary(input) {
             if (row.type !== "step-done" || row.step !== "build-decision")
                 return;
             for (const rel of artifactsOf(row)) {
-                const text = read(rel);
-                if (text === null)
+                if (read(rel) === null)
                     continue;
-                const header = decisionHeader(text);
+                const header = decisionFileHeader(read, rel);
                 const rule = PAUSE_RULES[header.From ?? ""];
                 if (rule === undefined)
                     continue;
                 const group = /^[0-9]+$/.test(header.Group ?? "") ? Number(header.Group) : undefined;
                 if (rule.grouped && group === undefined)
                     continue;
-                const items = parseDecisionItems(text);
+                const items = decisionItems(read, rel, "build");
                 const gaps = items.filter((i) => i.title !== rule.loop);
                 const loop = items.filter((i) => i.title === rule.loop);
                 if (gaps.length === 0)
@@ -484,7 +483,7 @@ export function buildSummary(input) {
     const decided = groups
         .filter((g) => g.step === "build-decision")
         .flatMap((g) => g.rows.flatMap(({ row }) => artifactsOf(row)));
-    const acceptItems = decided.flatMap((rel) => parseDecisionItems(read(rel) ?? "")
+    const acceptItems = decided.flatMap((rel) => decisionItems(read, rel, "build")
         .filter((i) => /^Accept\b/.test(i.decision ?? ""))
         .map((i) => ({ assumed: i.assumed, line: `${rel}: Decision: ${i.decision}` })));
     // `Accept (assumed)`: taken without the owner (`ask: false` or headless); ship asks to confirm.
@@ -496,7 +495,7 @@ export function buildSummary(input) {
         concerns.push(`${assumed.length} item(s) accepted without the owner (assumed; ship asks to confirm)`);
     // Ship: assumed Accepts the owner rejected or never confirmed; ship merged anyway.
     const unconfirmed = workflow === "ship"
-        ? input.decisionFiles.flatMap((rel) => parseDecisionItems(read(rel) ?? "")
+        ? input.decisionFiles.flatMap((rel) => decisionItems(read, rel)
             .filter((i) => i.assumed)
             .map((i) => `\`${rel}\` Q${i.n} — ${i.title}${i.rejected ? " (rejected)" : ""}`))
         : [];
@@ -651,7 +650,10 @@ export function buildSummary(input) {
     items.push(...accepted.map((a) => `- Accepted: ${a}`));
     items.push(...assumed.map((a) => `- Assumed, not confirmed: ${a}`));
     for (const rel of workflow === "build" ? input.decisionFiles : []) {
-        if (!/^Decision:/m.test(read(rel) ?? ""))
+        // A pause file the resume reads as never written asked nothing.
+        if (unwrittenPause(read, rel))
+            continue;
+        if (decisionItems(read, rel, "build").every((i) => i.decision === null))
             items.push(`- \`${rel}\`: no decision recorded`);
     }
     for (const p of input.plans) {

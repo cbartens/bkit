@@ -128,7 +128,7 @@ import {
   resolveMonth,
   workflowLockPath,
 } from "./locks.js";
-import { openDecision } from "./open-decision.js";
+import { DECISION_LAYOUT, openDecision } from "./open-decision.js";
 import { highestVersion } from "./plan-versions.js";
 import { mergePr, probePr } from "./prs.js";
 import { FEATURE_STATUS } from "./roadmap.js";
@@ -152,6 +152,7 @@ import {
   sessionPublication,
   issueRef,
   readLabels,
+  redact,
   runActionKey,
   skipOf,
   trackerTarget,
@@ -352,6 +353,182 @@ const EXIT_NEXT_STEP_REFUSED = 6;
  */
 const NEXT_STEP_SHAPE = /^\/bkit-[a-z0-9-]+(?: [#A-Za-z0-9._-]+)*$/;
 
+const CREDENTIAL_NAME =
+  /TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|CREDENTIAL|WEBHOOK|SESSION|(?:KEY|PASS|AUTH|PAT)$|PWD$/i;
+const URL_PASSWORD = /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]*:[^\s/@]+@/i;
+
+/** Token-shaped values scrubbed whatever the environment holds. */
+const TOKEN_SHAPES: Array<[RegExp, string]> = [
+  [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "<redacted>"],
+  // A key cut by the stderr tail: a BEGIN that never ends, or base64 lines up to an END.
+  [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*$/g, "<redacted>"],
+  [/(?:^[ \t]*[A-Za-z0-9+/=]+[ \t]*\r?\n)*-----END [A-Z ]*PRIVATE KEY-----/gm, "<redacted>"],
+  [/(Authorization["']?\s*:\s*["']?(?:Bearer|Basic)\s+)[^\s"']+/gi, "$1<redacted>"],
+  [/\b((?:[a-z0-9]+_)*token=)(?!<)[^\s&"']+/gi, "$1<redacted>"],
+  [/("(?:[a-z0-9]+_)*token"\s*:\s*")(?!<)[^"]+/gi, "$1<redacted>"],
+  [
+    /\b(?:gh[pousr]_|github_pat_|glpat-|xox[abpr]-|sk-|[sr]k_live_)[A-Za-z0-9_-]{8,}/g,
+    "<redacted>",
+  ],
+  // Key shapes: an AWS key ID with whatever letters and digits follow it, after any non-alphanumeric
+  // (`KEY_AKIA…` too), the rest fixed-length, so `npm_package_*` names and `ASIA_PACIFIC` stay.
+  [
+    /(?<![A-Za-z0-9])(?:AKIA|ASIA)[A-Z0-9]{16,}|\b(?:AIza[0-9A-Za-z_-]{35}|npm_[A-Za-z0-9]{36}\b)/g,
+    "<redacted>",
+  ],
+];
+
+/** Credentials, URL passwords and local account paths replaced in `input`. */
+function scrubSecrets(input: string, cwd: string): string {
+  let text = input;
+  const values: Array<[string, string]> = [];
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value === undefined || value.length < 4) continue;
+    const marked =
+      (CREDENTIAL_NAME.test(name) && !/^(?:OLD)?PWD$/i.test(name)) ||
+      (/(?:_URL|DSN)$/i.test(name) && URL_PASSWORD.test(value));
+    if (marked) values.push([name, value]);
+  }
+  // Longest value first, so a value holding another is replaced whole.
+  values.sort((x, y) => y[1].length - x[1].length);
+  for (const [name, value] of values) text = text.split(value).join(`<${name}>`);
+  text = text.replace(/(\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]*:)[^\s/@]+(@)/gi, "$1<redacted>$2");
+  for (const [re, to] of TOKEN_SHAPES) text = text.replace(re, to);
+  const roots = new Set<string>();
+  for (const base of [repoRoot(cwd), cwd]) {
+    roots.add(base);
+    // A missing directory has no real path.
+    if (fs.existsSync(base)) roots.add(fs.realpathSync(base));
+  }
+  for (const r of [...roots].sort((x, y) => y.length - x.length)) {
+    if (r.length > 1) text = text.split(`${r}/`).join("").split(r).join(".");
+  }
+  const home = os.homedir();
+  if (home.length > 1) text = text.split(home).join("~");
+  return text;
+}
+
+/**
+ * Rewrite the failure's error and stderr files in place before any commit or comment: configured
+ * secrets, credential env values, URL passwords, and checkout and home paths are scrubbed, and the
+ * stderr file keeps its last 20 lines (what the comment posts). The error file must be named
+ * `{workflow}-error.md` and the stderr file `{workflow}-stderr.md`, and each must resolve, symbolic
+ * links followed, to a regular file with one link directly in a `docs/plans/{month}/logs/{fid}`
+ * folder of this checkout or any worktree of the same repository, wherever on disk that worktree
+ * sits (the Failure Path's `{LOG_DIR}`). Each file is opened at the real path the check resolved,
+ * never through a link and never waiting on it, then checked, read and rewritten through that one
+ * descriptor. Any other file, a missing one, and one that cannot be opened, read or rewritten is
+ * refused: never read, rewritten or quoted, and named with its reason in `refused`, so the failure
+ * is still recorded. `text` holds each kept file's scrubbed text, which the comment quotes.
+ */
+function scrubFailureFiles(
+  cwd: string,
+  workflow: string,
+  run: { fid?: string; month?: string },
+  files: { errorFile?: string; stderrFile?: string },
+): { text: { error?: string; stderr?: string }; refused: Array<{ file: string; reason: string }> } {
+  /** The real path of `dir`'s shared `.git`, so any two worktrees of one repository compare equal. */
+  const commonOf = (dir: string): string | null => {
+    const common = git(dir, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+    return common === null ? null : fs.realpathSync(common);
+  };
+  const repo = commonOf(cwd);
+  /** Whether `dir`, relative to its worktree, ends in `docs/plans/{month}/logs/{fid}`. */
+  const isLogFolder = (dir: string): boolean => {
+    const [docs, plans, month, logs, fid] = dir.split(path.sep).slice(-5);
+    return (
+      docs === "docs" &&
+      plans === "plans" &&
+      /^[0-9]{6}$/.test(month ?? "") &&
+      (run.month === undefined || month === run.month) &&
+      logs === "logs" &&
+      fid !== undefined &&
+      (run.fid === undefined || fid === run.fid)
+    );
+  };
+  /** Whether `real` is the run's own `{workflow}-{kind}.md`, directly in a log folder. */
+  const inLogFolder = (real: string, kind: string): boolean => {
+    const folder = path.dirname(real);
+    const top = git(folder, ["rev-parse", "--show-toplevel"]);
+    const dir =
+      top === null || repo === null || commonOf(folder) !== repo
+        ? null
+        : path.relative(fs.realpathSync(top), folder);
+    return (
+      dir !== null &&
+      dir.split(path.sep)[0] !== ".." &&
+      !path.isAbsolute(dir) &&
+      isLogFolder(dir) &&
+      path.basename(real) === `${workflow}-${kind}.md`
+    );
+  };
+  const codeOf = (e: unknown) => (e as NodeJS.ErrnoException).code ?? String(e);
+  const text: { error?: string; stderr?: string } = {};
+  const refused: Array<{ file: string; reason: string }> = [];
+  for (const [key, kind] of [
+    ["errorFile", "error"],
+    ["stderrFile", "stderr"],
+  ] as const) {
+    const rel = files[key];
+    if (rel === undefined || rel === "") continue;
+    const refuse = (reason: string) => refused.push({ file: rel, reason });
+    let real: string;
+    try {
+      real = fs.realpathSync(path.resolve(cwd, rel));
+    } catch (e) {
+      // A missing file or a dangling link: nothing to quote.
+      refuse(`does not resolve to a file (${codeOf(e)})`);
+      continue;
+    }
+    if (!inLogFolder(real, kind)) {
+      refuse(
+        `not the run's ${workflow}-${kind}.md in its log folder (docs/plans/{month}/logs/{fid})`,
+      );
+      continue;
+    }
+    // O_NOFOLLOW: a link put in the real path's place since the check is refused, not followed.
+    // O_NONBLOCK: a FIFO is opened without waiting, then refused by the type check below.
+    let fd: number;
+    try {
+      fd = fs.openSync(
+        real,
+        fs.constants.O_RDWR | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK,
+      );
+    } catch (e) {
+      refuse(`cannot be opened for writing (${codeOf(e)})`);
+      continue;
+    }
+    try {
+      const stat = fs.fstatSync(fd);
+      // A second hard link is a name for a file that may sit outside the log folder.
+      if (!stat.isFile() || stat.nlink !== 1) {
+        refuse(stat.isFile() ? `has ${stat.nlink} hard links` : "not a regular file");
+        continue;
+      }
+      let scrubbed = scrubSecrets(redact(fs.readFileSync(fd, "utf-8")), cwd);
+      if (kind === "stderr") {
+        const lines = scrubbed.replace(/\n+$/, "").split("\n");
+        scrubbed = `${lines.slice(-20).join("\n")}\n`;
+      }
+      // Write first, then cut the file to what was written: a failed write leaves the old text,
+      // and a short one leaves only scrubbed bytes.
+      const bytes = Buffer.from(scrubbed, "utf-8");
+      const written = fs.writeSync(fd, bytes, 0, bytes.length, 0);
+      fs.ftruncateSync(fd, written);
+      if (written !== bytes.length) {
+        refuse(`rewritten only in part (${written} of ${bytes.length} bytes)`);
+        continue;
+      }
+      text[kind] = scrubbed;
+    } catch (e) {
+      refuse(`cannot be read or rewritten (${codeOf(e)})`);
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+  return { text, refused };
+}
+
 async function failVerb(ctx: RunContext): Promise<number> {
   const workflow = workflowName(String(ctx.flags.workflow));
   // An empty value is a placeholder not held yet (the failure came before it was set).
@@ -363,6 +540,16 @@ async function failVerb(ctx: RunContext): Promise<number> {
   const nextStep = str(ctx.flags.nextStep) || undefined;
   if (nextStep !== undefined && !NEXT_STEP_SHAPE.test(nextStep))
     throw new CommandError(EXIT_NEXT_STEP_REFUSED, "--next-step must be one /bkit-* command line");
+
+  // A refused file is skipped, so the failure below is still recorded and the lock released.
+  const { text, refused } = scrubFailureFiles(
+    ctx.cwd,
+    workflow,
+    { fid, month: str(ctx.flags.month) || undefined },
+    { errorFile: str(ctx.flags.errorFile), stderrFile: str(ctx.flags.stderrFile) },
+  );
+  for (const { file, reason } of refused)
+    ctx.log(`${file}: ${reason}; skipped, not read or quoted`);
 
   // State only for a run that took the lock: without the token the failure came
   // before Step 1 locked, and nothing here is this run's to change.
@@ -402,16 +589,21 @@ async function failVerb(ctx: RunContext): Promise<number> {
   let comment: string | null = null;
   const stepNumber = str(ctx.flags.stepNumber);
   if (stepNumber !== undefined) {
-    const errorFile = str(ctx.flags.errorFile);
+    // The comment quotes the text read through the scrub's own handle, never the path again.
+    // A refused error file is named as skipped, with its reason, so the line is never blank.
+    const skipped = refused.find((r) => r.file === str(ctx.flags.errorFile));
     const error =
-      errorFile === undefined ? (str(ctx.flags.error) ?? "") : readText(ctx.cwd, errorFile);
+      text.error?.replace(/\n+$/, "") ??
+      [str(ctx.flags.error), skipped && `(error file skipped: ${skipped.reason})`]
+        .filter((part) => part !== undefined)
+        .join(" ");
     comment = buildComment(ctx.cwd, {
       kind: "failure",
       stepNumber,
       stepTitle: str(ctx.flags.stepTitle),
       subStep: str(ctx.flags.subStep),
       error: state.removeFailed ? `${error}; Lock removal failed` : error,
-      stderrFile: str(ctx.flags.stderrFile) || undefined,
+      ...(text.stderr === undefined ? {} : { stderr: text.stderr }),
       ...(nextStep === undefined ? {} : { lines: [`Next step: \`${nextStep}\``] }),
     });
   }
@@ -451,6 +643,7 @@ async function failVerb(ctx: RunContext): Promise<number> {
     prState,
     comment,
     nextStep: nextStep ?? null,
+    refusedFiles: refused.map((r) => r.file),
     commentFile: commentFileOf(ctx.cwd, comment, ctx),
     ...(tracker === undefined ? {} : { tracker }),
     ...(labelsWrite === undefined ? {} : { labelsWrite }),
@@ -482,13 +675,6 @@ async function writeFailedLabels(
       state,
     });
   });
-}
-
-/** A text file's content, trailing newlines dropped; a missing file is a usage error. */
-function readText(cwd: string, rel: string): string {
-  const abs = path.resolve(cwd, rel);
-  if (!fs.existsSync(abs)) throw new CommandError(EXIT.USAGE, `${rel} does not exist`);
-  return fs.readFileSync(abs, "utf-8").replace(/\n+$/, "");
 }
 
 // ---------------------------------------------------------------------------
@@ -2131,11 +2317,11 @@ export const workflowsCommand: CommandSpec = {
         lock: "{path, month, token, reclaimed} of the lock taken, or {path} with --lock-held",
         file: "absolute path to status.jsonl",
         resumed: "the latest run was this workflow, IN_PROGRESS: no new row",
-        row: "the appended workflow-started row, with `limits` (the workflow's ask points from bkit.workflows, frozen for the run), or null when resuming",
+        row: "the appended workflow-started row, with `limits` (the workflow's ask points from bkit.workflows, frozen for the run) and, for build, `decisionLayout: rows` (its pause answers are rows, so no decision file of the run is read as an old file), or null when resuming",
         run: "which run of the workflow this is (1-based)",
         lastDoneStep: "the current run's last DONE step: resume after it (null on a new run)",
         openDecision:
-          "{file, decision, question, from, pauseStep, group, verifyAttempt, testAttempt, plan, gate, sourceChanged, status} of the current run's highest {workflow}-decision-{run}-{N}.md holding Status: OPEN, or DECIDED / ASSUMED when no {workflow}-decision row names it, else null",
+          "{file, decision, question, from, pauseStep, group, verifyAttempt, testAttempt, plan, gate, sourceChanged, status, questions, counted} of the current run's highest {workflow}-decision-{run}-{N}.md holding Status: OPEN, or DECIDED / ASSUMED when no {workflow}-decision row names it, else null; a file with questions 0 that no decision-counts row names is skipped unless its Question is CHALLENGE, CHANGED_TESTS or UNPROVEN, so the gate's step writes it again",
       },
       textOmit: ["row"],
       exitCodes: {
@@ -2222,6 +2408,8 @@ export const workflowsCommand: CommandSpec = {
             workflow,
             at: statusTimestamp(),
             parentSha: headSha(path.dirname(file)),
+            // Marks a build run whose pause answers are rows: its decision files are never old.
+            ...(workflow === "build" ? { decisionLayout: DECISION_LAYOUT } : {}),
             ...(progress === undefined ? {} : { progress }),
             ...(Object.keys(limits).length === 0 ? {} : { limits }),
           };
@@ -2292,13 +2480,13 @@ export const workflowsCommand: CommandSpec = {
         {
           name: "error-file",
           type: "string",
-          help: "file holding the error message / tool response for the comment",
+          help: "the run's {workflow}-error.md in its docs/plans/{month}/logs/{fid} folder, holding the error message / tool response for the comment; any other file is skipped (refusedFiles)",
         },
         { name: "error", type: "string", help: "the error text, when there is no --error-file" },
         {
           name: "stderr-file",
           type: "string",
-          help: "the failed shell command's stderr (last 20 lines kept)",
+          help: "the run's {workflow}-stderr.md in the same log folder: the failed shell command's stderr (last 20 lines kept); any other file is skipped (refusedFiles)",
         },
         {
           name: "next-step",
@@ -2329,8 +2517,11 @@ export const workflowsCommand: CommandSpec = {
           "the label set to write: the current labels plus bkit:failed (and bkit:merged for a merged ship PR)",
         trackerState: "the Linear or Jira state for the failed issue (null under github, none)",
         prState: "the --pr PR's state, or null",
-        comment: "the failure comment body (with --step-number), else null",
+        comment:
+          "the failure comment body (with --step-number), else null; a skipped --error-file is named on its Error line with the reason",
         nextStep: "the --next-step command line, or null",
+        refusedFiles:
+          "[path] --error-file / --stderr-file values skipped: missing, not the run's {workflow}-error.md / {workflow}-stderr.md in its log folder, a link out of it, not a regular file, a file with a second hard link, or not readable and writable; never read, rewritten or quoted",
         commentFile: COMMENT_FILE_OUTPUT,
         tracker: TRACKER_OUTPUT,
         labelsWrite:

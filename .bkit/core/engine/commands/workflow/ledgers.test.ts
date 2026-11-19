@@ -1676,6 +1676,84 @@ describe("bkit ledgers compact", () => {
   });
 });
 
+describe("bkit ledgers findings", () => {
+  const TABLE_HEAD = [
+    "| ID | Severity | Title | Location | Evidence | Expected | Key |",
+    "| --- | --- | --- | --- | --- | --- | --- |",
+  ];
+  const auditReport = (...rows: string[]) =>
+    [
+      "# Security Audit",
+      "",
+      "## Findings",
+      "",
+      "| Severity | Use |",
+      "| --- | --- |",
+      "| `HIGH` | A sensitive flow left unthrottled |",
+      "",
+      ...TABLE_HEAD,
+      ...rows,
+      "",
+      "## Report",
+      "",
+    ].join("\n");
+  const row = (id: string, sev: string, title: string, loc: string, key: string) =>
+    `| ${id} | ${sev} | ${title} | ${loc} | seen | fix | ${key} |`;
+
+  it("prints the totals and the ledger rows from a report", async () => {
+    const cwd = tmp();
+    put(
+      cwd,
+      "report.md",
+      auditReport(
+        row("security-1", "HIGH", "Token logged", "src/a.ts:10", "new"),
+        row("security-2", "LOW", "Verbose error", "src/b.ts:2", "new"),
+        row("security-3", "LOW", "Old cipher", "src/c.ts:7", "audit-security-old-cipher"),
+      ),
+    );
+    const res = await run(cwd, ["findings", "--report=report.md", "--slug=security"]);
+    expect(res.code).toBe(0);
+    expect(res.json.ids).toEqual(["security-1", "security-2", "security-3"]);
+    expect(res.json.totals).toEqual({ CRITICAL: 0, HIGH: 1, MEDIUM: 0, LOW: 2 });
+    expect(res.json.ledgerRows).toEqual([
+      {
+        kind: "failure",
+        key: "audit-security-token-logged",
+        summary: "Token logged",
+        severity: "HIGH",
+        description: "Token logged (src/a.ts:10); audit security finding security-1",
+        status: "OPEN",
+      },
+      {
+        kind: "failure",
+        key: "audit-security-verbose-error",
+        summary: "Verbose error",
+        severity: "LOW",
+        description: "Verbose error (src/b.ts:2); audit security finding security-2",
+        status: "OPEN",
+      },
+      {
+        kind: "failure",
+        key: "audit-security-old-cipher",
+        summary: "Old cipher",
+        severity: "LOW",
+        description: "Old cipher (src/c.ts:7); audit security finding security-3",
+        status: "OPEN",
+      },
+    ]);
+  });
+
+  it("prints zero totals and no ledger rows for a report with no findings", async () => {
+    const cwd = tmp();
+    put(cwd, "report.md", auditReport("| None | None | None | None | None | None | None |"));
+    const res = await run(cwd, ["findings", "--report=report.md", "--slug=security"]);
+    expect(res.code).toBe(0);
+    expect(res.json.ids).toEqual([]);
+    expect(res.json.totals).toEqual({ CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 });
+    expect(res.json.ledgerRows).toEqual([]);
+  });
+});
+
 describe("bkit ledgers check", () => {
   const row = (kind: string, key: string) =>
     JSON.stringify({ schema: 2, ts: 1792720147039, kind, key, repo: "o/r", summary: key });

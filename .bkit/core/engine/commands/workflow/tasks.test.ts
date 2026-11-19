@@ -74,6 +74,17 @@ const write = (name: string, text: string) => {
   return file;
 };
 const read = (file: string) => fs.readFileSync(file, "utf-8");
+/**
+ * Writes an old decision file as `old/build-decision-1-1.md`, beside a `status.jsonl` whose run 1
+ * started before the engine marked its start row, so the file's own answers stand.
+ */
+const oldDecision = (text: string) => {
+  write(
+    "old/status.jsonl",
+    `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-10-01T00:00:00Z" })}\n`,
+  );
+  return write("old/build-decision-1-1.md", text);
+};
 
 /** git in a fixture repo; a non-zero exit is the fixture's bug, so it throws. */
 const git = (repo: string, ...args: string[]) => {
@@ -132,7 +143,7 @@ const headOf = (text: string, n: number) =>
 const tickOf = (text: string, n: number) => /^- \[([ x])\]/.exec(headOf(text, n))![1];
 
 describe("bkit tasks tick", () => {
-  /** A verify-pause decision file: one item per `[title, answer]`, titled as `decisions compose` titles a gap. */
+  /** A verify-pause decision file: one item per `[title, answer]`, titled as the orchestrator titles a gap. */
   const decisionFile = (...items: Array<[string, string | null]>) =>
     [
       "Status: DECIDED",
@@ -151,8 +162,7 @@ describe("bkit tasks tick", () => {
 
   it("tick --decision ticks the tasks of accepted verify-gap items", async () => {
     const plan = write("plan.md", planText(group(1, task(1), task(2), task(3))));
-    const decision = write(
-      "decision.md",
+    const decision = oldDecision(
       decisionFile(["Task 1 gap", "Accept — minor"], ["Task 3 gap", "Accept (assumed) — headless"]),
     );
     const r = await run(["tick", `--plan=${plan}`, "--group=1", `--decision=${decision}`]);
@@ -167,10 +177,7 @@ describe("bkit tasks tick", () => {
 
   it("tick --decision ticks a task whose item title reads TASK {N}", async () => {
     const plan = write("plan.md", planText(group(1, task(1), task(2), task(3))));
-    const decision = write(
-      "decision.md",
-      decisionFile(["TASK 3", "Accept — minor"], ["TASK 2", "Fix now"]),
-    );
+    const decision = oldDecision(decisionFile(["TASK 3", "Accept — minor"], ["TASK 2", "Fix now"]));
     const r = await run(["tick", `--plan=${plan}`, "--group=1", `--decision=${decision}`]);
     expect(r.code).toBe(0);
     expect(r.json.ticked).toEqual([3]);
@@ -183,8 +190,7 @@ describe("bkit tasks tick", () => {
 
   it("tick --decision leaves a Fix now item's task open", async () => {
     const plan = write("plan.md", planText(group(1, task(1), task(2), task(3))));
-    const decision = write(
-      "decision.md",
+    const decision = oldDecision(
       decisionFile(
         ["Task 1 gap", "Accept — minor"],
         ["Task 2 gap", "Fix now"],
@@ -201,10 +207,84 @@ describe("bkit tasks tick", () => {
     ]);
   });
 
+  it("ticks the task an Accept row names and no task for a Fix now row", async () => {
+    const plan = write("plan.md", planText(group(1, task(1), task(2), task(3))));
+    const question = (n: number) => [
+      `**Q${n} — Task ${n} gap:** accept it?`,
+      "A) Accept — the item is recorded as accepted",
+      "B) Fix now — a fix task is added to the plan",
+      "Recommended: A) Accept — minor",
+      "Default if unanswered: the run waits for you; taken as A when nobody can be asked",
+      "",
+    ];
+    const decision = write(
+      "rows/build-decision-1-1.md",
+      [
+        "Question: VERIFY_GAPS",
+        "From: verify",
+        "Group: 1",
+        "",
+        ...question(1),
+        ...question(2),
+        ...question(3),
+      ].join("\n"),
+    );
+    const answer = (q: number, text: string, extra: object = {}) => ({
+      type: "decision-answer",
+      workflow: "build",
+      at: "2026-11-01T00:00:00Z",
+      file: decision,
+      q,
+      answer: text,
+      by: "owner",
+      ...extra,
+    });
+    write(
+      "rows/status.jsonl",
+      [
+        { type: "decision-counts", workflow: "build", at: "2026-11-01T00:00:00Z", file: decision },
+        answer(1, "Accept — minor"),
+        answer(2, "Fix now — add a test", { fixTask: 2 }),
+        answer(3, "Accept (assumed) — headless", { assumed: true, by: "headless" }),
+      ]
+        .map((row) => JSON.stringify(row))
+        .join("\n") + "\n",
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", `--decision=${decision}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([1, 3]);
+    expect([tickOf(read(plan), 1), tickOf(read(plan), 2), tickOf(read(plan), 3)]).toEqual([
+      "x",
+      " ",
+      "x",
+    ]);
+  });
+
+  it("tick --decision ticks nothing for a Decision line in a file the engine has counted", async () => {
+    const plan = write("plan.md", planText(group(1, task(1), task(2))));
+    const decision = write(
+      "counted/build-decision-1-1.md",
+      decisionFile(["Task 1 gap", "Accept — fine"]),
+    );
+    write(
+      "counted/status.jsonl",
+      JSON.stringify({
+        type: "decision-counts",
+        workflow: "build",
+        at: "2026-11-01T00:00:00Z",
+        file: decision,
+        sourceChanged: false,
+      }) + "\n",
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", `--decision=${decision}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([]);
+    expect(tickOf(read(plan), 1)).toBe(" ");
+  });
+
   it("tick --decision reads a per-line decision file with a lettered answer", async () => {
     const plan = write("plan.md", planText(group(1, task(1), task(2), task(3))));
-    const decision = write(
-      "decision.md",
+    const decision = oldDecision(
       [
         "Status: DECIDED",
         "Question: VERIFY_GAPS",
@@ -388,8 +468,7 @@ describe("bkit tasks tick", () => {
   it("tick --decision ticks nothing for a title that only mentions a task", async () => {
     const text = planText(group(1, task(1), task(2)));
     const plan = write("mention.md", text);
-    const decision = write(
-      "decision.md",
+    const decision = oldDecision(
       decisionFile(["No test covers the retry path that task 2 adds", "Accept — minor"]),
     );
     const r = await run(["tick", `--plan=${plan}`, "--group=1", `--decision=${decision}`]);
@@ -401,7 +480,7 @@ describe("bkit tasks tick", () => {
   it("tick --decision still refuses a --tasks number from another group", async () => {
     const text = planText(group(1, task(1)), group(2, task(9)));
     const plan = write("decision-other-group.md", text);
-    const decision = write("decision.md", decisionFile(["Task 1 gap", "Accept — minor"]));
+    const decision = oldDecision(decisionFile(["Task 1 gap", "Accept — minor"]));
     const r = await run([
       "tick",
       `--plan=${plan}`,
@@ -417,7 +496,7 @@ describe("bkit tasks tick", () => {
   it("tick --decision still refuses an unknown --tasks number", async () => {
     const text = planText(group(1, task(1)));
     const plan = write("decision-unknown.md", text);
-    const decision = write("decision.md", decisionFile(["Task 1 gap", "Accept — minor"]));
+    const decision = oldDecision(decisionFile(["Task 1 gap", "Accept — minor"]));
     const r = await run([
       "tick",
       `--plan=${plan}`,
@@ -463,7 +542,7 @@ describe("bkit tasks tick", () => {
   ])("tick --decision refuses %s", async (_name, header, problem) => {
     const text = planText(group(1, task(1)), group(2, task(2)));
     const plan = write("refused.md", text);
-    const decision = write("decision.md", headed(...header));
+    const decision = oldDecision(headed(...header));
     const r = await run(["tick", `--plan=${plan}`, "--group=1", `--decision=${decision}`]);
     expect(r.code).toBe(2);
     expect(r.err).toContain(problem);
@@ -472,8 +551,7 @@ describe("bkit tasks tick", () => {
 
   it("tick --decision ticks a holistic file's accepted tasks across groups without --group", async () => {
     const plan = write("holistic.md", planText(group(1, task(1), task(2)), group(2, task(3))));
-    const decision = write(
-      "decision.md",
+    const decision = oldDecision(
       [
         "Status: DECIDED",
         "Question: VERIFY_GAPS",
@@ -513,7 +591,7 @@ describe("bkit tasks tick", () => {
   it("tick --decision still needs --group for a verify file", async () => {
     const text = planText(group(1, task(1)));
     const plan = write("verify-no-group.md", text);
-    const decision = write("decision.md", decisionFile(["Task 1 gap", "Accept — minor"]));
+    const decision = oldDecision(decisionFile(["Task 1 gap", "Accept — minor"]));
     const r = await run(["tick", `--plan=${plan}`, `--decision=${decision}`]);
     expect(r.code).toBe(2);
     expect(r.err).toContain("--group");

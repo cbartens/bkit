@@ -1,10 +1,10 @@
 {
   "prompts": {
-    "ceiling": 86494,
+    "ceiling": 83837,
     "reason": "initial baseline for #1028"
   },
   "workflows": {
-    "ceiling": 58535,
+    "ceiling": 57977,
     "reason": "initial baseline for #1028"
   }
 }

@@ -82,12 +82,11 @@ autoCompactWindow: 300000
    - Read the test's logic against the code the diff leaves. The test must fail there, and never pass already.
    - Write no task block for a finding that an existing plan task or test already covers.
    - Number the tasks from 1, worst `severity` first.
-   - A finding with an empty field does not count toward `Failures`.
+   - Fill every field of each task block; `bkit steps finish` hands back a block with an empty field.
    - `class: mechanical` = a surgical edit with no redesign, such as a missing predicate, join or null guard, a missing column in a test fixture, a test that silently does nothing, a wrong import, a missing re-export, a naming mismatch, or a test client to swap → `fixable: true`.
    - `class: architectural` = a redesign, such as a wrong layer or abstraction, an expansion of scope, a multi-step write that is not atomic, a broken design principle, or work that needs the plan or design redone → `fixable: false`. Its `done when` names why no agent can settle it and the decision the owner must make.
 8. Cross-reference each finding against the relevant docs that `.agents/docs.md` lists.
-9. Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings, counting only complete ones.
-   - **If** your Context names a structured result file (`Result:`) → write it as one JSON object with only these keys: `findings` (array; each item has `severity` (`CRITICAL`, `HIGH`, `MEDIUM` or `LOW`), boolean `fixable`, `location` (`path:line`) and `doneWhen`, plus optional `title`, `cls` and `tests`), `judgments` (object of header-field name to text, number or boolean; it holds `Verdict` and each header field the engine does not derive, never `Failures` or `Fixable`), `body` (the report text below the header, written in full: Scope, Notes and every section of your Output format except the generated Findings Log; omit it and the report keeps nothing but the header) and `evidenceComplete` (always `true` or `false`; `false` when you could not check everything). The engine sets `Failures` to the number of entries in `findings`, of every severity, in place of any other count in your steps, so list there only items that need a fix and keep the rest in `body`. A missing or invalid result file makes `bkit steps stub` exit 6 and sends the step to its Failure Path, so write the file before you finish; the caller deletes any older file at that path before it launches you, so a file there is always yours. If you cannot write it, say so in your final reply and do not leave the step to fail silently. The caller renders **Create** with `bkit steps stub --agent=bkit-build-challenge-1 --result-file`, and the engine derives `Failures` and the header `Fingerprint`, so write neither by hand.
+9. Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings: each top-level item under `## CRITICAL`, or each `CRITICAL` task block under `## Findings Log`.
 10. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = no findings.
     - `CONCERNS` = findings present, max `severity` <= `HIGH`.
@@ -97,7 +96,7 @@ autoCompactWindow: 300000
 
 ```markdown
 Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
-Failures: <integer >= 0>
+Failures: <count of CRITICAL task blocks under ## Findings Log>
 
 <!-- verdict:end -->
 

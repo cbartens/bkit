@@ -425,7 +425,7 @@ Every template under `docs/templates/bkit-audit-*.md`:
 
 ## Hook-injected text
 
-Hooks add text to an agent's context mid-run. The text reaches every agent and subagent, and no frontmatter opts out of it. The canonical wording lives in the engine file. Per-host delivery → `.bkit/providers.md` § Guardrails, § GateGuard, § ReadGuard.
+Hooks add text to an agent's context mid-run. The text reaches every agent and subagent, and no frontmatter opts out of it. The canonical wording lives in the engine source. Per-host delivery → `.bkit/providers.md` § Guardrails, § GateGuard, § ReadGuard.
 
 <!-- prettier-ignore -->
 | Hook | Fires on | Injects | Hosts | Canonical text |

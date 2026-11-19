@@ -1,0 +1,19 @@
+Verdict: PASS
+
+<!-- verdict:end -->
+
+# Build Plan Tests
+
+## Test Log
+
+SOURCE — TASK 18: skip Decision wording from .bkit/core/engine/commands/workflow/decisions.ts:296
+WROTE — TASK 17: `.bkit/core/engine/commands/workflow/decisions.test.ts` `bkit decisions check > refuses a question line written with an en dash, naming the line`
+WROTE — TASK 17: `.bkit/core/engine/commands/workflow/decisions.test.ts` `bkit decisions check > refuses a file with no question when the engine file holds no loop question`
+WROTE — TASK 18: `.bkit/core/engine/commands/workflow/open-decision.test.ts` `decision file readers > an owner's Fix now in the decision file wins over an engine Accept (assumed)`
+WROTE — TASK 18: `.bkit/core/engine/commands/workflow/open-decision.test.ts` `decision file readers > an owner's answer in the decision file wins over an engine line applied without asking`
+WROTE — TASK 18: `.bkit/core/engine/commands/workflow/decisions.test.ts` `bkit decisions skip > keeps the re-run when the owner's Fix now beats an engine Accept (assumed)`
+WROTE — TASK 19: `.bkit/core/engine/commands/workflow/decisions.test.ts` `bkit decisions check > refuses a Status, Source changed or Gate line in the orchestrator's header`
+WROTE — TASK 20: `.bkit/core/engine/commands/workflow/steps.test.ts` `bkit steps finish > does not count a fenced line under ## CRITICAL as an item`
+WROTE — TASK 20: `.bkit/core/engine/commands/workflow/steps.test.ts` `bkit steps finish > a fenced ## line under ## CRITICAL does not end the section`
+WROTE — TASK 21: `.bkit/core/engine/commands/workflow/audit-report.test.ts` `parseAuditReport > reads a row whose Evidence cell holds a backslash`
+WROTE — TASK 21: `.bkit/core/engine/commands/workflow/audit-report.test.ts` `parseAuditReport > reads a lone short None row as no finding`

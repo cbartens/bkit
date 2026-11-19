@@ -137,9 +137,9 @@ Each agent host reads its own permissions, hooks, tool servers and model picks, 
 Within a severity, list production writes first, then credentials, then parity gaps.
 
 <!-- prettier-ignore -->
-| ID | Severity | Host | Location | Evidence | Expected |
-| --- | --- | --- | --- | --- | --- |
-| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| ID | Severity | Title | Host | Location | Evidence | Expected | Key |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 **If** the run finds nothing → write one row: `None`.
 

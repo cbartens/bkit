@@ -7,7 +7,7 @@ import {
 } from "./challenge.js";
 import type { PlanTaskBlock } from "./plan-blocks.js";
 import type { SummaryInput } from "./summary.js";
-import { parseDecisionItems } from "./open-decision.js";
+import { decisionItems } from "./open-decision.js";
 
 type Row = Record<string, unknown>;
 type Task = PlanTaskBlock & { path: string };
@@ -148,7 +148,7 @@ export function challengeResolution(
     });
     const label = `build-challenge round ${round}: ${f.severity} ${f.location}`;
     const accepted = input.decisionFiles.some((p) =>
-      parseDecisionItems(input.read(p) ?? "").some(
+      decisionItems(input.read, p).some(
         (item) =>
           /^Accept\b/.test(item.decision ?? "") &&
           [...item.text.matchAll(/(?<![\w@./-])[\w@./-]*[A-Za-z_][\w@./-]*:\d+/g)].some(

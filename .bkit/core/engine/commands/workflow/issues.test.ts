@@ -6,8 +6,8 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
+import { auditEntries } from "./audit-report";
 import {
-  auditEntries,
   cutEarlier,
   headingAnchor,
   isGenerated,
@@ -790,6 +790,57 @@ describe("bkit issues comment", () => {
     expect(r.err).not.toContain("workflow steps only");
   });
 
+  it("audit comment derives Findings from --report", async () => {
+    const AUDIT = ["--kind=audit", "--audit-slug=security"];
+    const cwd = dir();
+    write(cwd, "a.md", "## Overview\n\nAll clear.\n");
+    write(
+      cwd,
+      "report.md",
+      [
+        "# Security Audit",
+        "",
+        "## Findings",
+        "",
+        "| ID | Severity | Title | Location | Evidence | Expected | Key |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| security-1 | HIGH | Token logged | src/a.ts:10 | seen | fix | new |",
+        "| security-2 | LOW | Verbose error | src/b.ts:2 | seen | fix | new |",
+        "| security-3 | LOW | Old cipher | src/c.ts:7 | seen | fix | new |",
+        "",
+      ].join("\n"),
+    );
+    const manual = await comment(
+      cwd,
+      ...AUDIT,
+      "--field=Status=COMPLETE",
+      "--field=Findings=CRITICAL 0 · HIGH 1 · MEDIUM 0 · LOW 2",
+      "--line=Report: docs/audits/202610/security.md",
+      "--body-file=a.md",
+    );
+    const derived = await comment(
+      cwd,
+      ...AUDIT,
+      "--report=report.md",
+      "--field=Status=COMPLETE",
+      "--line=Report: docs/audits/202610/security.md",
+      "--body-file=a.md",
+    );
+    expect(derived.code).toBe(0);
+    expect(derived.body).toContain("Findings: CRITICAL 0 · HIGH 1 · MEDIUM 0 · LOW 2");
+    expect(derived.body).toBe(manual.body);
+
+    // A hand-written count beside the report could disagree with it, so it is refused.
+    const conflicting = await comment(
+      cwd,
+      ...AUDIT,
+      "--report=report.md",
+      "--field=Findings=CRITICAL 9 · HIGH 9 · MEDIUM 9 · LOW 9",
+    );
+    expect(conflicting.code).not.toBe(0);
+    expect(conflicting.json?.comment).toBeUndefined();
+  });
+
   it("exits 3 when a body, section or stderr file is missing", async () => {
     expect(
       (await comment(dir(), "--step-number=1", "--step-title=X", "--body-file=nope.md")).code,
@@ -854,88 +905,69 @@ describe("bkit issues comment --post", () => {
     expect(sent).toHaveLength(1);
   });
 
-  it("renders audit comments from validated result and preserves tracker adapters", async () => {
+  it("renders audit comments from the report and preserves tracker adapters", async () => {
     const AUDIT = ["issues", "comment", "--kind=audit", "--audit-slug=security"];
-    const result = {
-      slug: "security",
-      status: "COMPLETE",
-      report: "docs/audits/202610/security.md",
-      findings: [
-        { severity: "HIGH", title: "Token logged", location: "src/a.ts:10" },
-        { severity: "LOW", title: "Verbose error", location: "src/b.ts:2" },
-        { severity: "LOW", title: "Old cipher", location: "src/c.ts:7" },
-      ],
-      notChecked: [],
-    };
+    const report = (severity: string) =>
+      [
+        "# Security Audit",
+        "",
+        "## Findings",
+        "",
+        "| ID | Severity | Title | Location | Evidence | Expected | Key |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+        `| security-1 | ${severity} | Token logged | src/a.ts:10 | seen | fix | new |`,
+        "| security-2 | LOW | Verbose error | src/b.ts:2 | seen | fix | new |",
+        "| security-3 | LOW | Old cipher | src/c.ts:7 | seen | fix | new |",
+        "",
+      ].join("\n");
     const cwd = dir({ tracker: { default: "none" } });
     write(cwd, "a.md", "## Overview\n\nAll clear.\n");
-    write(cwd, "r.json", JSON.stringify(result));
+    write(cwd, "r.md", report("HIGH"));
+    const STATUS = ["--field=Status=COMPLETE", "--line=Report: docs/audits/202610/security.md"];
 
-    // The result renders the very comment the hand-written flags render: same counts, same link.
+    // The report renders the very comment the hand-written flags render: same counts.
     const manual = await proven(cwd, [
       ...AUDIT,
-      "--field=Status=COMPLETE",
+      ...STATUS,
       "--field=Findings=CRITICAL 0 · HIGH 1 · MEDIUM 0 · LOW 2",
-      "--line=Report: docs/audits/202610/security.md",
       "--body-file=a.md",
     ]);
-    const derived = await proven(cwd, [...AUDIT, "--result-file=r.json", "--body-file=a.md"]);
+    const derived = await proven(cwd, [...AUDIT, ...STATUS, "--report=r.md", "--body-file=a.md"]);
     expect(derived.code).toBe(0);
     expect(derived.json.comment).toBe(manual.json.comment);
 
-    // A hand-written count beside the result could disagree with it, so it is refused.
+    // A hand-written count beside the report could disagree with it, so it is refused.
     const conflicting = await proven(cwd, [
       ...AUDIT,
-      "--result-file=r.json",
+      "--report=r.md",
       "--field=Findings=CRITICAL 9 · HIGH 9 · MEDIUM 9 · LOW 9",
     ]);
     expect(conflicting.code).not.toBe(0);
     expect(conflicting.json?.comment).toBeUndefined();
 
-    // An invalid result produces no comment at all, with or without --post, and calls no tracker.
+    // A bad report produces no comment at all, with or without --post, and calls no tracker.
     process.env.BKIT_LINEAR_API_KEY = "k";
     const sent = linearCommentServer();
     const badDir = dir({ tracker: { default: "linear" } });
-    write(
-      badDir,
-      "bad.json",
-      JSON.stringify({
-        ...result,
-        findings: [{ severity: "SEVERE", title: "x", location: "a:1" }],
-      }),
-    );
-    const invalid = await proven(badDir, [
-      ...AUDIT,
-      "--result-file=bad.json",
-      "--post",
-      "--fid=eng-4-x",
-    ]);
+    write(badDir, "bad.md", report("SEVERE"));
+    const invalid = await proven(badDir, [...AUDIT, "--report=bad.md", "--post", "--fid=eng-4-x"]);
     expect([undefined, null]).toContain(invalid.json?.comment);
     expect(sent).toEqual([]);
 
     // Tracker none still skips, and Linear still posts the printed body once, deduplicated on a re-run.
     expect(
-      (await proven(cwd, [...AUDIT, "--result-file=r.json", "--post", "--fid=x"])).json.tracker,
+      (await proven(cwd, [...AUDIT, ...STATUS, "--report=r.md", "--post", "--fid=x"])).json.tracker,
     ).toEqual({ skipped: "tracker-none" });
     const linear = dir({ tracker: { default: "linear" } });
-    write(linear, "r.json", JSON.stringify(result));
-    const first = await proven(linear, [
-      ...AUDIT,
-      "--result-file=r.json",
-      "--post",
-      "--fid=eng-4-x",
-    ]);
+    write(linear, "r.md", report("HIGH"));
+    const post = [...AUDIT, ...STATUS, "--report=r.md", "--post", "--fid=eng-4-x"];
+    const first = await proven(linear, post);
     expect(first.json.tracker).toMatchObject({ done: true, action: "comment" });
     expect(sent).toEqual([first.json.comment]);
     expect(first.json.comment).toContain(
       "Audit Summary: security - Status: COMPLETE - Findings: CRITICAL 0 · HIGH 1 · MEDIUM 0 · LOW 2",
     );
-    const again = await proven(linear, [
-      ...AUDIT,
-      "--result-file=r.json",
-      "--post",
-      "--fid=eng-4-x",
-    ]);
+    const again = await proven(linear, post);
     expect(again.json.tracker).toMatchObject({ done: true, deduped: true });
     expect(sent).toHaveLength(1);
   });
@@ -1655,8 +1687,6 @@ describe("bkit issues audit ledger keys", () => {
   it("derives audit ledger keys under the audit-slug prefix", () => {
     const entries = auditEntries({
       slug: "security",
-      status: "COMPLETE",
-      report: null,
       findings: [
         { severity: "HIGH", title: "Missing CSRF token", location: "src/a.ts:10" },
         { severity: "LOW", title: "Verbose error", location: "src/b.ts:2" },
@@ -1668,7 +1698,6 @@ describe("bkit issues audit ledger keys", () => {
           priorKey: "audit-security-old",
         },
       ],
-      notChecked: [],
     });
     const byLocation = (loc: string) => entries.find((e) => e.location === loc)!;
     // New keys follow the prompt's `audit-<slug>-<content-slug>` shape; a judged prior key stays.

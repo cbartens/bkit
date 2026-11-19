@@ -354,6 +354,32 @@ export function fold(events) {
     }
     return runs;
 }
+/** Row types only the engine appends: `decisions counts` and `decisions apply`; `status row` refuses them. */
+export const ENGINE_ROW_TYPES = new Set([
+    "decision-counts",
+    "decision-answer",
+]);
+/**
+ * Parse NDJSON status text in file order. A line that is not a JSON object comes back as
+ * `{ line, problem }` (1-based among the non-blank lines), never as "no rows". Imports nothing
+ * from `commands/`, so a reader of decision rows needs no command module.
+ */
+export function parseStatusLines(text, _label) {
+    const rows = [];
+    const lines = text
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l !== "");
+    for (const [i, l] of lines.entries()) {
+        const parsed = parseJson(l);
+        if (!parsed.ok)
+            return { line: i + 1, problem: "not JSON" };
+        if (typeof parsed.value !== "object" || parsed.value === null)
+            return { line: i + 1, problem: "not a JSON object" };
+        rows.push(parsed.value);
+    }
+    return { rows };
+}
 /** True for a parsed `status.jsonl` row that is a complete `invocation` event. */
 export function isInvocationEvent(value) {
     if (value === null || typeof value !== "object")

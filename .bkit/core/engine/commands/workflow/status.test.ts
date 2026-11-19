@@ -899,6 +899,61 @@ describe("bkit status resume gate re-run", () => {
     expect(r.json).toMatchObject({ gateRerun: true, rerunFrom: "verify" });
   });
 
+  it("re-runs the gate of a red-gate pause laid out in two files", async () => {
+    const root = tmp();
+    spawnSync("git", ["init", "-q", "-b", "dev"], { cwd: root });
+    fs.writeFileSync(path.join(root, "package.json"), "{}");
+    const logs = path.join(root, "logs");
+    fs.mkdirSync(logs);
+    const orchestrator = [
+      "Question: VERIFY_GAPS",
+      "From: verify",
+      "Group: 1",
+      "",
+      "**Q2 — Task 3 gap:** accept it?",
+      "A) Accept — the item is recorded as accepted",
+      "B) Fix now — a fix task is added to the plan",
+      "Recommended: A) Accept — minor",
+      "Default if unanswered: the run waits for you; taken as A when nobody can be asked",
+      "",
+    ].join("\n");
+    fs.writeFileSync(path.join(logs, "build-decision-1-1.md"), orchestrator);
+    const decision = "logs/build-decision-1-1.md";
+    const rows = [
+      started("build", "2026-11-01T00:00:00Z"),
+      done("build", "build-plan-verify", "2026-11-01T00:10:00Z", { group: 1, verdict: "PASS" }),
+      {
+        type: "decision-counts",
+        workflow: "build",
+        at: "2026-11-01T00:11:00Z",
+        file: decision,
+        sourceChanged: false,
+        gate: "FAIL",
+        loop: {
+          title: "Verify",
+          options: ["Try again", "Decide"],
+          recommended: "Try again",
+          reason: "the last round made progress",
+        },
+      },
+      {
+        type: "decision-answer",
+        workflow: "build",
+        at: "2026-11-01T00:12:00Z",
+        file: decision,
+        q: 2,
+        answer: "Accept — minor",
+        by: "owner",
+      },
+    ];
+    const status = path.join(logs, "status.jsonl");
+    fs.writeFileSync(status, rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+    expect(fs.existsSync(path.join(logs, "build-decision-1-1-engine.md"))).toBe(false);
+    const r = await run(["status", "resume", "--workflow=build", `--file=${status}`], root);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ gateRerun: true, rerunFrom: "verify" });
+  });
+
   it("status resume prints gateRerun false when another question is undecided", async () => {
     const r = await resume(stopped(pauseFile({ items: [["Task 3 gap", null]] })));
     expect(r.code).toBe(0);
@@ -920,6 +975,52 @@ describe("bkit status resume gate re-run", () => {
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ gateRerun: true, rerunFrom: "holistic" });
   });
+
+  it.each([
+    ["build-plan-verify", 8, "VERIFY_GAPS", "verify", 2],
+    ["build-holistic-gate", 10, "VERIFY_GAPS", "holistic", 1],
+    ["build-run-tests", 12, "TESTS_LOOP", "tests", 2],
+    ["build-plan-gaps-remediate", 8, "VERIFY_GAPS", "verify", 2],
+    ["build-plan-gaps-remediate-holistic", 7, "VERIFY_GAPS", "holistic", 1],
+  ])(
+    "a pause after %s written before decisions counts ran resumes where a run with no file does: Step %s, decision 1 again",
+    async (step, number, question, from, first) => {
+      const rows = [
+        { ...started("build", "2026-11-01T00:00:00Z"), decisionLayout: "rows" },
+        done("build", step, "2026-11-01T00:10:00Z", { group: 1, verdict: "FAIL" }),
+      ];
+      const bare = await resume(log(rows));
+      const file = log(rows);
+      fs.writeFileSync(
+        path.join(path.dirname(file), "build-decision-1-1.md"),
+        [
+          `Question: ${question}`,
+          `From: ${from}`,
+          "Group: 1",
+          "",
+          `**Q${first} — Task 3 gap:** accept it?`,
+          "A) Accept — the item is recorded as accepted",
+          "B) Fix now — a fix task is added to the plan",
+          "Recommended: A) Accept — minor",
+          "Default if unanswered: the run waits for you; taken as A when nobody can be asked",
+          "",
+        ].join("\n"),
+      );
+      const r = await resume(file);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ number, questions: null, counted: null, gateRerun: false });
+      expect(r.json).toEqual(bare.json);
+      const next = await run([
+        "counters",
+        "derive",
+        `--file=${file}`,
+        "--workflow=build",
+        "--step=build-decision",
+        "--position=next",
+      ]);
+      expect(next.json.value).toBe(1);
+    },
+  );
 
   it("status resume prints gateRerun false with no active run", async () => {
     const file = log([]);
@@ -1430,6 +1531,27 @@ describe("bkit status row", () => {
     });
     const last = JSON.parse(fs.readFileSync(file, "utf-8").trim().split("\n").at(-1)!);
     expect(last).toEqual(r.json.row);
+  });
+
+  it("refuses the engine-only types decision-counts and decision-answer", async () => {
+    const file = log([started("build", "2026-10-01T00:00:00Z")]);
+    const before = fs.readFileSync(file, "utf-8");
+    for (const [type, verb] of [
+      ["decision-counts", "decisions counts"],
+      ["decision-answer", "decisions apply"],
+    ] as const) {
+      const r = await run([
+        "status",
+        "row",
+        `--file=${file}`,
+        "--workflow=build",
+        `--type=${type}`,
+        "--field=file=logs/build-decision-1-1.md",
+      ]);
+      expect(r.code).toBe(2);
+      expect(`${JSON.stringify(r.json)}${r.err}`).toContain(verb);
+      expect(fs.readFileSync(file, "utf-8")).toBe(before);
+    }
   });
 
   it.each([

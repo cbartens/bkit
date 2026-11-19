@@ -1,5 +1,5 @@
 import { parseFindings, mergeFindings, normalizeLocation, lowDeferralKey, } from "./challenge.js";
-import { parseDecisionItems } from "./open-decision.js";
+import { decisionItems } from "./open-decision.js";
 const artifacts = (row) => Array.isArray(row.artifacts)
     ? row.artifacts.filter((p) => typeof p === "string")
     : [];
@@ -97,7 +97,7 @@ export function challengeResolution(input, row, index, tasks) {
                 rounds.includes(round));
         });
         const label = `build-challenge round ${round}: ${f.severity} ${f.location}`;
-        const accepted = input.decisionFiles.some((p) => parseDecisionItems(input.read(p) ?? "").some((item) => /^Accept\b/.test(item.decision ?? "") &&
+        const accepted = input.decisionFiles.some((p) => decisionItems(input.read, p).some((item) => /^Accept\b/.test(item.decision ?? "") &&
             [...item.text.matchAll(/(?<![\w@./-])[\w@./-]*[A-Za-z_][\w@./-]*:\d+/g)].some((m) => normalizeLocation(m[0], input.root ?? process.cwd()) === f.location)));
         const closed = f.severity === "LOW" &&
             input.deferrals.some((d) => d.status === "CLOSED" &&

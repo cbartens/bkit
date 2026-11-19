@@ -1155,7 +1155,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:502`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:518`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:208`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -1252,7 +1252,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-repo`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:502`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:518`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:208`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -3084,10 +3084,11 @@ Continue from the interrupted sub-step only after the retry is verified.
 - carriers: workflow all except `bkit-auto`
 
 ```text
-**Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, {{work}}, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Exit 8 → nothing written, nothing committed: fix what the hook's message names, then re-run this block — the step's attempt is unchanged. Hold `verdict` as the step's verdict, `fields` as its other header fields{{attempt?}}.
+**Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, {{work}}, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' was refused: <problem>. Fix that in the file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Exit 8 → nothing written, nothing committed: fix what the hook's message names, then re-run this block — the step's attempt is unchanged. Hold `verdict` as the step's verdict, `fields` as its other header fields{{attempt?}}.
 ```
 
 ```retired
+**Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, {{work}}, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Exit 8 → nothing written, nothing committed: fix what the hook's message names, then re-run this block — the step's attempt is unchanged. Hold `verdict` as the step's verdict, `fields` as its other header fields{{attempt?}}.
 **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, {{work}}, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Hold `verdict` as the step's verdict, `fields` as its other header fields{{attempt?}}.
 ```
 
@@ -3648,10 +3649,11 @@ Questions and regions no answer touches stay verbatim.
 - carriers: prompt `bkit-build-challenge-*`, `bkit-plan-review-*`, `bkit-plan-scope-check`
 
 ```text
-Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings, counting only complete ones.
+Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings: each top-level item under `## CRITICAL`, or each `CRITICAL` task block under `## Findings Log`.
 ```
 
 ```retired
+Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings, counting only complete ones.
 Update **Create** — set `Failures` via `Edit` = `CRITICAL` count; do not count incomplete findings.
 ```
 
@@ -3902,6 +3904,10 @@ Number the tasks from 1, worst `severity` first.
 - carriers: prompt `bkit-build-challenge-*`
 
 ```text
+Fill every field of each task block; `bkit steps finish` hands back a block with an empty field.
+```
+
+```retired
 A finding with an empty field does not count toward `Failures`.
 ```
 
@@ -4459,6 +4465,10 @@ Set `Strategy` in **Create** with `Edit` to the `Strategy` value from Context. T
 - carriers: prompt `bkit-build-plan-gaps-remediate`, `bkit-debug-failure-diagnose`
 
 ```text
+**If** a decision record is supplied → run `bkit decisions answers --file=<it>`; its `by` = `owner` answers and the file's `Owner:` lines override the strategy's default angle in this {{scope}}.
+```
+
+```retired
 **If** a decision record is supplied → follow the owner's words on its `Decision:` lines in this {{scope}}; they override the strategy's default angle.
 ```
 
@@ -5066,43 +5076,6 @@ The engine fills `by` and the model fields from the invocation; never write `by`
 Query each ledger with `bkit ledgers query --ledger=<name>`, which folds by `key` with the highest `ts` winning.
 ```
 
-### result-path-cleared
-
-- workflow: repeatable
-- carriers: workflow all except `bkit-auto`, `bkit-ship`
-
-```text
-Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
-```
-
-### structured-result-file
-
-- prompt: where-used
-- carriers: prompt `bkit-build-challenge-*`, `bkit-design-review-*`, `bkit-plan-review-*`, `bkit-build-plan-verify`, `bkit-debug-failure-diagnose`, `bkit-design-spike`, `bkit-plan-scope-check`
-
-```text
-**If** your Context names a structured result file (`Result:`) → write it as one JSON object with only these keys: `findings` (array; each item has `severity` (`CRITICAL`, `HIGH`, `MEDIUM` or `LOW`), boolean `fixable`, `location` (`path:line`) and `doneWhen`, plus optional `title`, `cls` and `tests`), `judgments` (object of header-field name to text, number or boolean; it holds `Verdict` and each header field the engine does not derive, never `Failures` or `Fixable`), `body` (the report text below the header, written in full: Scope, Notes and every section of your Output format except the generated Findings Log; omit it and the report keeps nothing but the header) and `evidenceComplete` (always `true` or `false`; `false` when you could not check everything). The engine sets `Failures` to the number of entries in `findings`, of every severity, in place of any other count in your steps, so list there only items that need a fix and keep the rest in `body`. A missing or invalid result file makes `bkit steps stub` exit 6 and sends the step to its Failure Path, so write the file before you finish; the caller deletes any older file at that path before it launches you, so a file there is always yours. If you cannot write it, say so in your final reply and do not leave the step to fail silently.
-```
-
-### structured-result-render
-
-- prompt: where-used
-- carriers: prompt `bkit-build-challenge-*`, `bkit-design-review-*`, `bkit-plan-review-*`, `bkit-build-plan-verify`, `bkit-debug-failure-diagnose`, `bkit-design-spike`, `bkit-plan-scope-check`
-
-```text
-The caller renders **Create** with `bkit steps stub --agent={{agent}} --result-file`, and the engine derives {{derived}}.
-The caller renders **Create** with `bkit steps stub --agent={{agent}} --result-file`, and the engine derives the header counts and its `Fingerprint`.
-```
-
-### structured-supply-only
-
-- prompt: where-used
-- carriers: prompt `bkit-design-review-*`, `bkit-debug-failure-diagnose`, `bkit-design-spike`
-
-```text
-You supply only {{fields}}.
-```
-
 ### steps-finish-derives
 
 - prompt: where-used
@@ -5110,15 +5083,6 @@ You supply only {{fields}}.
 
 ```text
 `bkit steps finish` derives the attempt number and records `Strategy` and the summed `Failures` on the step's row. Write no attempt number, timestamp, invocation id or model name {{where}}.
-```
-
-### stub-seed-fingerprint
-
-- prompt: where-used
-- carriers: prompt `bkit-design-organise`, `bkit-design-update`, `bkit-plan-update`
-
-```text
-The seed comes from `bkit steps stub`. Keep a `Fingerprint` header line when one is present: `bkit steps verdict` treats a body that no longer matches it as stale, so re-render through the caller instead of hand-editing a rendered body.
 ```
 
 ### ledger-impact-search
@@ -5750,10 +5714,30 @@ Write the run's diff to the file the agent reads
 ### workflow-error-file
 
 - workflow: where-used
-- carriers: workflow all except `bkit-auto`
+- carriers: workflow all except `bkit-auto`, `bkit-ship`
 
 ```text
+Write the error text with the file tool to `{LOG_DIR}/{workflow}-error.md` (ship: `{WORKTREE_PATH}/docs/plans/{YYYYMM}/logs/{FID}/ship-error.md`). `{STDERR_FILE}` = `{LOG_DIR}/{workflow}-stderr.md`, the last 20 lines of stderr — drop `--error-file` and `--stderr-file` while `{LOG_DIR}` is not held, `--stderr-file` also when no shell command failed; drop `--token` when `{LOCK_TOKEN}` is empty
+```
+
+```retired
+Write the error text with the file tool to `{LOG_DIR}/{workflow}-error.md` (ship: `{WORKTREE_PATH}/docs/plans/{YYYYMM}/logs/{FID}/ship-error.md`; `--error-file` dropped while not held). `{STDERR_FILE}` = `{LOG_DIR}/{workflow}-stderr.md`, only the last 20 lines of the failed shell command's stderr — drop `--stderr-file` when the failure was not a shell command; drop `--token` when `{LOCK_TOKEN}` is empty
+```
+
+```retired
+Write the error text with the file tool to `{LOG_DIR}/{workflow}-error.md` (`--error-file` dropped while it is not held). `{STDERR_FILE}` = `{LOG_DIR}/{workflow}-stderr.md`, only the last 20 lines of the failed shell command's stderr — drop `--stderr-file` when the failure was not a shell command; drop `--token` when `{LOCK_TOKEN}` is empty
+```
+
+```retired
+Write the error text with the file tool to `{LOG_DIR}/{workflow}-error.md` (ship: `ship-error.md` in the run's log folder; `--error-file` dropped while it is not held). `{STDERR_FILE}` = `{LOG_DIR}/{workflow}-stderr.md` holding only the last 20 lines of the failed shell command's stderr — drop `--stderr-file` when the failure was not a shell command; drop `--token` when `{LOCK_TOKEN}` is empty
+```
+
+```retired
 Write the error message / tool response to `{OUTBOX_ROOT}/error.md` (`--error-file` dropped while `{OUTBOX_ROOT}` is not held). `{STDERR_FILE}` = `{OUTBOX}/stderr.log` holding the failed shell command's stderr — drop `--stderr-file` when the failure was not a shell command or `{OUTBOX}` is not set yet; drop `--token` when `{LOCK_TOKEN}` is empty
+```
+
+```retired
+Write the error message / tool response with the file tool to `{LOG_DIR}/{workflow}-error.md` (ship: `{WORKTREE_PATH}/docs/plans/{YYYYMM}/logs/{FID}/ship-error.md`); `--error-file` dropped while that folder is not held. `{STDERR_FILE}` = `{LOG_DIR}/{workflow}-stderr.md` (ship: `.../ship-stderr.md`), written with the file tool and holding only the last 20 lines of the failed shell command's stderr, the lines the failure comment posts — drop `--stderr-file` when the failure was not a shell command or that folder is not held; drop `--token` when `{LOCK_TOKEN}` is empty
 ```
 
 ### workflow-max-exceeded
@@ -9963,7 +9947,7 @@ Every command has a `🤖 Failure Path` section before Step 1. Any step, tool or
 
 **Standard failure (always):**
 
-1. Write the error text to `{OUTBOX_ROOT}/error.md`, then one call: `bkit workflows fail --workflow= --fid= --month= --token={LOCK_TOKEN} [--max-exceeded] {LABEL_FLAGS} --step-number= --step-title= --sub-step= --error-file="{OUTBOX_ROOT}/error.md" [--stderr-file=] [--next-step=]` (ship adds `--pr=`). State is changed only with a `--token`. An empty one counts as absent, because the failure came before Step 1 took the lock. With a token, the call appends `workflow-failed` (nothing when `status.jsonl` does not exist yet), aborts a rebase or merge in progress in the run's worktree, releases the caller's own lock (another owner's stays, reported as `lock.heldBy`), clears the sentinels (`.rebase-failed`; ship `.deferred-blocked`). Exit 6 = a refused `--next-step`: not one `/bkit-*` command line (a `/bkit-` command name, then optional single-space-separated arguments of letters, digits, `#`, `.`, `_` and `-`), or still holding an unsubstituted `{UPPER}` placeholder (refused before any write, no other usage error uses it). Exit 5 = the lock file survived; the printed comment already says `Lock removal failed`. It always prints `labels` (the current labels plus `bkit:failed`; a ship whose `--pr` already MERGED also moves to `bkit:merged`), `trackerState`, `handoverNeeded` (`--max-exceeded`, a sentinel existed, or a debug run in `SOAK`), and the `### Workflow Failure` `comment`. No dev push.
+1. Write the error text with the file tool to `{LOG_DIR}/{workflow}-error.md`, then one call: `bkit workflows fail --workflow= --fid= --month= --token={LOCK_TOKEN} [--max-exceeded] {LABEL_FLAGS} --step-number= --step-title= --sub-step= --error-file="{LOG_DIR}/{workflow}-error.md" [--stderr-file=] [--next-step=]` (ship adds `--pr=`; both file flags are dropped while the log folder is not held: `{LOG_DIR}`, ship `{WORKTREE_PATH}`). An `--error-file` or `--stderr-file` that is missing, is not the run's `{workflow}-error.md` or `{workflow}-stderr.md` in its log folder, links out of it, is not a regular file with one link, or cannot be rewritten is skipped: never read, rewritten or quoted, named in `refusedFiles` (an error file also on the comment's `Error:` line, with the reason), and the failure is still recorded. State is changed only with a `--token`. An empty one counts as absent, because the failure came before Step 1 took the lock. With a token, the call appends `workflow-failed` (nothing when `status.jsonl` does not exist yet), aborts a rebase or merge in progress in the run's worktree, releases the caller's own lock (another owner's stays, reported as `lock.heldBy`), clears the sentinels (`.rebase-failed`; ship `.deferred-blocked`). Exit 6 = a refused `--next-step`: not one `/bkit-*` command line (a `/bkit-` command name, then optional single-space-separated arguments of letters, digits, `#`, `.`, `_` and `-`), or still holding an unsubstituted `{UPPER}` placeholder (refused before any write, no other usage error uses it). Exit 5 = the lock file survived; the printed comment already says `Lock removal failed`. It always prints `labels` (the current labels plus `bkit:failed`; a ship whose `--pr` already MERGED also moves to `bkit:merged`), `trackerState`, `handoverNeeded` (`--max-exceeded`, a sentinel existed, or a debug run in `SOAK`), and the `### Workflow Failure` `comment`. No dev push.
 2. `--post` posts `comment` and writes the labels and state (`tracker`, `labelsWrite`). If either prints `done` = false, the tracker MCP does that write.
 
 **Conditional handover** — only when `handoverNeeded` **and** a worktree exists. The handover agent `cd`s to `{WORKTREE_PATH}`. `/bkit-debug` decides `DEBUG_MODE` at Step 1, before the worktree exists, so a failure before the worktree goes straight to STOP:
@@ -10128,22 +10112,21 @@ Hold `challengeRound` as `CHALLENGE_ROUND` and `challengeDone` as `CHALLENGE_DON
 **If** Step 2's `workflows start --session-dir="{SESSION_DIR}"` printed `openDecision` != null → the **Open decision** steps below.
 **If** `step` = `build-plan-gaps-remediate-holistic` → Step 10 sub-step 9.
 **If** `after` = `build-challenge` → Step 11 sub-step 1's `counters max --point=build.challenge` block (hold `value` as `CHALLENGE_MAX`), then sub-step 2, then sub-step 5.
-**Open decision:** `openDecision` is a decision file with `Status: OPEN`, or a `DECIDED` / `ASSUMED` one that no `build-decision` row names, because the run stopped after **Decision Pause** step 6 wrote the answers. Resume from it:
+**Open decision:** `openDecision` is a decision file whose pause reads `OPEN`, or a `DECIDED` / `ASSUMED` one that no `build-decision` row names (the run stopped after **Decision Pause** step 6 wrote the answers). An uncounted pause other than `CHALLENGE`, `CHANGED_TESTS` or `UNPROVEN` is skipped as unwritten: Step `number` follows. Resume from it:
 Hold its `decision` as `DECISION`, `question` as `PAUSE_QUESTION`, `pauseStep` as `PAUSE_STEP`, `group` as `GROUP`, `verifyAttempt` as `VERIFY_ATTEMPT`, `testAttempt` as `TEST_ATTEMPT` and `sourceChanged` as `SOURCE_CHANGED` (null stays unset).
 Set `PAUSE_POINT` = `build.{from}`.
 **If** `from` = `challenge` → restore the round's tasks:
 Run Step 11 sub-step 1's `counters max --point=build.challenge` block (hold `value` as `CHALLENGE_MAX`).
-Run Step 11 sub-steps 2 and 5. The merge finds its tasks already in the plan, writes nothing and prints the round's open tasks.
+Run Step 11 sub-steps 2 and 5: the merge writes nothing, printing the round's open tasks.
 Hold `fixTasks` as `CHALLENGE_TASKS`.
-NEVER go on to Step 11 sub-step 6, because the open pause decides the route.
-Route on the `gateRerun` that `status resume` printed. It is true when the open pause only asks to try a red gate again:
+NEVER go on to Step 11 sub-step 6: the pause routes.
 **If** `gateRerun` = true → the **Gate rerun** steps below.
 **Else** → **Decision Pause** step 3.
 **Gate rerun:** Skip **Decision Pause** step 3 and re-run the gate, with no `counters grant`:
 Set `DECISION_ROUTE` = `rerunFrom`.
 Run § Pending takeovers.
 Run **Decision Pause** step 6's `steps finish --step=build-decision` block.
-Run `"{BKIT}" decisions apply --by=rerun --file="docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-{DECISION}.md"`. It runs after sub-step 3, so an interruption between them leaves the pause `OPEN` and the next resume re-runs the gate again.
+Run `"{BKIT}" decisions apply --by=rerun --file="docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-{DECISION}.md"`. An interruption before it leaves the pause `OPEN`, so the next resume re-runs the gate.
 **If** `rerunFrom` = `verify` → `VERIFY_VERDICT` = PASS, the held `{VERIFY_ATTEMPT}` unchanged → Step 8 sub-step 8.
 **If** `rerunFrom` = `holistic` → `HOLISTIC_VERDICT` = PASS → Step 10 sub-step 5.
 **If** `VERIFY_LOOSENED` != `none` → restore the loosened tests with the sub-steps below; no fixer runs this round. The tests step removed or loosened an expectation of an existing test (each `test-loosened` gap of the verify report, `Fixable: true`). The tests step restores it, because no code step may rewrite a planned test:
@@ -10157,7 +10140,6 @@ Go to **Decision Pause**.
 Set `PAUSE_STEP` = 10, `PAUSE_POINT` = `build.holistic` and `PAUSE_QUESTION` = `VERIFY_GAPS`.
 **If** `GATE_VERDICT` = FAIL → also set `PAUSE_LOOP` = `holistic`, so the pause asks the loop question about the red gate.
 Go to **Decision Pause**.
-**Owner decisions:** A subagent learns the owner's `Accept`, `Try again` and `Stop` answers by reading the decision file (`build-decision-{RUN}-*.md`) named in its `Read`, and a `Fix now` direction from the task block that carries it. NEVER restate, summarise or paraphrase an owner's answer in a subagent's `Context`.
 **Plan:** `docs/plans/{YYYYMM}/{FID}-plan.md`, in task-block form (`docs/templates/bkit-plan.md` § Agent Execution Runbook). Each group holds at most `MAX_TASKS_PER_GROUP` tasks and at most `MAX_TESTS_PER_GROUP` `TEST FIRST` tests (`bkit.workflows.tasks`, held at Step 1). One group runs per pass of Steps 7-9. Only the verify steps and the **Decision Pause** tick a task `[x]`. The pause ticks a challenge task it accepts, whether the owner accepts it or the run assumes the accept.
 [secrets; workflow-pushes] List stray files first: `bkit workflows handover --list-stray` (`--workflow` / `--fid` / `--month` / `--worktree` as below) → on a feature branch remove only the `modified` / `untracked` files this run created by mistake, NEVER other agents' changes; on `dev` / `main` (`shared` = true) remove nothing (only the run's own record lands, through a throwaway checkout).
 **If** `PUBLISH` = false **or** `PUBLISH` is not held yet → keep the record in the worktree, linked by branch, and NEVER pass `--push`, because a held run pushes nothing and neither does a failure before `status route` resolves `publish`:
@@ -10169,26 +10151,22 @@ For either `VERIFY_GAPS` list:
 Title each item `Task {N}` from its `TASK {N}` gap line, so a decision tick finds the task. A gap with no task number gets its description as the title.
 A fixable gap → options `Accept` and `Fix now`, with a recommendation per item.
 Any unfixable gap (`no-test-first`, `test-first-malformed`, `test-first-unread`, `exception-refused`, `test-loosened`, or a holistic gap, logged `Fixable: false`) → a hard blocker with options `Accept`, `Fix now` and `Stop`.
-A group-gate failure is never an item: no item option can settle it, and the loop question carries it.
+A group-gate failure is never an item: the loop question carries it.
 **If** `PAUSE_QUESTION` = `CHALLENGE`:
 **If** `CHALLENGE_OVERFLOW` is set → the merge wrote nothing to the plan. Write one item per `Location` of each `CRITICAL`, `HIGH` or `MEDIUM` finding in the merged reports: `build-challenge-2.md`, plus `build-challenge-1.md` when the change is large.
 **Else** → write one item per task of `CHALLENGE_TASKS` whose block in the plan says `**Fixable:** false`, at any severity.
-Title each item with its task number, when it has one, followed by its `Location` in brackets.
+Title each item with its task number, if any, then its `Location` in brackets.
 **If** the item is `**Fixable:** false` → a hard blocker with options `Accept`, `Fix now` and `Stop`.
 **Else** → options `Accept` and `Fix now`, with a recommendation per finding.
-**If** `PAUSE_QUESTION` = `TESTS_LOOP` → write no items: a failing suite test is never an item, and the loop question carries it.
-**If** `PAUSE_QUESTION` = `UNPROVEN` → write one item per entry of `UNPROVEN_TESTS`, titled with its task number and test name. Each item is a planned test that never failed before its code existed, so nothing shows it can catch the bug it was written for. Options `Accept` and `Stop`, recommended `Accept`. Its question ends `Accept it? You write the reason, and it is recorded as your TEST EXCEPTION.`
-Check a red gate against the base commit, the commit the branch started from. **If** `PAUSE_QUESTION` = `TESTS_LOOP` **or** `GATE_VERDICT` = FAIL → `GATE_LOG` = `{OUTBOX}/run-tests-{TEST_ATTEMPT}.log` for `TESTS_LOOP`; `{OUTBOX}/build-holistic-gate-{HOLISTIC_ATTEMPT}.log` when `PAUSE_STEP` = 10; else `{OUTBOX}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.log`:
-`{LOOP_FLAGS}` = `--loop=tests --attempt={TEST_ATTEMPT} --max={PAUSE_MAX}` when `PAUSE_QUESTION` = `TESTS_LOOP`; `--loop=verify --group={GROUP} --attempt={VERIFY_ATTEMPT} --max={PAUSE_MAX}` when `PAUSE_LOOP` = `verify`; `--loop=holistic --attempt={HOLISTIC_ROUNDS} --max={PAUSE_MAX}` when `PAUSE_LOOP` = `holistic`; empty otherwise.
-`{HEADER_FLAGS}` = `--header=Question={PAUSE_QUESTION} --header=From={verify|holistic|challenge|tests|summary} --header="Pause step={PAUSE_STEP}" --header="Plan=docs/plans/{YYYYMM}/{FID}-plan.md"`.
-**If** the pause comes from verify → add `--header=Group={GROUP} --header="Verify attempt={VERIFY_ATTEMPT}" --header="Source changed={SOURCE_CHANGED}"` to `{HEADER_FLAGS}`.
-**If** the pause comes from holistic → add `--header="Holistic attempt={HOLISTIC_ATTEMPT}" --header="Source changed={SOURCE_CHANGED}"` to `{HEADER_FLAGS}`.
-**If** the pause comes from tests → add `--header="Test attempt={TEST_ATTEMPT}"` to `{HEADER_FLAGS}`.
-`{BASE_FLAGS}` = `--header=Gate=FAIL` when the base check ran, plus `--base-check="{OUTBOX}/base-check.json"` when `{LOOP_FLAGS}` is not empty; empty otherwise.
-**If** `decisions compose` exits non-zero → **Failure Path**.
+**If** `PAUSE_QUESTION` = `TESTS_LOOP` → write no items: the loop question carries a failing suite test.
+**If** `PAUSE_QUESTION` = `UNPROVEN` → write one item per entry of `UNPROVEN_TESTS`, titled with its task number and test name. Each item is a planned test that never failed before its code existed, so nothing shows it catches its bug. Options `Accept` and `Stop`, recommended `Accept`. Its question ends `Accept it? You write the reason, and it is recorded as your TEST EXCEPTION.`
+Check a red gate against the base commit, before the file exists. **If** `PAUSE_QUESTION` = `TESTS_LOOP` **or** `GATE_VERDICT` = FAIL → `GATE_LOG` = `{OUTBOX}/run-tests-{TEST_ATTEMPT}.log` for `TESTS_LOOP`; `{OUTBOX}/build-holistic-gate-{HOLISTIC_ATTEMPT}.log` when `PAUSE_STEP` = 10; else `{OUTBOX}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.log`:
+One question per item, in item order, from `Q2` when the pause has a loop (`PAUSE_LOOP` set, or `TESTS_LOOP`), else from `Q1`:
+Offer only the file's options for each question; NEVER add one.
+**If** either command exits non-zero → **Failure Path**, except `decisions check` exit 6: fix per `problem`, re-run the two commands once; a second exit 6 → **Failure Path**.
 **If** exit 4 **and** `RUNTIME_HEADLESS` = true → **Failure Path** naming each printed `hardBlockers` question.
 **If** exit 4 → step 4, asking only the printed `hardBlockers` questions.
-Offer only the file's options for each question; NEVER add an `Accept` or any other option the file does not list.
+Discuss the follow-ups with the owner; ask a `Fix now` with no direction what it should do.
 Route — first match wins:
 **If** `GATE_VERDICT` = FAIL → sub-step 8, for a round that fixes the gate.
 **If** exit 1 **and** `LIMIT_ASK` = true → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause** — `build.verify.maxAttempts` is used up, so the owner decides.
@@ -10203,14 +10181,19 @@ Route — first match wins:
 Clear `PAUSE_LOOP`. **If** `From: verify`, `From: holistic` **or** `From: tests` → the owner chose to go on, so give that loop one more full allowance when its limit is used up. Below the limit, or with `ask` = false, the command grants nothing and exits 1; both exits go on:
 **If** `From: holistic` → count the allowance over the run's holistic fix rounds:
 Route — first match wins:
+Route on `status resume`'s `gateRerun`, true when the open pause only asks to re-run a red gate:
+**If** `questions` = 0 → the file breaks the item rule, or `counted` = false:
+Rewrite the file's questions in **Decision Pause** step 2's form.
+**If** `counted` = false → run step 2's `decisions counts` block, `{COUNT_FLAGS}` empty.
+Step 2's `decisions check` block, then **Decision Pause** step 3. Exit 6 → fix per `problem`, re-run once; a second exit 6 → **Failure Path**.
+**Owner decisions:** A subagent learns the owner's answers by running `bkit decisions answers --file=<decision file>` on each decision file in its `Read`, plus that file's `Owner:` lines, and a `Fix now` direction from its task block. NEVER restate, summarise or paraphrase an owner's answer in a subagent's `Context`.
+Header lines `Question: {PAUSE_QUESTION}`, `From: {verify|holistic|challenge|tests|summary}`, `Pause step: {PAUSE_STEP}`, `Plan: docs/plans/{YYYYMM}/{FID}-plan.md`, plus `Group: {GROUP}` and `Verify attempt: {VERIFY_ATTEMPT}` (verify), `Holistic attempt: {HOLISTIC_ATTEMPT}` (holistic) or `Test attempt: {TEST_ATTEMPT}` (tests), then a blank line. NEVER write a `Source changed`, `Gate`, `Status`, `Decision:`, `Fix task:`, `Rejected:` or `Deferred:` line.
 **If** the owner says stop, **or** answers `Stop` → step 8.
 **If** the loop question is answered `Try again` → step 6. The items then need no decision.
-**If** any asked item still lacks a decision, which includes a hard blocker answered `Fix now` with no direction:
-Discuss the follow-ups with the owner. For a hard blocker answered `Fix now` with no direction, ask what the fix should do.
+**If** any asked item still lacks a decision, a hard blocker answered `Fix now` with no direction included:
 Record the wait with the `owner-pause` block above.
 End the turn and wait for the answers.
 Apply each decision:
-**If** the file is a reopened `DECIDED` / `ASSUMED` one → an item that already carries a `Decision:` line was applied in an earlier pass: write nothing already written — no second `docs/decisions.jsonl` row, no second title suffix, no second `TEST EXCEPTION`; a plan tick already made stays.
 [recommend-do-not-decide; major-changes] **Accept** by the owner → write the acceptance ONLY on that item's explicit approval from the owner. A "yes" to an `Accept` recommendation counts as approval.
 **If** the item is an `exception-refused` gap **or** an `UNPROVEN` item → write a `- **TEST EXCEPTION:**` field as the last field of the task's block in `docs/plans/{YYYYMM}/{FID}-plan.md`:
 Give the field one sub-bullet per test, in `TEST FIRST` form, each ending `— {human's reason} (owner, {YYYY-MM-DD})`.
@@ -10222,9 +10205,7 @@ Append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.m
 **Accept (assumed)**, written by `decisions apply` → write nothing else: no `docs/decisions.jsonl` row and no `TEST EXCEPTION`. Ship asks the owner to confirm the item later.
 **If** the item is a challenge task → tick it `[x]` and end its title with ` — accepted (assumed)`.
 **Fix now**:
-Write no test and no fix code at this pause. Step 7 writes the new task's `TEST FIRST` tests with `@bkit-build-plan-tests`, records them failing with `tests red`, and only then writes the fix with `@bkit-build-plan-tasks`. NEVER undo code to force a red.
-**If** the item already has a `Fix task:` line in the decision file → reuse the task it names and write no second block. A resumed pause can reach this step twice.
-Write the item's `Fix task: {N}` line under it in the decision file right after the task block is written or rewritten, before `tests plan-check`, where `{N}` is the number of the task that carries its fix: the rewritten challenge task, the new task block, or the task an existing `Fix task:` line names.
+Write no test and no fix code at this pause: Step 7 writes the new task's `TEST FIRST` tests with `@bkit-build-plan-tests`, records them failing with `tests red`, then writes the fix with `@bkit-build-plan-tasks`. NEVER undo code to force a red.
 **If** the item is a challenge task → rewrite that task in place to the owner's direction:
 Rewrite its `**DONE WHEN:**` and its `**TEST FIRST:**`, with one sub-bullet per test: `` `{test file}` `{test name}` fails on {what goes wrong} ``.
 Rewrite its rows in the `Derived Test Matrix` to match the new `TEST FIRST`.
@@ -10232,25 +10213,20 @@ Keep the task's number, title, group and meta line, `**Fixable:** false` include
 Keep the task open. Step 7 builds the rewritten block.
 **Else** → write a new task block:
 Use the task-block form (`docs/templates/bkit-plan.md` § Agent Execution Runbook), numbered one above the plan's highest task.
-Give it `**DONE WHEN:**` and `**TEST FIRST:**`, with one sub-bullet per test: `` `{test file}` `{test name}` fails on {what goes wrong} ``.
+Give it `**DONE WHEN:**` and a `**TEST FIRST:**` written the same way.
 Add one `Derived Test Matrix` row per test in that `TEST FIRST`: ``| {test name} | {tier} | `{test file}` | {task} |``, with the tier its file's name gives.
 Shape the task by the owner's direction, when the owner gave one.
-Place the task block:
+Place it:
 **If** `From: verify` **and** group `{GROUP}` stays within `MAX_TASKS_PER_GROUP` tasks and `MAX_TESTS_PER_GROUP` `TEST FIRST` tests with it → put it inside group `{GROUP}`.
 **If** `From: verify` **and** it would take group `{GROUP}` over either cap → put it in a new group right after `{GROUP}`. Add 1 to every later group's number, in its markers and its `### TASK GROUP` heading.
-A fix that changes what an earlier task's planned test asserts names that test, with the same file and the same name, on the rewritten or new task's `**TEST FIRST:**` too: the build then takes the test over and records it failing again, and `tests plan-check` lists it under `takeovers`.
+A fix that changes what an earlier task's planned test asserts names that test (same file, same name) on the rewritten or new task's `**TEST FIRST:**` too: the build takes it over and records it failing again, and `tests plan-check` lists it under `takeovers`.
 Then check the plan:
 **If** exit non-zero → **Failure Path** naming each problem in the report.
-Write the decisions into the decision file:
-Under each item the owner answered, add `Decision: {Accept|Fix now} — {owner's words}` only under an item that has none; a reopened file keeps the line it has.
-Under each `Fix now` item, add the `Fix task: {N}` line only if it is still missing after step 5.
-Under the loop question, add `Decision: {Try again|Decide} — {owner's words}`.
-Set `Status: ASSUMED` while any `Decision: Accept (assumed)` line remains, and `Status: DECIDED` otherwise.
 [commits] **If** a `TEST EXCEPTION` was written → commit the plan alone first:
 **If** `From: challenge` **and** either an item was answered `Fix now` **or** a task of `CHALLENGE_TASKS` was not an item:
 `DECISION_ROUTE` = `fix`.
 **If** `DECISION_ROUTE` = `retry` **and** `From: holistic` → Step 10 sub-step 9.
-**If** `DECISION_ROUTE` = `holistic` → Step 7, which runs a takeover group a holistic fix added and goes straight to Step 10 when no group is open.
+**If** `DECISION_ROUTE` = `holistic` → Step 7, which runs a takeover group a holistic fix added, else goes to Step 10.
 Used-up verify, holistic or tests loop given its allowance on a go-on answer (`counters grant`)
 Derive the attempt the holistic report is named for:
 **If** `HOLISTIC_VERDICT` = CONCERNS **and** `HOLISTIC_FAILURES` = 0 **and** `GATE_VERDICT` != FAIL → Step 11. No gap is open: the report's concern is a group count, which the summary lists.
@@ -10273,7 +10249,7 @@ No-progress holistic round routed
 **Else** → `CHALLENGE_ROUND` = `CHALLENGE_ROUND` + 1.
 **If** any item was answered `Fix now` → `DECISION_ROUTE` = `fix`.
 **If** the loop question was answered `Try again` → `DECISION_ROUTE` = `retry`.
-**If** `From: verify` **or** `From: holistic` → ask the engine whether the answers settle the check, so the run can skip its re-run. It reads the decision file's header and answers:
+**If** `From: verify` **or** `From: holistic` → ask the engine whether the answers settle the check, so the run can skip its re-run:
 **If** exit 1 → keep the re-run: the next rule sets the route. The printed fact says why the check runs again.
 **If** `From: verify` → `DECISION_ROUTE` = `verify`.
 **If** `From: summary` → `DECISION_ROUTE` = `summary`.
@@ -10287,22 +10263,18 @@ No-progress holistic round routed
 **If** `DECISION_ROUTE` = `retry` **and** `From: verify` → Step 9.
 **If** `DECISION_ROUTE` = `retry` → Step 13.
 **If** `DECISION_ROUTE` = `continue` **and** `From: holistic` → Step 11.
-**If** `DECISION_ROUTE` = `continue` **and** `From: verify` → run `"{BKIT}" tasks tick --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --group={GROUP} --decision="docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-{DECISION}.md"` again (it ticks nothing twice), **If** exit != 0 → **Failure Path**, else Step 7.
+**If** `DECISION_ROUTE` = `continue` **and** `From: verify` → run step 6's verify `tasks tick` again (it ticks nothing twice), **If** exit != 0 → **Failure Path**, else Step 7.
 **If** `DECISION_ROUTE` = `verify` → re-run Step 8.
 **If** `DECISION_ROUTE` = `summary` → Step 15.
-[workflow-pushes] Record the wait (step 4 `owner-pause` block). Create `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md` = the decision file plus the line `Stopped by the owner ({RUNTIME}); run stays IN_PROGRESS. /bkit-build {REF} resumes at this pause.`; `REF` empty → `{FID}`. Then keep the record:
+[workflow-pushes] Record the wait (step 4 `owner-pause` block). Create `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md` = step 4's message, word for word, then the decision file, plus the line `Stopped by the owner ({RUNTIME}); run stays IN_PROGRESS. /bkit-build {REF} resumes at this pause.`; `REF` empty → `{FID}`. Then keep the record:
 [workflow-pushes] **If** `PUBLISH` = false → keep the record in the kept worktree, linked by branch, and NEVER pass `--push`:
 [workflow-pushes] **Else** → push the record, but NEVER onto a branch with an open PR:
 Release the lock. NEVER run `workflows fail`:
 Verify or holistic pause routed `continue` only when `decisions skip` exited 0: the accepted tasks ticked (`tasks tick --decision`, made before the decision is recorded), then holistic to Step 11 and verify to Step 7, with no new verify round
-Red gate checked against the base commit (`tests base`), its verdict in the decision file
-Decision file written (`decisions compose`)
+Red gate checked against the base commit (`tests base`); counts written (`decisions counts`); decision file checked (`decisions check`)
 Questions asked in the session, or recommendations taken (`decisions apply --by=headless`)
 Hard blockers asked in a session, or sent to the Failure Path when headless
-Acceptances written only on the owner's approval
-Assumed acceptances left without a ledger row or `TEST EXCEPTION`
-Fix now tasks shaped to the owner's direction, each named on a `Fix task` line in the decision file
-Fix now tasks checked (`tests plan-check`)
+Acceptances written only on the owner's approval; assumed ones left without a ledger row or `TEST EXCEPTION`
 Resolve the repo, the branch and how far the branch is behind `dev`:
 **If** `open` > 0 → **Failure Path** naming the open `blockers`.
 **If** exit 80:
@@ -10337,7 +10309,7 @@ Base commit resolved, or the missing anchor named as the skip
 Plan not revised
 Plan-currency advisory emitted where needed
 New skills installed
-Each task group gets its own pass of Steps 7-9, in group order. Step 7 briefs the first group with an open task, writes its planned tests, records them red and then writes its code; Step 8 verifies that group's own diff, and Step 9 closes its gaps. Attempt budgets count per group (`--group`). Per-group files are named `{step}-{GROUP}-{ATTEMPT}.md`. When no group is left open → Step 10.
+Each task group gets its own pass of Steps 7-9, in group order. Step 7 briefs the first group with an open task, writes its planned tests, records them red, then writes its code; Step 8 verifies that group's own diff, and Step 9 closes its gaps. Attempt budgets count per group (`--group`). Per-group files are named `{step}-{GROUP}-{ATTEMPT}.md`. When no group is left open → Step 10.
 Brief the first group with an open task. An open task is one neither ticked `[x]` nor logged `DONE` in a `build-plan-tasks-*-log.md`.
 Once per run, first: **If** the session prompt (`{SESSION_DIR}/prompt.md`) carries run instructions beyond naming the issue, such as a redo, a resume or a constraint → write them word for word to `{SESSION_DIR}/brief-note.md`.
 Hold `artifact` as `BRIEF`, `group` as `GROUP` and `tasks` as `GROUP_TASKS`. **If** `GROUP` = null → Step 10.
@@ -10401,7 +10373,6 @@ Tick each group's satisfied tasks, with one call per task group. Set `{GROUP}` t
 Run the holistic gate on every round: the static checks and the unit tier for the files changed since its newest passing run or its fix run's, from the feature's start commit when there is none. **If** `HOLISTIC_ATTEMPT` is not held (a resume re-runs the gate) → read the last holistic round's attempt back:
 **If** exit 0 **or** 1 → hold `verdict` as `GATE_VERDICT` and `scope` as `TEST_SCOPE` → sub-step 6.
 Subagent invoked (`@bkit-build-plan-verify`, holistic, no inline work)
-Once the subagents return, render each challenge report from its result. **If** `CHALLENGE_SIZE` = small → render only `bkit-build-challenge-2`:
 Set the challenge round — first match wins:
 **If** `CHALLENGE_DONE` = true → Step 12.
 **If** `CHALLENGE_ROUND` is held → keep it, skip the `status resume` block below, and read the round limit.
@@ -10476,6 +10447,12 @@ Labels re-read before the close commit
 Lock released
 PR created
 **If** `PAUSE_QUESTION` = `CHANGED_TESTS` → write one item per entry of `CHANGED_TESTS`, titled with its task number and test name. Each item is a planned test a code step had to change, with the step's reason and the entry's `diff` (the test's own-line diff since its baseline, shown in a diff fence). Options `Accept` and `Stop`, recommended `Accept`. Its question ends `Accept the change?`
+**If** the file is a reopened `DECIDED` / `ASSUMED` one → an item `"{BKIT}" decisions answers --file=…` lists as answered was applied in an earlier pass: write nothing already written — no second `docs/decisions.jsonl` row, no second title suffix, no second `TEST EXCEPTION`; a plan tick already made stays.
+**If** `decisions answers` already lists the item with a `fixTask` → reuse that task and write no second block.
+Right after the task block is written or rewritten, before `tests plan-check`, record `{N}`, the task that carries the fix. Drop `--answer` when `decisions answers` already lists the item answered `Fix now`:
+Write the decisions through the engine. **If** an owner answer is left that step 5 did not record → one call naming each such question (`Q1` = the loop question on a loop pause, answered `Try again`, `Decide` or `Stop`; else the first item). **Else** → skip the call:
+**If** it exits non-zero → **Failure Path**. **If** the owner answered → append `Owner ({YYYY-MM-DD}):` and the owner's reply, each line `> `-quoted, to the decision file with the file tool.
+Fix now tasks shaped to the owner's direction, each recorded with `--fix-task`, and checked (`tests plan-check`)
 **If** `CHANGED_TESTS` is not empty **and** no decision file holds the line `Question: CHANGED_TESTS` → `PAUSE_STEP` = 15, `PAUSE_POINT` = `build.verify`, `PAUSE_QUESTION` = `CHANGED_TESTS` → **Decision Pause**. Headless, it takes `Accept (assumed)` for each test, and ship asks the owner to confirm them.
 Changed planned tests asked once, or none left
 Read the takeover group whose tests are not recorded yet:
@@ -10591,7 +10568,8 @@ Current round artifact checked
 [provider-data] **For each** entry in `FETCH_BLOCKS` (`{IDX}` = its `idx`):
 Take its `body` as the starting template, and customise it for the failure (severity, freshness, limit, query, filters).
 **If** `{DEBUG_ATTEMPT}` > 1 → vary the customisations from prior attempts.
-Run it through the block below. The block writes stdout fenced as the context artifact (a JSON list of flat rows as a table), or else the `[context-fetch:<name>]` skip breadcrumb:
+Write the customised block with the file tool to `docs/plans/{YYYYMM}/logs/{FID}/context-fetch-{DEBUG_ATTEMPT}-{IDX}.sh`.
+Run the call below; it writes stdout fenced as the context artifact (a JSON list of flat rows as a table), or else the `[context-fetch:<name>]` skip breadcrumb:
 [honest-reporting; command-output] Confirm the current Step 3 artifact. When `TEST_SOURCE` = ci, narrate the selected identity and that no local gate executed; do not label it local output. Otherwise confirm the local-test artifact. Do not re-run the tests here:
 **If** `docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md` is non-empty → narrate `[bkit-debug] local test output CHECKED — captured by Step 3`.
 [empty-is-inconclusive] **Else** → narrate `[bkit-debug] local test output MISSING — Step 3 captured nothing; treat local-test evidence as unavailable, never as clean`.
@@ -10794,7 +10772,7 @@ Save the active knowledge rows for the reviewers, who have no shell:
 [prs] **Scope:** Merge the feature's PR into the default integration branch.
 [commits; docs-commits; workflow-pushes] **Status branch:** From Step 2 all steps write `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` (`{STATUS}`); `BOOK_ROOT` = `{WORKTREE_PATH}`. Stage path-scoped via `bkit ledgers commit`; NEVER stage all files (`-A`) or blanket `docs/`. One commit per flush block: Commit + Push Bookkeeping → `docs({FID}): ship bookkeeping bkit [skip ci]` → push `{SHIP_BRANCH}` (pre-merge: docs, logs, ledgers, skill removals); Close Workflow → `docs({FID}): ship DONE bkit [skip ci]`, **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]` → push `dev` from a throwaway `origin/dev` checkout; a refused close push → close PR.
 **Single-write contract:** Every step before the flush creates no git object. Never route back to the **Failure Path**: log the error and continue to the flush.
-**If** exit 6 (a refused `--next-step`, including an unsubstituted placeholder, which no other usage error shares) → the value was refused before any write: clear `NEXT_STEP` and run the block again without `--next-step`, then route on that exit.
+**If** exit 6 (`--next-step` refused before any write, an unsubstituted placeholder included; no other usage error shares it) → clear `NEXT_STEP`, run the block again without `--next-step`, then route on that exit.
 **If** exit non-zero → log `Lock removal failed` with the printed `lock` to stderr, then continue.
 **If** `SUMMARY_VERDICT` = FAIL → read `{WORKTREE_PATH}/docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md` now, because the flush removes the worktree.
 **If** the push failed → do not claim success on the tracker.
@@ -10831,7 +10809,6 @@ Then `Recommended: none — only you can accept it`, then `Default if unanswered
 End the message with the line `Reply with a letter per question. Ship merges either way; anything you do not confirm is written as a needs-decision deferral.`
 Then record the wait → end turn → wait for answers:
 Record each reply before anything else, then write each answer. `{FILE}` and `{Q}` = the entry's `file` and `q`. "yes" answers no question here:
-**If** the answer is `Confirm` → write it:
 **If** the answer is `Reject` → the same command and exit check with `--reject` in place of `--confirm`.
 **Else** → ask again once the other entries are written → record the wait (step 2) → end turn.
 Write a `needs-decision` deferral for every item still not confirmed:
@@ -10930,6 +10907,7 @@ Hold the same route, reason, verdict, failures and state as the gh-backed result
 Close the run. The block keeps the summary in the outbox, lands `docs({FID}): ship DONE bkit [skip ci]` on `dev` (a refused push opens a `ship-close/{FID}` PR), releases the lock, and returns to `REPO_ROOT`. Guarded cleanup removes only a clean worktree and a local branch whose inspected content is landed, binding local deletion to the inspected tip. It preserves dirty or unlanded work and reports retained paths/refs. The remote feature branch is deleted only at its inspected landed tip and retained when origin refuses that conditional deletion; this does not block close-record landing or lock release. Repository-managed automatic branch deletion is a separate GitHub setting outside this cleanup guarantee:
 Guarded cleanup and retained paths/refs reported, back in the repo root
 **If** `state` = MERGED → record the resume marker → Step 11:
+**If** the answer is `Confirm`:
 **If** `state` = MERGED → Step 11.
 **Else** → terminal stop → **Failure Path**, naming `MERGE_REASON`. Each attempted merge is counted by its one `ship-merge-pr` row; each refused gate is counted by its one `ship-gate-refusal` row. Do not add another refusal row for either event.
 **If** the answer is `Try again` → give the merge step one more full allowance, then clear `LIMIT_NEXT` and `NEXT_STEP` and go to the step `LIMIT_NEXT` named:
@@ -10990,6 +10968,8 @@ Tick steps `[x]` only once their `Done when` holds against the repo.
 **Else** → `Checked`.
 Do not invent findings for absent surfaces.
 Populate `Findings`, with IDs `{slug}-{n}`.
+Fill `Key` with `new` or the `key` of an open row, so the same problem keeps one ledger row across runs.
+**If** an open row with `key` prefix `audit-{slug}-` names the same problem → `Key` = its `key`.
 Populate `Report` from the steps that feed each section:
 `Suggested Issues`: group `Findings` into issues to create, one row per change landed in one go.
 Group by shared root cause, then module, then fix, never by severity alone.
@@ -11005,12 +10985,6 @@ The change is clear → `/bkit-build`.
 **If** the template audits `docs/failures.jsonl` or `docs/deferrals.jsonl` → skip this step.
 Complete the report first.
 Same problem = the same defect at the same `file:line`, test title, or error signature. A finding that only cites an open row's `file:line` is a different problem.
-For each `MEDIUM`+ finding:
-[discovered-bugs] **If** an open row names the same problem → reuse its `key`, with the higher of the finding's and the row's `severity`.
-**Else** → a new `key` `audit-{slug}-{content-slug}`, never the finding ID.
-For each `LOW` finding:
-[discovered-bugs] **If** an open row names the same problem → reuse its `key`, and keep the row's `severity`.
-**Else** → a new `key` `audit-{slug}-{content-slug}`, with `severity: "LOW"`.
 Never lower a row's `severity` from an audit run.
 For each open row with `key` prefix `audit-{slug}-` that no finding matches:
 **If** its surface was checked this run → `CLOSED`.
@@ -11065,7 +11039,8 @@ Post the comment:
 Read the `.agents/docs.md` index, and load the project documents the audit's surface needs, with or without a plan: `docs/architecture.md` for structure and boundaries, `docs/technology.md` for stack choices, `docs/security.md` for trust boundaries, `docs/testing.md` for test and gate rules, plus `docs/data-schema.md`, `docs/design.md`, `docs/observability.md`, `docs/deployments.md`, `docs/noise.md` or `docs/setup.md` when the audit's surface touches them.
 Safeguards that need genuine evidence stay in force (secrets, permissions, untrusted input).
 Write ledger entries to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom).
-Serialize the findings once: write the audit result JSON `{slug, status, report, findings: [{severity, title, location, priorKey}], notChecked}` (plus `stopped`, `overview`, `issue`, `parent` when they apply) to a scratch file, then render the summary with `bkit steps stub --agent=bkit-audit-generate --result-file=<json> --to=<Create>`. A report that already exists at `<Create>` is never overwritten: the summary goes to `<json>`'s sibling `.summary.md` (printed as `file`). The engine assigns the finding IDs, the totals and the header, and prints `ledgerRows` for the append below. Leave `priorKey` out for a new problem; the engine derives its `key`.
+Run `bkit ledgers findings --report=<Create>` and append its printed `ledgerRows`. The engine reads the `Findings` table, so the rows match the report. **If** it exits non-zero → fix the table row it names and run it again.
+**Else** → `Key` = `new`; the engine derives `audit-{slug}-{content-slug}`.
 Open rows = the winners of `bkit ledgers query --ledger=failures` (follow `nextCursor` until it is null, then route on `coverage.status`: `missing` = the ledger has no rows, `partial` = use the rows and report the diagnosed lines, `unreadable` = stop and report), `status` != `CLOSED`, covering every `key`, whichever workflow wrote it.
 ```
 
@@ -11337,8 +11312,8 @@ Log each integration gap as one gap: append `INTEGRATION: {what does not work to
 A gap you leave `Fixable: false` is a `FAIL`.
 For each task, check that the codebase satisfies its `DONE WHEN` (a file exists, a signature matches, a test passes, a behaviour shows) and that the task has no test-first audit gap:
 `BLOCKED` log lines, `docs/deferrals.jsonl` rows and out-of-scope notes never satisfy it.
-A gap that a supplied decision record accepts (`Decision: Accept` or `Decision: Accept (assumed)`) is no gap. Name the record in `Notes`.
-**If** the accept is `Decision: Accept (assumed)` → add `assumed, not the owner's acceptance` to that note, because an assumed accept is taken without the owner.
+A gap that a supplied decision record accepts (per `bkit decisions answers --file=<the record>`) is no gap. Name the record in `Notes`.
+**If** it shows `assumed: true` → add `assumed, not the owner's acceptance` to that note, because an assumed accept is taken without the owner.
 **If** the task is satisfied → name its number on the header's `Tasks` line. The workflow ticks the plan.
 **If** the task is not satisfied, or its work is missing:
 Leave it off that line, and append its log entry.
@@ -11353,9 +11328,6 @@ Set `Verdict` from the `Fixable` values you decided, never from the report's `nu
 **If** any unresolved gap is `Fixable: true` → `CONCERNS`.
 **If** `Mode` = `Holistic` **and** the `Groups Verified` count differs from the plan's group count → `CONCERNS`.
 **Else** → `PASS`.
-Put `Tasks` and `Loosened` in `judgments`, because the engine never derives them and the workflow reads them from the header.
-Put the `## Identified Gaps Log` section, with one `TASK {N}` line per gap, in `body`, because the remediate step reads it from the report.
-The engine never overrides a `Verdict` that depends on evidence: `CONCERNS` and the `Loosened` decision stay yours.
 `Changed by a code step` section → list each test and its reason in `Notes`; its entry carries the engine's line diff since its baseline, and you read the added lines of that diff the way the `Updated tests` rule reads an update.
 **If** the added lines only add setup or expectations → No gap, because the owner answers the change once, at the end of the build.
 **Else** → an added line disables or loosens the test (an early `return`, a skip, a comment pair around assertions, `expect.assertions(0)`, a reassignment of the value under test):

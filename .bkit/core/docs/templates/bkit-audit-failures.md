@@ -193,9 +193,9 @@ Each incident needs a written postmortem, with at least one action that prevents
 Within a severity, list the oldest `firstTs` first, using `ts` where `firstTs` is absent. A finding keeps its severity when it becomes a ledger row or an issue. A row's severity is its ledger `severity`, or the one its verdict assigned.
 
 <!-- prettier-ignore -->
-| ID | Severity | Verdict | Location | Evidence | Expected |
-| --- | --- | --- | --- | --- | --- |
-| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
+| ID | Severity | Title | Verdict | Location | Evidence | Expected | Key |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 **If** the run finds nothing → write one row: `None`.
 

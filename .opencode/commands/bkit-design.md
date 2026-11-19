@@ -48,7 +48,7 @@ $ARGUMENTS
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Friction:** Watch own context and subagent returns for manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) → continue or escalate; `status row --type=owner-pause` logs each owner pause itself, so do not log one; logging does not replace **Failure Path**.
-- **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, checks artifacts and row, writes the row, commits, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Exit 8 → nothing written, nothing committed: fix what the hook's message names, then re-run this block — the step's attempt is unchanged. Hold `verdict` as the step's verdict, `fields` as its other header fields.
+- **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, checks artifacts and row, writes the row, commits, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' was refused: <problem>. Fix that in the file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Exit 8 → nothing written, nothing committed: fix what the hook's message names, then re-run this block — the step's attempt is unchanged. Hold `verdict` as the step's verdict, `fields` as its other header fields.
 - **Resume:** After Step 2, `"{BKIT}" status resume --workflow=design --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up — after its last `DONE` step; Steps 1-2 run again on every resume, and rows of steps this workflow no longer has are ignored → continue at Step `number`.
 - **Status:** `status.jsonl` = append-only NDJSON event log, one event per line. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`, or a word the step's agent adds, e.g. execute's `HANDOVER`), `failures`, `attempt`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 - **Locks:** Step 1 takes `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` with `bkit locks acquire --kind=workflow` (hold `token`); release in last step with `bkit branches land` and in Failure Path with `bkit workflows fail`; a lock left in place → **Failure Path** with `Lock removal failed`. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → `locks acquire` exits 8 and the run stops without the **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed.
@@ -74,9 +74,9 @@ $ARGUMENTS
 
 ## 🤖 Failure Path
 
-1. Write the error message / tool response to `{OUTBOX_ROOT}/error.md` (`--error-file` dropped while `{OUTBOX_ROOT}` is not held). `{STDERR_FILE}` = `{OUTBOX}/stderr.log` holding the failed shell command's stderr — drop `--stderr-file` when the failure was not a shell command or `{OUTBOX}` is not set yet; drop `--token` when `{LOCK_TOKEN}` is empty; `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry. Record the failure, abort any rebase, release the lock, delete the session folder (drop `--session-dir` while `{SESSION_DIR}` is not held):
+1. Write the error text with the file tool to `{LOG_DIR}/{workflow}-error.md` (ship: `{WORKTREE_PATH}/docs/plans/{YYYYMM}/logs/{FID}/ship-error.md`). `{STDERR_FILE}` = `{LOG_DIR}/{workflow}-stderr.md`, the last 20 lines of stderr — drop `--error-file` and `--stderr-file` while `{LOG_DIR}` is not held, `--stderr-file` also when no shell command failed; drop `--token` when `{LOCK_TOKEN}` is empty; `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry. Record the failure, abort any rebase, release the lock, delete the session folder (drop `--session-dir` while `{SESSION_DIR}` is not held):
    ```bash
-   "{BKIT}" workflows fail --post --issue="{ISSUE_ID}" --workflow=design --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} {LABEL_FLAGS} --step-number={N} --step-title="{Step Name}" --sub-step={M} --error-file="{OUTBOX_ROOT}/error.md" --stderr-file="{STDERR_FILE}" --session-dir="{SESSION_DIR}"
+   "{BKIT}" workflows fail --post --issue="{ISSUE_ID}" --workflow=design --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} {LABEL_FLAGS} --step-number={N} --step-title="{Step Name}" --sub-step={M} --error-file="{LOG_DIR}/design-error.md" --stderr-file="{LOG_DIR}/design-stderr.md" --session-dir="{SESSION_DIR}"
    ```
    Route:
    - **If** exit 0 **or** 5 → hold `labels` as `LABELS`, `trackerState` as `TRACKER_STATE` → step 2.
@@ -362,17 +362,10 @@ $ARGUMENTS
      Context: You are a subagent in the Design phase running in parallel with another agent. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`.
-     Result: `{OUTBOX}/design-review-1-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
    - **Subagent:** Invoke `/bkit-design-review-2` using `subagent` tool:
      Context: You are a subagent in the Design phase running in parallel with another agent. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md`.
-     Result: `{OUTBOX}/design-review-2-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
-     Once both subagents return, render the two design reviews from their results:
-   ```bash
-   "{BKIT}" steps stub --agent=bkit-design-review-1 --result-file="{OUTBOX}/design-review-1-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md"
-   "{BKIT}" steps stub --agent=bkit-design-review-2 --result-file="{OUTBOX}/design-review-2-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md"
-   ```
 2. Wait for all subagents to complete, then finish — `verdict` = worst of the two (`FAIL > CONCERNS > PASS`):
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=design --step=design-review --attempt=1 --agent=bkit-design-review-1 --agent=bkit-design-review-2 --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md --message="chore({FID}): design-review" --number=6 --post --title="Design Review"
@@ -399,11 +392,6 @@ $ARGUMENTS
    Context: You are a subagent in the Design phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Write throwaway probe code only under `docs/plans/{YYYYMM}/logs/{FID}/spike/`. Never modify tracked source outside that directory.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-spike.md`.
-   Result: `{OUTBOX}/design-spike-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
-   Once the subagent returns, render the spike report from its result:
-   ```bash
-   "{BKIT}" steps stub --agent=bkit-design-spike --result-file="{OUTBOX}/design-spike-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/design-spike.md"
-   ```
 2. Finish — refuses (exit 9) probe files outside the artifact tree:
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=design --step=design-spike --attempt=1 --agent=bkit-design-spike --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-spike.md --docs-only --message="chore({FID}): spike" --number=7 --post --title=Spike --link-ref=dev

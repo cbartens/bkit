@@ -94,6 +94,7 @@ console.log("consumer checks passed");
     `# Context\n<!-- bkit:end -->\n<!-- context-fetch:start github context=ci -->\n\n\`\`\`bash\n${ci}\`\`\`\n<!-- context-fetch:end -->\n`,
   );
   const script = write("bin/context.sh", ci);
+  for (const attempt of [1, 2, 3]) write(`${LOG}/context-fetch-${attempt}-1.sh`, ci);
   const status = write(
     `${LOG}/status.jsonl`,
     JSON.stringify({ type: "workflow-started", workflow: "debug", at: "2026-11-01T00:00:00Z" }) +

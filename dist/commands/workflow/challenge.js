@@ -26,7 +26,7 @@ import { appendLine, statusTimestamp } from "../../ledgers/status.js";
 import { CommandError, DEV, EXIT, git, runGit } from "../lib.js";
 import { EXIT_BASE, diffNumstat } from "./context.js";
 import { defaultRange } from "./feature-base.js";
-import { parseDecisionItems } from "./open-decision.js";
+import { decisionItems } from "./open-decision.js";
 import { EXIT_ROW_REFUSED, EXIT_STAGE, appendLedgerRows } from "./ledgers.js";
 import { derivedTestMatrix, parsePlanBlocks, testTier } from "./plan-blocks.js";
 import { readBkitConfig } from "../../shared/settings.js";
@@ -97,13 +97,34 @@ export function normalizeLocation(raw, cwd) {
 }
 /** The header line `{name}: value` above `<!-- verdict:end -->`, or undefined. */
 const headerValue = (text, name) => new RegExp(`^${name}:\\s*(\\S+)`, "m").exec(text.split("<!-- verdict:end -->")[0])?.[1];
-/** The `## Findings Log` section of a report and its first line's number (1-based); "" when none. */
-function findingsLog(text) {
+/** For each line, whether it sits inside a code fence (the fence lines themselves count as inside). */
+function fencedLines(lines) {
+    let open = false;
+    return lines.map((l) => {
+        const fence = /^\s*(```|~~~)/.test(l);
+        if (fence && open) {
+            open = false;
+            return true;
+        }
+        if (fence)
+            open = true;
+        return open;
+    });
+}
+/** `text`'s lines that sit outside code fences. */
+export const unfencedLines = (text) => {
     const lines = text.split("\n");
-    const start = lines.findIndex((l) => /^## Findings Log\b/.test(l));
+    const fenced = fencedLines(lines);
+    return lines.filter((_, i) => !fenced[i]);
+};
+/** The section of a report under `heading` (`## Name`) and its first line's number (1-based); "" when none. A fenced `## ` line neither starts nor ends a section. */
+export function reportSection(text, heading) {
+    const lines = text.split("\n");
+    const fenced = fencedLines(lines);
+    const start = lines.findIndex((l, i) => !fenced[i] && (l === heading || l.startsWith(`${heading} `)));
     if (start < 0)
         return { body: "", line: 0 };
-    const end = lines.findIndex((l, i) => i > start && /^## /.test(l));
+    const end = lines.findIndex((l, i) => i > start && !fenced[i] && /^## /.test(l));
     return { body: lines.slice(start + 1, end < 0 ? undefined : end).join("\n"), line: start + 2 };
 }
 /** The group wrapper a Findings Log gets when the reviewer wrote task blocks only. */
@@ -116,7 +137,7 @@ const WRAP = ["<!-- bkit:group 1 start -->", "### TASK GROUP 1: Findings"];
  * task lines included), or a block missing one of those fields.
  */
 export function parseFindings(text, source, cwd) {
-    const log = findingsLog(text);
+    const log = reportSection(text, "## Findings Log");
     const wrapped = !/<!--\s*bkit:group\s/.test(log.body);
     const body = wrapped ? [...WRAP, log.body, "<!-- bkit:group 1 end -->"].join("\n") : log.body;
     const blocks = parsePlanBlocks(body);
@@ -188,7 +209,10 @@ export function acceptedLocations(logDir, cwd) {
         ? fs.readdirSync(logDir).filter((f) => /^build-decision-.*\.md$/.test(f))
         : [];
     for (const file of files) {
-        const items = parseDecisionItems(fs.readFileSync(path.join(logDir, file), "utf-8"));
+        const items = decisionItems((rel) => {
+            const abs = path.join(logDir, rel);
+            return fs.existsSync(abs) ? fs.readFileSync(abs, "utf-8") : null;
+        }, file);
         for (const item of items) {
             if (!/^Accept\b/.test(item.decision ?? ""))
                 continue;
@@ -212,62 +236,6 @@ const taskBlock = (n, f, round) => [
     ...f.tests.map((e) => `    - ${e}`),
     `<!-- bkit:task ${n} end -->`,
 ];
-/**
- * Findings given as structured data (a step result file), checked by the rules
- * {@link parseFindings} applies to a written report. Severity, fixable, location and
- * done-when are the reviewer's judgments: a missing one is refused, never defaulted.
- * Throws a CommandError (EXIT_OLD_FORMAT) naming the finding and field.
- */
-export function structuredFindings(input, cwd) {
-    if (!Array.isArray(input))
-        throw new CommandError(EXIT_OLD_FORMAT, "findings must be an array");
-    return input.map((raw, i) => {
-        const refuse = (why) => new CommandError(EXIT_OLD_FORMAT, `finding ${i + 1} ${why}`);
-        if (raw === null || typeof raw !== "object" || Array.isArray(raw))
-            throw refuse("is not an object");
-        const f = raw;
-        if (!SEVERITY_ORDER.includes(f["severity"]))
-            throw refuse("has no severity CRITICAL|HIGH|MEDIUM|LOW");
-        if (typeof f["fixable"] !== "boolean")
-            throw refuse("has no fixable true|false");
-        const location = normalizeLocation(typeof f["location"] === "string" ? f["location"] : "", cwd);
-        if (location === null)
-            throw refuse("has no location path:line");
-        if (typeof f["doneWhen"] !== "string" || f["doneWhen"].trim() === "")
-            throw refuse("has no doneWhen");
-        const tests = f["tests"] ?? [];
-        if (!Array.isArray(tests) || tests.some((t) => typeof t !== "string"))
-            throw refuse("has tests that are not an array of strings");
-        if (f["cls"] !== undefined && typeof f["cls"] !== "string")
-            throw refuse("has a non-text cls");
-        // Each value renders into one line of the task block: a line break would forge plan lines.
-        const lineBreak = /[\r\n]/;
-        for (const field of ["title", "cls", "doneWhen"]) {
-            const v = f[field];
-            if (typeof v === "string" && lineBreak.test(v))
-                throw refuse(`has a ${field} that must be a single line`);
-        }
-        const brokenTest = tests.findIndex((t) => lineBreak.test(t));
-        if (brokenTest !== -1)
-            throw refuse(`has tests entry ${brokenTest + 1} that must be a single line`);
-        const title = typeof f["title"] === "string" && f["title"] !== "" ? f["title"] : "";
-        return {
-            severity: f["severity"],
-            ...(typeof f["cls"] === "string" && f["cls"] !== "" ? { cls: f["cls"] } : {}),
-            fixable: f["fixable"],
-            location,
-            title: title || `Challenge finding at ${location}`,
-            doneWhen: f["doneWhen"],
-            tests: tests,
-        };
-    });
-}
-/** The `## Findings Log` section for `findings`, in the task-block form {@link parseFindings} reads. */
-export function renderFindingsLog(findings, round = 1) {
-    return ["## Findings Log", "", ...findings.flatMap((f, i) => [...taskBlock(i + 1, f, round), ""])]
-        .join("\n")
-        .replace(/\n+$/, "");
-}
 /**
  * One `Derived Test Matrix` row per test a finding task appends: the test's own name and
  * file from its `TEST FIRST` entry, its tier from the file's name, and the task number.

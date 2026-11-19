@@ -6,10 +6,13 @@ import { FENCE_CLOSE, FENCE_INSTRUCTION_LINES, FENCE_OPEN } from "./context";
 import { buildSummary, NEXT_STEP, refOf, type SummaryInput } from "./summary";
 
 /** A `read` that serves these files and nothing else. */
+/** Run 1's start row from before the engine marked it (no `decisionLayout`), so a folder's old decision files read as written. */
+const PRE_MARKER_START = `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-10-01T00:00:00Z" })}\n`;
+/** Reads `files`; a `status.jsonl` the test does not give holds `PRE_MARKER_START`. */
 const reader =
   (files: Record<string, string>) =>
   (rel: string): string | null =>
-    files[rel] ?? null;
+    files[rel] ?? (rel.endsWith("status.jsonl") ? PRE_MARKER_START : null);
 
 describe("refOf", () => {
   it("gives #N for a numeric issue segment", () => {
@@ -501,10 +504,10 @@ describe("buildSummary", () => {
       input({
         ...params,
         rows: [challenge],
-        decisionFiles: ["decision.md"],
+        decisionFiles: ["log/build-decision-1-1.md"],
         read: reader({
           ...files,
-          "decision.md":
+          "log/build-decision-1-1.md":
             "Status: DECIDED\n\n**Q1 — Gap:** a.ts:10\nDecision: Accept — known limitation",
         }),
       }),
@@ -727,7 +730,7 @@ describe("buildSummary", () => {
             decisionRow,
           ],
           decisionFiles: [DEC],
-          read: (p: string) => (p === DEC ? decision : null),
+          read: reader({ [DEC]: decision }),
         }),
       );
 
@@ -1522,6 +1525,39 @@ describe("buildSummary", () => {
     );
   });
 
+  it.each([
+    ["VERIFY_GAPS", "verify", 2, false],
+    ["TESTS_LOOP", "tests", 2, false],
+    ["CHALLENGE", "challenge", 1, true],
+  ])(
+    "an uncounted %s pause from %s in a run the engine marked is listed as no decision recorded only when the resume reads it: numbered from Q%s",
+    (question, from, first, listed) => {
+      const rel = "log/build-decision-1-1.md";
+      const pause = [
+        `Question: ${question}`,
+        `From: ${from}`,
+        "",
+        `**Q${first} — Gap:** accept it?`,
+        "A) Accept — the item is recorded as accepted",
+        "B) Fix now — a fix task is added to the plan",
+        "Recommended: A) Accept — minor",
+        "Default if unanswered: the run waits for you; taken as A when nobody can be asked",
+        "",
+      ].join("\n");
+      const start = { type: "workflow-started", workflow: "build", at: "2026-11-19T00:00:00Z" };
+      const s = buildSummary(
+        input({
+          decisionFiles: [rel],
+          read: reader({
+            [rel]: pause,
+            "log/status.jsonl": `${JSON.stringify({ ...start, decisionLayout: "rows" })}\n`,
+          }),
+        }),
+      );
+      expect(s.markdown.includes(`\`${rel}\`: no decision recorded`)).toBe(listed);
+    },
+  );
+
   it("buildSummary reads a lettered decision in a per-line file as Accept", () => {
     const decision = [
       "Status: ASSUMED",
@@ -1875,7 +1911,7 @@ describe("buildSummary", () => {
       step("build-plan-verify", group, "PASS", { failures: 0, artifacts: [VERIFY] }),
     ];
     const verifyFile = (tasks: string) => `Verdict: PASS\nTasks: ${tasks}\n<!-- verdict:end -->`;
-    /** A decision file in the layout `decisions compose` writes; gap items are Q1.. or Q2.. after a loop item. */
+    /** A decision file in the layout the orchestrator writes; gap items are Q1.. or Q2.. after a loop item. */
     const pauseFile = (opts: {
       from?: string;
       group?: string;
