@@ -486,6 +486,17 @@ function putJournalRowsBack(wt, journal) {
     }
     return "";
 }
+/** The feature's outbox folder for a log copy that loses to the integration target's: `dropped-logs/{time}/`. */
+export function droppedLogsDir(root, fid) {
+    return path.join(path.dirname(ownershipMarker(root, fid)), "dropped-logs", new Date().toISOString().replace(/[:.]/g, "-"));
+}
+/** Write `content` to `{keepDir}/{rel}`, never deleted by bkit; returns the kept path. */
+export function keepAside(keepDir, rel, content) {
+    const kept = path.join(keepDir, rel);
+    fs.mkdirSync(path.dirname(kept), { recursive: true });
+    fs.writeFileSync(kept, content);
+    return kept;
+}
 /**
  * Commit what an earlier run left uncommitted in a resumed worktree, so the
  * resume rebase can start: a failed ship's flush lands its record on dev and
@@ -504,13 +515,18 @@ function carryLeftovers(wt, o, log) {
     const dropped = (git(wt, ["ls-files", "--others", "--exclude-standard"]) ?? "")
         .split("\n")
         .filter((f) => logs.test(f) && runGit(wt, ["cat-file", "-e", `${o.onto}:${f}`]).ok);
-    const keepDir = path.join(path.dirname(ownershipMarker(wt, o.fid)), "dropped-logs", new Date().toISOString().replace(/[:.]/g, "-"));
+    const keepDir = droppedLogsDir(wt, o.fid);
     for (const f of dropped) {
         const file = path.join(wt, f);
-        if (git(wt, ["hash-object", "--", f]) !== git(wt, ["rev-parse", `${o.onto}:${f}`])) {
+        if (fs.lstatSync(file).isSymbolicLink()) {
+            // Kept as the link itself, never followed: it may dangle or point at a folder.
             const kept = path.join(keepDir, f);
             fs.mkdirSync(path.dirname(kept), { recursive: true });
-            fs.cpSync(file, kept);
+            fs.symlinkSync(fs.readlinkSync(file), kept);
+            log(`moved ${f} to ${kept}: it is a symlink; ${o.onto}'s copy wins in the worktree`);
+        }
+        else if (git(wt, ["hash-object", "--", f]) !== git(wt, ["rev-parse", `${o.onto}:${f}`])) {
+            const kept = keepAside(keepDir, f, fs.readFileSync(file));
             log(`moved ${f} to ${kept}: it differs from ${o.onto}'s copy, which wins in the worktree`);
         }
         fs.rmSync(file);

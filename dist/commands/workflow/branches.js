@@ -18,7 +18,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { gitEnv } from "../../ledgers/telemetry.js";
 import { actionHash, actionKey, alreadyDone, recordAction, withTargetLock, } from "../../ledgers/status.js";
-import { bodySkipToken, CommandError, DEV, EXIT, ghUnavailable, git, isSharedBranch, OUTPUT_LIMIT, parseJson, repoRoot, runGh, runGit, SKIP_CI_TOKEN, wholeNumber, } from "../lib.js";
+import { bodySkipToken, CommandError, DEV, EXIT, ghUnavailable, git, isSharedBranch, OUTPUT_LIMIT, outboxRel, parseJson, repoRoot, runGh, runGit, SKIP_CI_TOKEN, wholeNumber, } from "../lib.js";
 import { bkitVersionStatus } from "../../shared/bkit-latest.js";
 import { parseBkitVersion, serializeBkitVersion, } from "../../install/version-file.js";
 import { DEV_REFSPEC, fetchDev, landBackoffMs, landDir, pushToDev, sleep } from "../land.js";
@@ -30,11 +30,12 @@ import { EXIT_BASE_NOT_DEV, FORCE_BUILD, closeTransportRow, crossCheckRows, merg
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { appendFeature } from "./roadmap.js";
 import { detect } from "./runtime.js";
+import { FID_PATTERNS } from "./fids.js";
 import { defaultRange } from "./feature-base.js";
 import { stepBase } from "./step-base.js";
 import { readRuns, readStatusRows, readStatusRowsAt } from "./status.js";
 import { declaredName, testSource } from "./test-blocks.js";
-import { addAllButCopied, assertShipEligible, copyExcludes, hasLeftovers, notOnDev, rebaseNoteFile, recordRebase, removeWorktree, worktreeDir, } from "./worktrees.js";
+import { addAllButCopied, assertShipEligible, copyExcludes, droppedLogsDir, hasLeftovers, keepAside, notOnDev, rebaseNoteFile, recordRebase, removeWorktree, worktreeDir, } from "./worktrees.js";
 import { COULD_NOT_RUN_EXIT_CODES, LOCKFILE_REGENERATE, installCommand, scriptCommand, } from "../../shared/package-manager.js";
 import { readPackageJson } from "../../shared/package-json.js";
 import { str } from "./status.js";
@@ -167,11 +168,16 @@ export function embedDocs(top) {
     }
     return out;
 }
+/** A file under the feature's own plan-log folder, or its plan file. */
+function isOwnPlanFile(file, fid) {
+    const esc = fid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`^docs/plans/\\d{6}/(logs/${esc}/.+|${esc}-plan\\.md)$`).test(file);
+}
 /**
  * How a conflicted path may be resolved. Only repo-root lockfiles count: the regenerate
  * runs there. `embeds` is the repo's `embedDocs`.
  */
-export function classifyConflict(file, embeds = new Map()) {
+export function classifyConflict(file, embeds = new Map(), fid) {
     if (Object.hasOwn(REGISTERS, file))
         return "register";
     if (embeds.has(file))
@@ -182,6 +188,8 @@ export function classifyConflict(file, embeds = new Map()) {
         return "lockfile";
     if (LEDGER_PATTERNS.some((re) => re.test(file)))
         return "ledger";
+    if (fid !== undefined && fid !== "" && isOwnPlanFile(file, fid))
+        return "planlog";
     return "refuse";
 }
 /** First-occurrence-wins line de-dup; a non-empty result always ends with a newline. */
@@ -389,15 +397,48 @@ export function recordResolve(top, dev) {
     fs.writeFileSync(path.join(top, INSTALL_RECORD), serializeBkitVersion(merged));
     return { ok: true };
 }
-const NOT_RESOLVABLE = "not an append-only ledger, a recognised lockfile, a generated register, a doc embedding one or the install record";
+const NOT_RESOLVABLE = "not an append-only ledger, a recognised lockfile, a generated register, a doc embedding one, the install record or a plan file of this feature's own branch";
 /** How a rebase settled each kind of conflict, for its log. */
 const REBASE_HOW = {
+    dev: "took the rebase target's copy",
     union: "union (append-only ledger)",
     lockfile: "took rebase target + regenerated",
     register: "took rebase target's copy of a generated register",
     embed: "took rebase target's copy of the generated block, merged the rest",
     record: "merged the install record entry by entry, rebase target's value where both changed",
 };
+/**
+ * Take the integration target's side of a conflicted file and stage it, or `git rm`
+ * it when that side deleted it. `dev` names the stage: `ours` in a rebase,
+ * `theirs` in a merge of origin/dev. The path is a literal name, never a pattern.
+ */
+function takeDevSide(top, file, dev) {
+    const stage = dev === "ours" ? 2 : 3;
+    const literal = (args) => runGit(top, ["--literal-pathspecs", ...args]).ok;
+    const devHasIt = runGit(top, ["cat-file", "-e", `:${stage}:${file}`]).ok;
+    return devHasIt
+        ? literal(["checkout", `--${dev}`, "--", file]) && literal(["add", "--", file])
+        : literal(["rm", "-q", "--", file]);
+}
+/**
+ * Keep the branch's blob of a conflicted plan file under `keepDir()`, the rebase's
+ * `dropped-logs/{time}/` folder: the kept path, or why it could not be kept.
+ */
+function keptBranchCopy(top, keepDir, file, blob) {
+    const content = spawnSync("git", ["cat-file", "blob", blob], {
+        cwd: top,
+        env: gitEnv(),
+        maxBuffer: OUTPUT_LIMIT,
+    });
+    if (content.status !== 0)
+        return { problem: `git cat-file blob ${blob} failed` };
+    try {
+        return { kept: keepAside(keepDir(), file, content.stdout) };
+    }
+    catch (err) {
+        return { problem: err.code ?? "write failed" };
+    }
+}
 /**
  * Drive an in-progress rebase to completion, auto-resolving each stop. Loops
  * because `--continue` replays the next commit, which can conflict in turn; the
@@ -425,18 +466,53 @@ export function resolveRebase(top, onLog = () => undefined) {
         return result;
     };
     const embeds = embedDocs(top);
+    const fid = rebasedFid(top)?.fid;
+    // One `dropped-logs/{time}/` folder per rebase; a later round's copy of an already kept path goes to `round-{N}/` in it.
+    let keepDir;
+    const keptPaths = new Set();
+    const keepDirFor = (f) => {
+        keepDir ??= droppedLogsDir(top, fid);
+        return keptPaths.has(f) ? path.join(keepDir, `round-${result.rounds}`) : keepDir;
+    };
     while (result.rounds < 100) {
         result.rounds++;
+        // Plan files whose branch side (changed or deleted) this round replaced with the target's copy.
+        const replaced = [];
         const conflicts = unmergedPaths(top);
         if (conflicts.length > 0) {
             // Classify the whole set before resolving any of it, so a refused path
             // never leaves half the set rewritten.
-            const refused = conflicts.find((f) => classifyConflict(f, embeds) === "refuse");
+            const refused = conflicts.find((f) => classifyConflict(f, embeds, fid) === "refuse");
             if (refused !== undefined) {
                 return refuse(`REFUSE ${refused} — ${NOT_RESOLVABLE}; routing to Failure Path`, refused, NOT_RESOLVABLE);
             }
             for (const f of conflicts) {
-                const kind = classifyConflict(f, embeds);
+                const kind = classifyConflict(f, embeds, fid);
+                if (kind === "planlog") {
+                    // The commit being replayed (stage 3) may hold build edits the target's
+                    // copy lacks: keep a differing copy aside before the target's copy wins.
+                    // A missing stage is a side that deleted the file.
+                    const stageBlob = (n) => git(top, ["rev-parse", `:${n}:${f}`]) || null;
+                    const branchBlob = stageBlob(3);
+                    const differs = branchBlob !== stageBlob(2);
+                    const keeping = differs && branchBlob !== null
+                        ? keptBranchCopy(top, () => keepDirFor(f), f, branchBlob)
+                        : null;
+                    if (keeping !== null && "problem" in keeping) {
+                        const reason = `the branch's differing copy could not be kept aside (${keeping.problem})`;
+                        return refuse(`REFUSE ${f} — ${reason}; routing to Failure Path`, f, reason);
+                    }
+                    if (keeping !== null)
+                        keptPaths.add(f);
+                    if (!takeDevSide(top, f, "ours")) {
+                        return refuse(`REFUSE ${f} — resolution failed`, f, "resolution failed");
+                    }
+                    result.resolved.push({ path: f, how: "dev" });
+                    if (differs)
+                        replaced.push(f);
+                    log(`RESOLVED ${f} — ${REBASE_HOW.dev}${keeping === null ? "" : `; the branch's differing copy is kept at ${outboxRel(top, keeping.kept)}`}`);
+                    continue;
+                }
                 const settled = kind === "register"
                     ? registerResolve(top, f, "ours")
                     : kind === "embed"
@@ -460,13 +536,15 @@ export function resolveRebase(top, onLog = () => undefined) {
                 log(`RESOLVED ${f} — ${REBASE_HOW[how]}`);
             }
         }
-        // A resolution can empty the commit (both sides appended the same rows);
-        // `--continue` refuses an empty commit, so skip it instead.
+        // A resolution can empty the commit (both sides appended the same rows, or a
+        // plan file took the target's copy); `--continue` refuses an empty commit, so skip it instead.
         if (runGit(top, ["diff", "--cached", "--quiet"]).ok && unmergedPaths(top).length === 0) {
             const skip = quietGit(top, ["rebase", "--skip"]);
             if (skip.ok || unmergedPaths(top).length > 0) {
                 result.skippedCommits++;
-                log("SKIPPED an empty commit (its changes were already on the target)");
+                log(replaced.length > 0
+                    ? `SKIPPED a commit emptied by taking the rebase target's copy of ${replaced.join(", ")}`
+                    : "SKIPPED an empty commit (its changes were already on the target)");
                 // The skip moved on and the next commit conflicted: resolve it next round.
                 if (!skip.ok)
                     continue;
@@ -680,17 +758,21 @@ function rebaseVerb(ctx) {
 }
 /** The branch tip the in-progress rebase started from. */
 function rebaseOrigHead(top) {
+    return readRebaseState(top, "orig-head");
+}
+/** Read one state file of the in-progress rebase, or null. */
+function readRebaseState(top, name) {
     for (const dir of ["rebase-merge", "rebase-apply"]) {
-        const file = git(top, [
-            "rev-parse",
-            "--path-format=absolute",
-            "--git-path",
-            `${dir}/orig-head`,
-        ]);
+        const file = git(top, ["rev-parse", "--path-format=absolute", "--git-path", `${dir}/${name}`]);
         if (file !== null && fs.existsSync(file))
             return fs.readFileSync(file, "utf-8").trim();
     }
     return null;
+}
+/** The feature id of the `feat/{fid}` branch being rebased, or null for any other branch or a suffix that is not a FID slug. */
+function rebasedFid(top) {
+    const m = /^refs\/heads\/feat\/(.+)$/.exec(readRebaseState(top, "head-name") ?? "");
+    return m && FID_PATTERNS.none.test(m[1]) ? { fid: m[1] } : null;
 }
 /** Git collapses a failing pre-push hook's status, so the hook's tests-lock status file alone decides. */
 function runPush(cwd, args, branch) {
@@ -1813,10 +1895,7 @@ function resolvePath(top, file, policy, embeds) {
             return { refused: "outside docs/ and the ledgers" };
         // In a merge `--theirs` is the branch merged in: dev. Dev deleting the file
         // leaves no stage 3, and taking dev's side means deleting it here too.
-        const devHasIt = runGit(top, ["cat-file", "-e", `:3:${file}`]).ok;
-        const ok = devHasIt
-            ? runGit(top, ["checkout", "--theirs", "--", file]).ok && runGit(top, ["add", "--", file]).ok
-            : runGit(top, ["rm", "-q", "--", file]).ok;
+        const ok = takeDevSide(top, file, "theirs");
         return ok ? "dev" : { refused: `taking ${DEV}'s side failed` };
     }
     if (kind === "lockfile") {
@@ -3183,7 +3262,7 @@ export const branchesCommand = {
             run: forceBuildVerb,
         },
         rebase: {
-            summary: "Drive a rebase to completion, auto-resolving ledger (union), lockfile (regenerate), generated-register (take the target's copy, rebuild after), embedded generated-block (take the target's block, merge the rest, rebuild after) and install-record (merge entry by entry, the target's value where both changed) conflicts; refuse and abort on anything else.",
+            summary: "Drive a rebase to completion, auto-resolving ledger (union), lockfile (regenerate), generated-register (take the target's copy, rebuild after), embedded generated-block (take the target's block, merge the rest, rebuild after) and install-record (merge entry by entry, the target's value where both changed) and the feature's own plan files (`docs/plans/{YYYYMM}/logs/{FID}/`, `{FID}-plan.md`; take the target's copy) conflicts; refuse and abort on anything else.",
             use: "workflow",
             flags: [
                 {
@@ -3204,7 +3283,7 @@ export const branchesCommand = {
             ],
             output: {
                 outcome: "resolved | refused (a refused rebase is aborted)",
-                resolved: "conflicts resolved: [{path, how: union|lockfile|register|embed|record}]",
+                resolved: "conflicts resolved: [{path, how: union|lockfile|register|embed|record|dev}]",
                 rebuilt: "a generated register settled on the rebase target's copy, or whose generated block a doc took from the target, rebuilt after the rebase: true (rebuilt; output committed), false (failed: it keeps the target's copy), null (not run: none settled, or its script absent)",
                 skippedCommits: "commits skipped because resolution emptied them",
                 rounds: "resolve rounds run",

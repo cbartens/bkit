@@ -140,6 +140,7 @@ function fixture(): Fixture {
 /** Commit `body` to `file` on origin's `dev`. */
 function advanceDev(f: Fixture, file: string, body: string): string {
   git(f.seed, "pull", "-q", "origin", "dev");
+  fs.mkdirSync(path.dirname(path.join(f.seed, file)), { recursive: true });
   fs.writeFileSync(path.join(f.seed, file), body);
   git(f.seed, "add", file);
   git(f.seed, "commit", "-q", "-m", `dev: ${file}`);
@@ -679,6 +680,76 @@ describe("bkit worktrees setup — mint (resume)", () => {
     },
   );
 
+  describe("a plan-closed branch with a leftover push", () => {
+    const PLAN_LOG = `docs/plans/${MONTH}/logs/${FID}/plan-v2-reviewed.md`;
+    const RULE = "plan file of this feature";
+
+    async function branchesRebase(cwd: string) {
+      const out: string[] = [];
+      const err: string[] = [];
+      const code = await runCommand(["branches", "rebase", "--json"], [branchesCommand], {
+        classicVerbs: new Set(),
+        cwd,
+        io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
+      });
+      return { code, json: out.length ? JSON.parse(out.join("")) : undefined, err: err.join("") };
+    }
+
+    /** The branch holds its own plan log and pushed it; the plan close then put its copy on dev. */
+    function leftoverPush(f: Fixture, branchFiles: Record<string, string>) {
+      for (const [rel, body] of Object.entries(branchFiles)) {
+        fs.mkdirSync(path.dirname(path.join(wtOf(f), rel)), { recursive: true });
+        fs.writeFileSync(path.join(wtOf(f), rel), body);
+        git(wtOf(f), "add", "-f", rel);
+      }
+      git(wtOf(f), "commit", "-q", "-m", "plan: branch copy");
+      expect(g(wtOf(f), "push", "-q", "origin", `HEAD:refs/heads/feat/${FID}`).status).toBe(0);
+    }
+
+    it("a plan-closed branch with a leftover push: branches rebase keeps dev's copy and setup then starts", async () => {
+      const f = await minted();
+      leftoverPush(f, { [PLAN_LOG]: "branch copy\n" });
+      advanceDev(f, PLAN_LOG, "dev copy\n");
+
+      const stopped = await setup(f.repo, "build", "--worktrees");
+      expect(stopped.code).toBe(3);
+      expect(stopped.json).toMatchObject({ rebaseConflict: true });
+      expect(git(wtOf(f), "diff", "--name-only", "--diff-filter=U")).toBe(PLAN_LOG);
+
+      const rebased = await branchesRebase(wtOf(f));
+      expect(rebased.code, rebased.err).toBe(0);
+      expect(rebased.json).toMatchObject({
+        outcome: "resolved",
+        resolved: [{ path: PLAN_LOG, how: "dev" }],
+        refused: null,
+      });
+      expect(rebased.err).toContain(`RESOLVED ${PLAN_LOG} — took the rebase target's copy`);
+      expect(fs.readFileSync(path.join(wtOf(f), PLAN_LOG), "utf-8")).toBe("dev copy\n");
+
+      const started = await setup(f.repo, "build", "--worktrees");
+      expect(started.code, started.err).toBe(0);
+      expect(started.json).toMatchObject({ mode: "resumed", rebaseConflict: false });
+    });
+
+    it("a code conflict beside the plan logs still stops the start, and the reason names the rule", async () => {
+      const f = await minted();
+      leftoverPush(f, { [PLAN_LOG]: "branch copy\n", "a.txt": "feature\n" });
+      advanceDev(f, "a.txt", "dev\n");
+      advanceDev(f, PLAN_LOG, "dev copy\n");
+
+      const stopped = await setup(f.repo, "build", "--worktrees");
+      expect(stopped.code).toBe(3);
+      expect(stopped.json).toMatchObject({ rebaseConflict: true });
+      expect(fs.existsSync(stopped.json.sentinel)).toBe(true);
+
+      const rebased = await branchesRebase(wtOf(f));
+      expect(rebased.code).toBe(3);
+      expect(rebased.json).toMatchObject({ outcome: "refused", refused: "a.txt", aborted: true });
+      expect(rebased.json.reason).toContain(RULE);
+      expect(fs.existsSync(stopped.json.sentinel)).toBe(true);
+    });
+  });
+
   it("rebases onto local dev while it is ahead of origin/dev, without rewriting its commits", async () => {
     const f = await minted();
     git(wtOf(f), "commit", "-q", "--allow-empty", "-m", "feature");
@@ -801,6 +872,55 @@ describe("bkit worktrees setup — mint (resume)", () => {
     expect(kept!.startsWith(path.join(f.repo, ".git", "bkit-outbox", FID))).toBe(true);
     expect(fs.readFileSync(kept!, "utf-8")).toBe("worktree copy\n");
     expect(r.err).not.toMatch(/moved .*same\.md/);
+  });
+
+  it("keeps a dangling untracked symlink among the dropped logs as a link, and still starts", async () => {
+    const f = await minted();
+    const rel = `docs/plans/${MONTH}/logs/${FID}`;
+    const logDir = path.join(wtOf(f), rel);
+    fs.symlinkSync("missing-target.md", path.join(logDir, "link.md"));
+    fs.writeFileSync(path.join(logDir, "ship-summary.md"), "worktree copy\n");
+    fs.mkdirSync(path.join(f.seed, rel), { recursive: true });
+    fs.writeFileSync(path.join(f.seed, rel, "link.md"), "landed link\n");
+    git(f.seed, "add", `${rel}/link.md`);
+    advanceDev(f, `${rel}/ship-summary.md`, "landed copy\n");
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json.carriedDropped).toEqual([`${rel}/link.md`, `${rel}/ship-summary.md`]);
+    const keptLink = /moved \S*link\.md to (\S+link\.md)/.exec(r.err)?.[1];
+    expect(keptLink).toBeDefined();
+    expect(
+      keptLink!.startsWith(path.join(f.repo, ".git", "bkit-outbox", FID, "dropped-logs")),
+    ).toBe(true);
+    expect(fs.lstatSync(keptLink!).isSymbolicLink()).toBe(true);
+    expect(fs.readlinkSync(keptLink!)).toBe("missing-target.md");
+    const keptFile = /moved \S*ship-summary\.md to (\S+ship-summary\.md)/.exec(r.err)?.[1];
+    expect(fs.readFileSync(keptFile!, "utf-8")).toBe("worktree copy\n");
+    expect(fs.readFileSync(path.join(logDir, "link.md"), "utf-8")).toBe("landed link\n");
+  });
+
+  it("keeps an untracked symlink to a folder among the dropped logs as a link, leaving the folder untouched", async () => {
+    const f = await minted();
+    const rel = `docs/plans/${MONTH}/logs/${FID}`;
+    const logDir = path.join(wtOf(f), rel);
+    const target = path.join(path.dirname(f.repo), "linked-folder");
+    fs.mkdirSync(target);
+    fs.writeFileSync(path.join(target, "inside.md"), "inside\n");
+    fs.symlinkSync(target, path.join(logDir, "dir-link.md"));
+    fs.mkdirSync(path.join(f.seed, rel), { recursive: true });
+    advanceDev(f, `${rel}/dir-link.md`, "landed link\n");
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json.carriedDropped).toEqual([`${rel}/dir-link.md`]);
+    const kept = /moved \S*dir-link\.md to (\S+dir-link\.md)/.exec(r.err)?.[1];
+    expect(kept).toBeDefined();
+    expect(fs.lstatSync(kept!).isSymbolicLink()).toBe(true);
+    expect(fs.readlinkSync(kept!)).toBe(target);
+    expect(fs.readdirSync(target)).toEqual(["inside.md"]);
+    expect(fs.readFileSync(path.join(target, "inside.md"), "utf-8")).toBe("inside\n");
+    expect(fs.readFileSync(path.join(logDir, "dir-link.md"), "utf-8")).toBe("landed link\n");
   });
 
   it("resumes when a tracked .env in the copy list differs from the main checkout's, and never commits it", async () => {

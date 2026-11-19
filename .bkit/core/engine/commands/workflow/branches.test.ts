@@ -298,6 +298,30 @@ describe("branches rebase: classification", () => {
     expect(classifyConflict(p)).toBe("refuse");
   });
 
+  it("classifies only the feature's own plan files as the plan-log shape", () => {
+    const fid = "994-x";
+    const none = new Map<string, string>();
+    const own = `docs/plans/202611/logs/${fid}`;
+    expect(classifyConflict(`${own}/plan-v2-reviewed.md`, none, fid)).toBe("planlog");
+    expect(classifyConflict(`${own}/deep/er/notes.md`, none, fid)).toBe("planlog");
+    expect(classifyConflict(`docs/plans/202611/${fid}-plan.md`, none, fid)).toBe("planlog");
+    // The ledger check still wins inside the feature's own folder.
+    expect(classifyConflict(`${own}/status.jsonl`, none, fid)).toBe("ledger");
+    // Another feature, a prefix-sharing id, a sibling doc: no plan-log shape.
+    expect(classifyConflict("docs/plans/202611/logs/995-y/plan-v2-reviewed.md", none, fid)).toBe(
+      "refuse",
+    );
+    expect(classifyConflict(`docs/plans/202611/logs/${fid}-more/plan.md`, none, fid)).toBe(
+      "refuse",
+    );
+    expect(classifyConflict(`docs/plans/202611/${fid}-more-plan.md`, none, fid)).toBe("refuse");
+    expect(classifyConflict(`docs/plans/202611/${fid}-design.md`, none, fid)).toBe("refuse");
+    // Without a feature id, nothing is a plan log.
+    expect(classifyConflict(`${own}/plan-v2-reviewed.md`)).toBe("refuse");
+    expect(classifyConflict(`${own}/plan-v2-reviewed.md`, none)).toBe("refuse");
+    expect(classifyConflict(`docs/plans/202611/${fid}-plan.md`)).toBe("refuse");
+  });
+
   it("matches ledger globs as whole paths: `**` spans any depth, `.` is literal, no prefix match", () => {
     expect(classifyConflict("docs/plans/a/b/c/status.jsonl")).toBe("ledger");
     expect(classifyConflict("docs/plans/status.jsonl")).toBe("refuse");
@@ -999,6 +1023,385 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
     expect(keys.sort()).toEqual(["A", "B", "B3", "C"]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// rebase — a plan-closed branch with a leftover push
+// ---------------------------------------------------------------------------
+
+describe(
+  "branches rebase: plan-closed branch with a leftover push",
+  { timeout: GIT_TIMEOUT },
+  () => {
+    const PC_FID = "994-x";
+    const PC_LOG = `docs/plans/202611/logs/${PC_FID}/plan-v2-reviewed.md`;
+    const PC_PLAN = `docs/plans/202611/${PC_FID}-plan.md`;
+    const PC_RULE = "plan file of this feature";
+
+    /** `branch` carries `featCommits` one by one; `main` holds the plan close's copy. Rebase stopped. */
+    function planClosed(
+      name: string,
+      branch: string,
+      featCommits: Record<string, string>[],
+      main: Record<string, string>,
+    ): string {
+      const dir = makeRepo(name);
+      git(dir, "checkout", "-q", "-b", branch);
+      featCommits.forEach((files, i) => commit(dir, files, `feat ${i + 1}`));
+      git(dir, "checkout", "-q", "main");
+      commit(dir, main, "plan close");
+      git(dir, "checkout", "-q", branch);
+      git(dir, "rebase", "main");
+      return dir;
+    }
+
+    it("takes the rebase target's copy of a plan log both sides added, and completes the rebase", async () => {
+      const dir = planClosed("pc-add", `feat/${PC_FID}`, [{ [PC_LOG]: "branch copy\n" }], {
+        [PC_LOG]: "dev copy\n",
+      });
+      const r = await run(dir, ["rebase"]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({
+        outcome: "resolved",
+        resolved: [{ path: PC_LOG, how: "dev" }],
+        refused: null,
+      });
+      expect(read(dir, PC_LOG)).toBe("dev copy\n");
+      expect(inRebase(dir)).toBe(false);
+      expect(r.err).toContain(`RESOLVED ${PC_LOG} — took the rebase target's copy`);
+    });
+
+    it("takes the target's copy in each round when the branch changed the plan log in a later commit", async () => {
+      const dir = planClosed(
+        "pc-later",
+        `feat/${PC_FID}`,
+        [{ [PC_LOG]: "v1\n" }, { [PC_LOG]: "v2\n" }],
+        { [PC_LOG]: "dev copy\n" },
+      );
+      const r = await run(dir, ["rebase"]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ outcome: "resolved", refused: null });
+      expect(read(dir, PC_LOG)).toBe("dev copy\n");
+      expect(inRebase(dir)).toBe(false);
+      const kept = Array.from(
+        r.err.matchAll(
+          new RegExp(
+            `RESOLVED ${PC_LOG.replace(/[.]/g, "\\.")} — .*the branch's differing copy is kept at (\\S+)`,
+            "g",
+          ),
+        ),
+        (m) => m[1]!,
+      );
+      expect(kept).toHaveLength(2);
+      // `commit` appends, so the second commit's copy is both lines.
+      expect(kept.map((k) => fs.readFileSync(path.resolve(dir, k), "utf-8"))).toEqual([
+        "v1\n",
+        "v1\nv2\n",
+      ]);
+    });
+
+    it("completes the rebase when the branch ends on the same plan-log bytes as the target, emptying its commit", async () => {
+      const branch = `feat/${PC_FID}`;
+      const dir = makeRepo("pc-same");
+      git(dir, "checkout", "-q", "-b", branch);
+      commit(dir, { [PC_LOG]: "v1\n" }, "feat 1");
+      // Replace (not append) so the branch tip ends on the target's exact bytes.
+      fs.writeFileSync(path.join(dir, PC_LOG), "dev copy\n");
+      git(dir, "add", "-A");
+      git(dir, "commit", "-q", "-m", "feat 2");
+      git(dir, "checkout", "-q", "main");
+      commit(dir, { [PC_LOG]: "dev copy\n" }, "plan close");
+      expect(git(dir, "rev-parse", `${branch}:${PC_LOG}`).out).toBe(
+        git(dir, "rev-parse", `main:${PC_LOG}`).out,
+      );
+      git(dir, "checkout", "-q", branch);
+      git(dir, "rebase", "main");
+      const r = await run(dir, ["rebase"]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ outcome: "resolved", refused: null });
+      expect(read(dir, PC_LOG)).toBe("dev copy\n");
+      expect(inRebase(dir)).toBe(false);
+    });
+
+    it("settles the feature's plan file on the target's copy and still unions status.jsonl in the same pass", async () => {
+      const status = `docs/plans/202611/logs/${PC_FID}/status.jsonl`;
+      const dir = planClosed(
+        "pc-mixed",
+        `feat/${PC_FID}`,
+        [{ [PC_PLAN]: "branch plan\n", [status]: '{"key":"B","ts":2}\n' }],
+        { [PC_PLAN]: "dev plan\n", [status]: '{"key":"C","ts":3}\n' },
+      );
+      const r = await run(dir, ["rebase"]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ outcome: "resolved", refused: null });
+      expect(r.json?.resolved).toEqual(
+        expect.arrayContaining([
+          { path: PC_PLAN, how: "dev" },
+          { path: status, how: "union" },
+        ]),
+      );
+      expect(read(dir, PC_PLAN)).toBe("dev plan\n");
+      const keys = read(dir, status)
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => (JSON.parse(l) as { key: string }).key);
+      expect(keys.sort()).toEqual(["B", "C"]);
+      expect(inRebase(dir)).toBe(false);
+    });
+
+    it("refuses another feature's plan log and names the rule in the reason", async () => {
+      const other = "docs/plans/202611/logs/995-y/plan-v2-reviewed.md";
+      const dir = planClosed("pc-other", `feat/${PC_FID}`, [{ [other]: "branch copy\n" }], {
+        [other]: "dev copy\n",
+      });
+      const r = await run(dir, ["rebase"]);
+      expect(r.code).toBe(3);
+      expect(r.json).toMatchObject({ outcome: "refused", refused: other, aborted: true });
+      expect(r.json?.reason).toContain(PC_RULE);
+      expect(inRebase(dir)).toBe(false);
+    });
+
+    it("refuses a code conflict beside the plan logs, leaving the plan log unresolved", async () => {
+      const dir = planClosed(
+        "pc-code",
+        `feat/${PC_FID}`,
+        [{ [PC_LOG]: "branch copy\n", "src.txt": "feat\n" }],
+        { [PC_LOG]: "dev copy\n", "src.txt": "main\n" },
+      );
+      const r = await run(dir, ["rebase"]);
+      expect(r.code).toBe(3);
+      expect(r.json).toMatchObject({ outcome: "refused", refused: "src.txt", aborted: true });
+      expect(r.json?.resolved).toEqual([]);
+      expect(r.json?.reason).toContain(PC_RULE);
+      expect(r.err).not.toContain(`RESOLVED ${PC_LOG}`);
+      expect(inRebase(dir)).toBe(false);
+    });
+
+    it("keeps a differing branch copy larger than 1 MiB aside and names it", async () => {
+      const big = `${"x".repeat(1024 * 1024 + 4096)}\nbranch edit\n`;
+      const dir = planClosed("pc-big", `feat/${PC_FID}`, [{ [PC_LOG]: big }], {
+        [PC_LOG]: "dev copy\n",
+      });
+      const r = await run(dir, ["rebase"]);
+      expect(r.code).toBe(0);
+      expect(read(dir, PC_LOG)).toBe("dev copy\n");
+      const named = /the branch's differing copy is kept at (\S+)/.exec(r.err);
+      expect(named).not.toBeNull();
+      expect(fs.statSync(path.resolve(dir, named![1]!)).size).toBe(Buffer.byteLength(big));
+    });
+
+    it("names the kept branch copy in the rebase log by an outbox-relative path, never an absolute one", async () => {
+      const logFile = `docs/plans/202611/logs/${PC_FID}/rebase-resolve-log.md`;
+      const dir = planClosed("pc-rel", `feat/${PC_FID}`, [{ [PC_LOG]: "branch copy\n" }], {
+        [PC_LOG]: "dev copy\n",
+      });
+      const r = await run(dir, ["rebase", `--log-file=${logFile}`]);
+      expect(r.code).toBe(0);
+      const line = read(dir, logFile)
+        .split("\n")
+        .find((l) => l.includes(`RESOLVED ${PC_LOG}`));
+      expect(line).toBeDefined();
+      const named = /the branch's differing copy is kept at (\S+)/.exec(line!);
+      expect(named).not.toBeNull();
+      expect(path.isAbsolute(named![1]!)).toBe(false);
+      expect(named![1]!).toMatch(
+        new RegExp(
+          `^\\.git/bkit-outbox/${PC_FID}/dropped-logs/.+/${PC_LOG.replace(/[.]/g, "\\.")}$`,
+        ),
+      );
+      expect(fs.readFileSync(path.resolve(dir, named![1]!), "utf-8")).toBe("branch copy\n");
+      expect(read(dir, logFile)).not.toContain(dir);
+    });
+
+    it("gives a branch not named feat/{fid} no plan-log rule", async () => {
+      const dir = planClosed("pc-branch", "feat", [{ [PC_LOG]: "branch copy\n" }], {
+        [PC_LOG]: "dev copy\n",
+      });
+      const r = await run(dir, ["rebase"]);
+      expect(r.code).toBe(3);
+      expect(r.json).toMatchObject({ outcome: "refused", refused: PC_LOG, aborted: true });
+      expect(r.json?.reason).toContain(PC_RULE);
+      expect(inRebase(dir)).toBe(false);
+    });
+
+    it("does not silently drop a later branch edit to the plan file when dev changed an adjacent line", async () => {
+      const gap = Array.from({ length: 8 }, (_, i) => `filler ${i}\n`).join("");
+      const base = `- [ ] TASK 1\n  detail one\n${gap}- [ ] TASK 3\n  detail three\n`;
+      const dir = makeRepo("pc-adjacent");
+      commit(dir, { [PC_PLAN]: base }, "plan close base");
+      git(dir, "checkout", "-q", "-b", `feat/${PC_FID}`);
+      write(dir, PC_PLAN, `- [x] TASK 1\n  detail one\n${gap}- [x] TASK 3\n  detail three\n`);
+      git(dir, "add", "-A");
+      git(dir, "commit", "-q", "-m", "build ticks");
+      git(dir, "checkout", "-q", "main");
+      write(
+        dir,
+        PC_PLAN,
+        `- [ ] TASK 1\n  detail one edited on dev\n${gap}- [ ] TASK 3\n  detail three\n`,
+      );
+      git(dir, "add", "-A");
+      git(dir, "commit", "-q", "-m", "dev edit");
+      git(dir, "checkout", "-q", `feat/${PC_FID}`);
+      git(dir, "rebase", "main");
+      const r = await run(dir, ["rebase"]);
+      const tick = "[x] TASK 3";
+      const keptPaths = Array.from(r.err.matchAll(/\S*dropped-logs\S*/g), (m) =>
+        path.resolve(dir, m[0].replace(/^[`'"(]+|[`'",.)]+$/g, "")),
+      )
+        .filter((t) => fs.existsSync(t))
+        .filter((t) => fs.statSync(t).isFile());
+      const planKept = read(dir, PC_PLAN).includes(tick);
+      const copyKept = keptPaths.some((t) => fs.readFileSync(t, "utf-8").includes(tick));
+      // Refused (code 3), or the tick survives in the plan file or in a kept copy that r.err names.
+      expect([r.code === 3, planKept, copyKept]).toContain(true);
+    });
+
+    it("refuses and aborts the rebase when the branch's differing plan-log copy cannot be kept aside", async () => {
+      const dir = planClosed("pc-blocked", `feat/${PC_FID}`, [{ [PC_LOG]: "branch copy\n" }], {
+        [PC_LOG]: "dev copy\n",
+      });
+      // A regular file where the feature's outbox folder goes makes the save fail with ENOTDIR.
+      write(dir, `.git/bkit-outbox/${PC_FID}`, "not a folder\n");
+      write(dir, "logs/.rebase-failed", "stale");
+      const r = await run(dir, [
+        "rebase",
+        "--sentinel=logs/.rebase-failed",
+        "--log-file=logs/rebase-resolve-log.md",
+      ]);
+      expect(r.code).toBe(3);
+      expect(r.json).toMatchObject({
+        outcome: "refused",
+        refused: PC_LOG,
+        aborted: true,
+        sentinel: "logs/.rebase-failed",
+      });
+      expect(r.json?.reason).toContain("the branch's differing copy could not be kept aside");
+      expect(inRebase(dir)).toBe(false);
+      expect(read(dir, "logs/.rebase-failed")).toBe("");
+      const logged = read(dir, "logs/rebase-resolve-log.md");
+      expect(logged).toContain(
+        `[bkit-rebase] REFUSE ${PC_LOG} — the branch's differing copy could not be kept aside`,
+      );
+      expect(logged).toContain("[bkit-rebase] ABORTED");
+    });
+
+    it("removes only the glob-named plan log dev deleted and keeps the feature's other logs", async () => {
+      const logs = `docs/plans/202611/logs/${PC_FID}`;
+      const glob = `${logs}/n*.md`;
+      const others = { [`${logs}/notes.md`]: "notes\n", [`${logs}/n1.md`]: "one\n" };
+      const dir = makeRepo("pc-glob");
+      commit(dir, { [glob]: "base\n", ...others }, "logs base");
+      git(dir, "checkout", "-q", "-b", `feat/${PC_FID}`);
+      commit(dir, { [glob]: "branch edit\n" }, "feat 1");
+      git(dir, "checkout", "-q", "main");
+      git(dir, "--literal-pathspecs", "rm", "-q", "--", glob);
+      git(dir, "commit", "-q", "-m", "plan close");
+      git(dir, "checkout", "-q", `feat/${PC_FID}`);
+      git(dir, "rebase", "main");
+      const r = await run(dir, ["rebase"]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ outcome: "resolved", resolved: [{ path: glob, how: "dev" }] });
+      const tracked = git(dir, "ls-tree", "-r", "--name-only", "HEAD").out.split("\n");
+      expect(tracked).not.toContain(glob);
+      for (const [f, body] of Object.entries(others)) {
+        expect(tracked).toContain(f);
+        expect(fs.existsSync(path.join(dir, f))).toBe(true);
+        expect(read(dir, f)).toBe(body);
+      }
+    });
+
+    it("gives a branch whose feat/ suffix is not a feature id no plan-log rule", async () => {
+      const other = "docs/plans/202611/logs/995-y/x-plan.md";
+      const dir = planClosed("pc-slug", "feat/logs/995-y/x", [{ [other]: "branch copy\n" }], {
+        [other]: "dev copy\n",
+      });
+      const r = await run(dir, ["rebase"]);
+      expect(r.code).toBe(3);
+      expect(r.json).toMatchObject({ outcome: "refused", refused: other, aborted: true });
+      expect(r.json?.reason).toContain(PC_RULE);
+      expect(read(dir, other)).not.toBe("dev copy\n");
+      expect(inRebase(dir)).toBe(false);
+    });
+
+    it("names the plan log whose rebase-target copy emptied the commit on the SKIPPED line", async () => {
+      const dir = planClosed("pc-skip", `feat/${PC_FID}`, [{ [PC_LOG]: "branch copy\n" }], {
+        [PC_LOG]: "dev copy\n",
+      });
+      const r = await run(dir, ["rebase"]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ outcome: "resolved", skippedCommits: 1 });
+      expect(r.err).toContain(
+        `SKIPPED a commit emptied by taking the rebase target's copy of ${PC_LOG}`,
+      );
+      expect(r.err).not.toContain("its changes were already on the target");
+    });
+
+    it("names a plan log the branch deleted and dev edited on the SKIPPED line", async () => {
+      const dir = makeRepo("pc-deleted");
+      commit(dir, { [PC_LOG]: "base\n" }, "log base");
+      git(dir, "checkout", "-q", "-b", `feat/${PC_FID}`);
+      git(dir, "rm", "-q", "--", PC_LOG);
+      git(dir, "commit", "-q", "-m", "feat 1");
+      git(dir, "checkout", "-q", "main");
+      commit(dir, { [PC_LOG]: "dev edit\n" }, "plan close");
+      git(dir, "checkout", "-q", `feat/${PC_FID}`);
+      git(dir, "rebase", "main");
+      const r = await run(dir, ["rebase"]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({
+        outcome: "resolved",
+        skippedCommits: 1,
+        resolved: [{ path: PC_LOG, how: "dev" }],
+      });
+      expect(read(dir, PC_LOG)).toBe("base\ndev edit\n");
+      expect(r.err).toContain(
+        `SKIPPED a commit emptied by taking the rebase target's copy of ${PC_LOG}`,
+      );
+      expect(r.err).not.toContain("its changes were already on the target");
+    });
+
+    it("takes dev's copy of only the glob-named plan log and still unions the ledger its name matches", async () => {
+      const logs = `docs/plans/202611/logs/${PC_FID}`;
+      const glob = `${logs}/s*.jsonl`;
+      const status = `${logs}/status.jsonl`;
+      const dir = planClosed(
+        "pc-glob-keep",
+        `feat/${PC_FID}`,
+        [{ [glob]: "branch\n", [status]: '{"key":"B","ts":2}\n' }],
+        { [glob]: "dev\n", [status]: '{"key":"C","ts":3}\n' },
+      );
+      const r = await run(dir, ["rebase"]);
+      expect(r.code).toBe(0);
+      // `s*.jsonl` sorts first, so its checkout runs while status.jsonl is still conflicted.
+      expect(r.json?.resolved).toEqual([
+        { path: glob, how: "dev" },
+        { path: status, how: "union" },
+      ]);
+      expect(read(dir, glob)).toBe("dev\n");
+      const keys = read(dir, status)
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => (JSON.parse(l) as { key: string }).key);
+      expect(keys.sort()).toEqual(["B", "C"]);
+    });
+
+    it("keeps every differing branch copy of one rebase under one dropped-logs/{time}/ folder", async () => {
+      const dir = planClosed(
+        "pc-one-dir",
+        `feat/${PC_FID}`,
+        [{ [PC_LOG]: "branch copy\n" }, { [PC_PLAN]: "branch plan\n" }],
+        { [PC_LOG]: "dev copy\n", [PC_PLAN]: "dev plan\n" },
+      );
+      const r = await run(dir, ["rebase"]);
+      expect(r.code).toBe(0);
+      const folders = Array.from(
+        r.err.matchAll(/the branch's differing copy is kept at \S*\/dropped-logs\/([^/]+)\//g),
+        (m) => m[1],
+      );
+      expect(folders).toHaveLength(2);
+      expect(new Set(folders).size).toBe(1);
+    });
+  },
+);
 
 // ---------------------------------------------------------------------------
 // anchor-stamp / anchor-read

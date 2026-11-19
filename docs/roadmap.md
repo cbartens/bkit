@@ -23,6 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
+_(refreshed 2026-11-19T15:00:23Z)_
 _(refreshed 2026-11-19T10:48:38Z)_
 _(refreshed 2026-11-19T09:44:18Z)_
 _(refreshed 2026-11-19T07:08:28Z)_
@@ -68,8 +69,8 @@ _(refreshed 2026-11-19T10:40:25Z)_
 | 1031-pre-push-refuses | 1031-pre-push-refuses | 1795085318006 |
 | 1035-ledger-commit-outbox | 1035-ledger-commit-outbox | 1795003365889 |
 | 1039-ledger-query-status | 1039-ledger-query-status | 1794984068525 |
-| 1050-host-made-worktrees | 1050-host-made-worktrees | 1795081458715 |
 | 1048-pre-push-dist | 1048-pre-push-dist | 1795072108927 |
+| 1050-host-made-worktrees | 1050-host-made-worktrees | 1795081458715 |
 | 1053-upgrade-leaves-stale | 1053-upgrade-leaves-stale | 1795011926108 |
 | 1055-worktree-removal-says | 1055-worktree-removal-says | 1795006893761 |
 | 1058-cleanup-check-reads | 1058-cleanup-check-reads | 1795066034776 |
@@ -87,6 +88,7 @@ _(refreshed 2026-11-19T10:40:25Z)_
 | 918-ad-hoc-agent | 918-ad-hoc-agent | 1794476513474 |
 | 919-worktree-setup-tries | 919-worktree-setup-tries | 1794997902102 |
 | 992-ledger-commands-six | 992-ledger-commands-six | 1794952547396 |
+| 994-build-cannot-start | 994-build-cannot-start | 1795100423603 |
 
 ### Debug
 
