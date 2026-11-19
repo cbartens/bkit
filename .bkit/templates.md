@@ -321,6 +321,7 @@ chmod +x .husky/pre-commit .husky/pre-push
   - With a PR open, `bkit ci bookkeeping-push --from=<remote head>` lets the push through when every file changed since the head the remote holds is on ship's `--scope=pr` allow-list. Such a push adds nothing that CI has not tested at that head.
   - A rewritten head or a code file still blocks.
   - On `dev` / `main`, the skip-CI check uses the complete branch diff, independently of local gate receipts. Code cannot skip CI merely because its local gate passed.
+  - Audit reports and audit templates' project sections may skip CI on `dev` only. For a push to `main` the hook adds `--target=main` to `bkit ci min-push`, which also diffs against `origin/main` and refuses those files with the trigger-commit fix; an unresolved `origin/main` is not proven.
 - PR conflict check:
   - A fast check, run before `bkit check` and the gate. One `gh pr list --head <branch> --state open` lookup (every branch but `dev` / `main`) gives the PR number and its base; the `[skip ci]` guard reads the number from it.
   - **If** the branch has an open PR → the hook fetches the base from `origin`, then runs `git merge-tree --write-tree --name-only` on `origin/<base>` and the pushed commit. Conflicts → the push is blocked, naming the files and the fix. This holds for a min push too, because a conflicting PR never starts CI.

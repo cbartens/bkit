@@ -23,6 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
+_(refreshed 2026-11-19T10:48:38Z)_
 _(refreshed 2026-11-19T09:44:18Z)_
 _(refreshed 2026-11-19T07:08:28Z)_
 
@@ -62,6 +63,7 @@ _(refreshed 2026-11-19T07:08:28Z)_
 | 1020-two-small-check | 1020-two-small-check | 1794962637613 |
 | 1028-gate-fails-workflow | 1028-gate-fails-workflow | 1794967440896 |
 | 1030-later-scope-passing | 1030-later-scope-passing | 1794972956727 |
+| 1031-pre-push-refuses | 1031-pre-push-refuses | 1795085318006 |
 | 1035-ledger-commit-outbox | 1035-ledger-commit-outbox | 1795003365889 |
 | 1039-ledger-query-status | 1039-ledger-query-status | 1794984068525 |
 | 1050-host-made-worktrees | 1050-host-made-worktrees | 1795081458715 |

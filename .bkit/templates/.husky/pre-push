@@ -105,6 +105,7 @@ PUSH_BRANCH_SHA=""
 PUSH_SHAS=""
 PUSH_UPDATES=""
 PUSH_SHARED_SHAS=""
+PUSH_MAIN_SHAS=""
 PUSH_BRANCH_REMOTE_SHA=""
 if [ ! -t 0 ]; then
   while read -r _push_local_ref push_local_sha push_remote_ref push_remote_sha; do
@@ -123,6 +124,7 @@ if [ ! -t 0 ]; then
         case "$push_remote_ref" in
           refs/heads/dev|refs/heads/main) PUSH_SHARED_SHAS="$PUSH_SHARED_SHAS $push_local_sha" ;;
         esac
+        [ "$push_remote_ref" = "refs/heads/main" ] && PUSH_MAIN_SHAS="$PUSH_MAIN_SHAS $push_local_sha"
         ;;
     esac
   done
@@ -235,7 +237,11 @@ fi
 # the open-PR guard above (workflows push `[skip ci]` code heads mid-run).
 for push_sha in $PUSH_SHARED_SHAS; do
   if pnpm -s bkit ci skip-token --ref="$push_sha" < /dev/null > /dev/null; then
-    if ! pnpm -s bkit ci min-push --ref="$push_sha" < /dev/null > /dev/null; then
+    # A push to main also runs the audit check: audit reports may skip CI on dev only.
+    push_target=""
+    case " $PUSH_MAIN_SHAS " in *" $push_sha "*) push_target="--target=main" ;; esac
+    # shellcheck disable=SC2086 # the target flag is one fixed word or empty
+    if ! pnpm -s bkit ci min-push --ref="$push_sha" $push_target < /dev/null > /dev/null; then
       echo "[pre-push] BLOCKED: $push_sha carries a CI-suppressing token and changes files outside the min-push paths (what bkit writes, plus bkit.testing.minPushPaths) — that code would land on dev / main with no CI run." >&2
       echo "[pre-push] Add a clean trigger commit and re-push:  git commit --allow-empty -m \"chore: trigger CI\" && git push" >&2
       exit 1

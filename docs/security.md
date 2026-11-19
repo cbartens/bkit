@@ -98,7 +98,7 @@ The shared untrusted-content contract lives in `.bkit/prompts.md` § Untrusted C
 
 Self-hosted Renovate runs with `BKIT_GH_TOKEN`. Its job token has read-only contents permission. The update classes eligible for automatic merge and the major updates that require review are defined in `.github/renovate.json5`. The Trivy workflow uses a digest-pinned scanner. Dependency checks and the advisory register are described in `docs/deployments.md` § Dependency updaters.
 
-**Accepted risk (audit reports and `[skip ci]`):** `docs/audits/**` sits in the files bkit writes (`minPushPathspecs`), so the pre-push hook lets an audit report reach `dev` or `main` under a `[skip ci]` head. No workflow runs on that push, the secret scan included. Audit reports are written from untrusted logs and CI evidence, so a report that quotes a leaked token lands unscanned. The owner accepted this risk; the decision is in `docs/decisions.jsonl`.
+**Accepted risk (audit reports and `[skip ci]`):** `docs/audits/**` sits in the files bkit writes (`minPushPathspecs`), so the pre-push hook lets an audit report reach `dev` under a `[skip ci]` head. On `main` the hook refuses it (`bkit ci min-push --target=main`). No workflow runs on that push, the secret scan included. Audit reports are written from untrusted logs and CI evidence, so a report that quotes a leaked token lands unscanned. The owner accepted this risk; the decision is in `docs/decisions.jsonl`.
 
 ## Untrusted Content & Prompt Injection
 

@@ -664,6 +664,51 @@ export function minPushOutside(
   return { ok: true, changed: diff.changed, outside, sections };
 }
 
+/**
+ * The project text of an audit template at `sha`: the text below its `bkit:end` line, or the whole
+ * file when its managed block does not parse. null when the blob cannot be read.
+ */
+function projectSection(root: string, sha: string, file: string): string | null {
+  const res = gitRaw(root, ["cat-file", "blob", `${sha}:${file}`]);
+  if (res.status !== 0) return null;
+  const head = managedHead(res.stdout);
+  return head === null ? res.stdout : res.stdout.slice(head.length);
+}
+
+/** The remote-tracking ref the main audit check measures from, never a local branch or tag. */
+const MAIN_REF = "refs/remotes/origin/main";
+
+/**
+ * Audit files a pushed commit brings onto `main`: every changed file against its merge-base with
+ * `refs/remotes/origin/main` that sits under `docs/audits/**`, or is a top-level audit template
+ * whose project text differs (absent counts as empty), whether or not the block also changed. A
+ * template counts as absent only at the side the diff says it was added or deleted. Reads no
+ * `minPushPaths`: every changed file counts. `null` when `origin/main` does not resolve, the diff
+ * cannot be read, or a changed template present at a side cannot be read there.
+ */
+function mainAuditFiles(root: string, sha: string): string[] | null {
+  if (!runGit(root, ["rev-parse", "--verify", "--quiet", `${MAIN_REF}^{commit}`]).ok) return null;
+  const mb = runGit(root, ["merge-base", sha, MAIN_REF]);
+  if (!mb.ok || !mb.stdout) return null;
+  const diff = gitRaw(root, ["diff", "--name-status", "-z", "--no-renames", mb.stdout, sha]);
+  if (diff.status !== 0) return null;
+  const fields = diff.stdout.split("\0");
+  const found = new Set<string>();
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    const [status, file] = [fields[i]!, fields[i + 1]!];
+    if (file.startsWith("docs/audits/")) found.add(file);
+    if (!AUDIT_TEMPLATE_RE.test(file) || status === "D") continue;
+    const after = projectSection(root, sha, file);
+    const before = status === "A" ? "" : projectSection(root, mb.stdout, file);
+    if (after === null || before === null) return null;
+    if (after !== before) found.add(file);
+  }
+  return [...found];
+}
+
+const AUDIT_DEV_ONLY =
+  "audit reports and audit-template project sections may skip CI on dev only; a push to main must not bring them under a skip-CI head";
+
 const sectionNote = (file: string) =>
   `${file}: only its project section below <!-- bkit:end --> changed`;
 
@@ -674,7 +719,14 @@ function minPush(ctx: RunContext): number {
   const refs = Array.isArray(given) && given.length > 0 ? given.map(String) : ["HEAD"];
   const baseFlag = typeof ctx.flags.base === "string" && ctx.flags.base ? ctx.flags.base : null;
   const paths = minPushPathspecs(readBkitConfig(top.stdout));
+  const target = typeof ctx.flags.target === "string" && ctx.flags.target ? ctx.flags.target : null;
+  if (target !== null && target !== "main") {
+    throw new CommandError(EXIT.USAGE, `--target accepts only 'main', got '${target}'`);
+  }
   const updates = ctx.flags.update;
+  if (target !== null && Array.isArray(updates) && updates.length > 0) {
+    throw new CommandError(EXIT.USAGE, "--update cannot be combined with --target");
+  }
   if (Array.isArray(updates) && updates.length > 0) {
     if ((Array.isArray(given) && given.length > 0) || baseFlag) {
       throw new CommandError(EXIT.USAGE, "--update cannot be combined with --ref or --base");
@@ -685,6 +737,7 @@ function minPush(ctx: RunContext): number {
   const changed = new Set<string>();
   const outside = new Set<string>();
   const sections = new Set<string>();
+  const auditFiles = new Set<string>();
   for (const ref of refs) {
     const sha = git(ctx.cwd, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
     const base = sha ? (baseFlag ?? pushBase(ctx.cwd, sha)) : null;
@@ -696,15 +749,24 @@ function minPush(ctx: RunContext): number {
           ? `no base for ${ref} (neither origin/dev nor origin/main resolves)`
           : `'git diff' failed for ${base}..${ref}: ${diff && !diff.ok ? diff.stderr : ""}`;
       ctx.log(`${why} — not proven a min push`);
-      ctx.emit({ minPush: false, reason: "unknown", changed: 0, outside: [], paths });
+      ctx.emit({ minPush: false, reason: "unknown", changed: 0, outside: [], audit: [], paths });
       return EXIT_RANGE_UNKNOWN;
     }
     for (const p of diff.changed) changed.add(p);
     for (const p of diff.outside) outside.add(p);
     for (const p of diff.sections) sections.add(p);
+    if (target === "main") {
+      const onMain = sha ? mainAuditFiles(top.stdout, sha) : null;
+      if (onMain === null) {
+        ctx.log(`no origin/main base for ${ref} (or its git diff failed) — not proven a min push`);
+        ctx.emit({ minPush: false, reason: "unknown", changed: 0, outside: [], audit: [], paths });
+        return EXIT_RANGE_UNKNOWN;
+      }
+      for (const p of onMain) auditFiles.add(p);
+    }
   }
   for (const p of [...sections].sort()) ctx.log(sectionNote(p));
-
+  const audit = [...auditFiles].sort();
   const result = (reason: string | null, code: number, message: string) => {
     ctx.log(message);
     ctx.emit({
@@ -712,21 +774,24 @@ function minPush(ctx: RunContext): number {
       reason,
       changed: changed.size,
       outside: [...outside].sort(),
+      audit,
       paths,
     });
     return code;
   };
+  const outsideNote = () =>
+    `${outside.size} of ${changed.size} changed files match no min-push path (first: ${[...outside].sort()[0]})`;
+  if (audit.length > 0) {
+    ctx.log(
+      `this push brings audit files onto main under a skip-CI head, so no workflow would run: ${audit.join(", ")}`,
+    );
+    if (outside.size > 0) ctx.log(outsideNote());
+    return result("audit", EXIT.NO, AUDIT_DEV_ONLY);
+  }
   if (changed.size === 0) {
     return result("no-changes", EXIT.NO, "the push changes no files — not proven a min push");
   }
-  if (outside.size > 0) {
-    const first = [...outside].sort()[0];
-    return result(
-      "outside",
-      EXIT.NO,
-      `${outside.size} of ${changed.size} changed files match no min-push path (first: ${first})`,
-    );
-  }
+  if (outside.size > 0) return result("outside", EXIT.NO, outsideNote());
   return result(null, EXIT.OK, `all ${changed.size} changed files match min-push paths`);
 }
 
@@ -776,6 +841,7 @@ function minPushUpdates(ctx: RunContext, cwd: string, updates: string[], paths: 
     reason,
     changed: changed.size,
     outside: [...outside].sort(),
+    audit: [],
     paths,
   });
   ctx.log(
@@ -934,6 +1000,11 @@ export const ciCommand: CommandSpec = {
         },
         { name: "base", type: "string", help: "start every range here instead" },
         {
+          name: "target",
+          type: "string",
+          help: "main: also refuse a push that brings a docs/audits/** file or an audit template's project section onto origin/main (not proven when origin/main does not resolve); excludes --update",
+        },
+        {
           name: "update",
           type: "string",
           repeatable: true,
@@ -943,10 +1014,12 @@ export const ciCommand: CommandSpec = {
       output: {
         minPush:
           "true when every changed file matches a min-push path, or is a docs/templates/bkit-audit-*.md changed only below its <!-- bkit:end -->",
-        reason: "null when a min push; else no-changes | outside | unknown",
+        reason: "null when a min push; else no-changes | outside | audit | unknown",
         changed: "files the push changes, across every ref",
         outside:
           "the changed files no min-push path matches (an audit template changed only below its <!-- bkit:end --> is not listed)",
+        audit:
+          "with --target=main, the docs/audits/** files and audit templates with changed project text that the push brings onto origin/main (reason audit); else []",
         paths:
           "the min-push pathspecs in force: ship's pr bookkeeping allow-list (with bkit.testing.ciSkipPaths), docs/plans/**, docs/audits/**, bkit.testing.minPushPaths",
       },

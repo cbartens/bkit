@@ -35,6 +35,9 @@ const ENV_KEYS = [
   "FAKE_VALE_EXIT",
   "FAKE_VALE_LOG",
   "FAKE_VALE_SYNC",
+  "GIT_CONFIG_COUNT",
+  "GIT_CONFIG_KEY_0",
+  "GIT_CONFIG_VALUE_0",
 ];
 let savedEnv: Record<string, string | undefined> = {};
 let tmpRoot = "";
@@ -1258,5 +1261,308 @@ describe("bkit ci min-push", () => {
     expect(r.code).toBe(1);
     expect(r.json).toMatchObject({ minPush: false, reason: "outside" });
     expect(r.json.outside).toEqual(["src/a.ts"]);
+  });
+
+  /** `pushedFrom` with `origin/main` also at the base commit (the commit `origin/dev` holds). */
+  function pushedToMain(
+    before: Record<string, string>,
+    after: Record<string, string | null>,
+    pkg?: unknown,
+  ) {
+    const p = pushedFrom(before, after, pkg);
+    git(p.cwd, "update-ref", "refs/remotes/origin/main", p.base);
+    return p;
+  }
+
+  it("--target=main refuses a docs/audits change even when minPushPaths matches it", async () => {
+    const { cwd, head } = pushedToMain(
+      {},
+      { "docs/audits/202611/security.md": "# Report\n" },
+      { bkit: { testing: { minPushPaths: ["docs/audits/**"] } } },
+    );
+    const r = await run(cwd, [`--ref=${head}`, "--target=main"], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json.minPush).toBe(false);
+    expect(r.err).toContain("docs/audits/202611/security.md");
+    const plain = await run(cwd, [`--ref=${head}`], "min-push");
+    expect(plain.code).toBe(0);
+  });
+
+  it("--target=main refuses a change to an audit template's project section only", async () => {
+    const { cwd, head } = pushedToMain(belowOnly.before, belowOnly.after);
+    const r = await run(cwd, [`--ref=${head}`, "--target=main"], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json.minPush).toBe(false);
+    expect(r.err).toContain(T1);
+    const plain = await run(cwd, [`--ref=${head}`], "min-push");
+    expect(plain.code).toBe(0);
+  });
+
+  it("--target=main accepts a plans-only range", async () => {
+    const { cwd, head } = pushedToMain(
+      {},
+      { "docs/plans/202610/logs/1-x/status.jsonl": "{}\n", "docs/decisions.jsonl": "{}\n" },
+    );
+    const r = await run(cwd, [`--ref=${head}`, "--target=main"], "min-push");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ minPush: true, reason: null, outside: [] });
+  });
+
+  it("--target=main finds an audit report already on origin/dev but not on origin/main", async () => {
+    const cwd = mkdir("bkit-ci-main-");
+    git(cwd, "init", "-q", "-b", "feat/1-x");
+    write(cwd, "src/a.ts", "export {};\n");
+    const onMain = commit(cwd, "main");
+    git(cwd, "update-ref", "refs/remotes/origin/main", onMain);
+    write(cwd, "docs/audits/202611/security.md", "# Report\n");
+    const onDev = commit(cwd, "docs(1): audit bkit [skip ci]");
+    git(cwd, "update-ref", "refs/remotes/origin/dev", onDev);
+    write(cwd, "docs/plans/202611/logs/1-x/status.jsonl", "{}\n");
+    const head = commit(cwd, "docs(1): plan bkit [skip ci]");
+    const plain = await run(cwd, [`--ref=${head}`], "min-push");
+    expect(plain.code).toBe(0);
+    const r = await run(cwd, [`--ref=${head}`, "--target=main"], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json.minPush).toBe(false);
+    expect(r.err).toContain("docs/audits/202611/security.md");
+  });
+
+  it("--target=main accepts a range that looks empty against origin/dev and adds no audit file", async () => {
+    const cwd = mkdir("bkit-ci-main-");
+    git(cwd, "init", "-q", "-b", "feat/1-x");
+    write(cwd, "src/a.ts", "export {};\n");
+    const onMain = commit(cwd, "main");
+    git(cwd, "update-ref", "refs/remotes/origin/main", onMain);
+    write(cwd, "docs/plans/202611/logs/1-x/status.jsonl", "{}\n");
+    const head = commit(cwd, "docs(1): plan bkit [skip ci]");
+    git(cwd, "update-ref", "refs/remotes/origin/dev", head);
+    const plain = await run(cwd, [`--ref=${head}`], "min-push");
+    const r = await run(cwd, [`--ref=${head}`, "--target=main"], "min-push");
+    expect(r.code).toBe(plain.code);
+    expect(r.json.reason).toBe(plain.json.reason);
+    expect(r.json.outside).toEqual([]);
+    expect(r.err).not.toContain("docs/audits");
+  });
+
+  it("--target=main is not proven a min push when origin/main does not resolve", async () => {
+    const { cwd, head } = pushedFrom({}, { "docs/decisions.jsonl": "{}\n" });
+    const r = await run(cwd, [`--ref=${head}`, "--target=main"], "min-push");
+    expect(r.code).toBe(7);
+    expect(r.json).toMatchObject({ minPush: false, reason: "unknown" });
+  });
+
+  it("without --target, an audit-only range is still a min push", async () => {
+    const { cwd, head } = pushedToMain({}, { "docs/audits/202611/security.md": "# Report\n" });
+    const r = await run(cwd, [`--ref=${head}`], "min-push");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ minPush: true, reason: null, outside: [] });
+  });
+
+  it("--target=main refuses an audit template's project section even when minPushPaths matches docs/**", async () => {
+    const { cwd, head } = pushedToMain(belowOnly.before, belowOnly.after, {
+      bkit: { testing: { minPushPaths: ["docs/**"] } },
+    });
+    const r = await run(cwd, [`--ref=${head}`, "--target=main"], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json.minPush).toBe(false);
+    expect(r.err).toContain(T1);
+  });
+
+  it("--target=main refuses a docs/audits file whose name has non-ASCII characters", async () => {
+    process.env.GIT_CONFIG_COUNT = "1";
+    process.env.GIT_CONFIG_KEY_0 = "core.quotePath";
+    process.env.GIT_CONFIG_VALUE_0 = "true";
+    const name = "docs/audits/202611/sécurité.md";
+    const { cwd, head } = pushedToMain({}, { [name]: "# Report\n" });
+    const r = await run(cwd, [`--ref=${head}`, "--target=main"], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json.minPush).toBe(false);
+    expect(r.err).toContain(name);
+  });
+
+  it("--target=main refuses an audit template project section already on origin/dev when its managed block also changed since origin/main", async () => {
+    const cwd = mkdir("bkit-ci-main-");
+    git(cwd, "init", "-q", "-b", "feat/1-x");
+    write(cwd, "src/a.ts", "export {};\n");
+    write(cwd, T1, auditTemplate("block", "old"));
+    const onMain = commit(cwd, "main");
+    git(cwd, "update-ref", "refs/remotes/origin/main", onMain);
+    write(cwd, T1, auditTemplate("block2", "new project text"));
+    const onDev = commit(cwd, "docs(1): audit bkit [skip ci]");
+    git(cwd, "update-ref", "refs/remotes/origin/dev", onDev);
+    write(cwd, "docs/plans/202611/logs/1-x/status.jsonl", "{}\n");
+    const head = commit(cwd, "docs(1): plan bkit [skip ci]");
+    const r = await run(cwd, [`--ref=${head}`, "--target=main"], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json.minPush).toBe(false);
+    expect(r.err).toContain(T1);
+  });
+
+  it("--target=main refuses an audit template new to main whose project section was edited on origin/dev", async () => {
+    const cwd = mkdir("bkit-ci-main-");
+    git(cwd, "init", "-q", "-b", "feat/1-x");
+    write(cwd, "src/a.ts", "export {};\n");
+    const onMain = commit(cwd, "main");
+    git(cwd, "update-ref", "refs/remotes/origin/main", onMain);
+    write(cwd, T1, auditTemplate("block", "new project text"));
+    const onDev = commit(cwd, "docs(1): audit bkit [skip ci]");
+    git(cwd, "update-ref", "refs/remotes/origin/dev", onDev);
+    write(cwd, "docs/plans/202611/logs/1-x/status.jsonl", "{}\n");
+    const head = commit(cwd, "docs(1): plan bkit [skip ci]");
+    const r = await run(cwd, [`--ref=${head}`, "--target=main"], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json.minPush).toBe(false);
+    expect(r.err).toContain(T1);
+  });
+
+  const docsPaths = { bkit: { testing: { minPushPaths: ["docs/**"] } } };
+  const twoEnds = "<!-- bkit:end -->\n<!-- bkit:end -->";
+
+  it("--target=main refuses a new audit template with no bkit markers even when minPushPaths matches docs/**", async () => {
+    const custom = "docs/templates/bkit-audit-custom.md";
+    const { cwd, head } = pushedToMain(
+      {},
+      { [custom]: "# Custom audit\n\nProject text\n" },
+      docsPaths,
+    );
+    const r = await run(cwd, [`--ref=${head}`, "--target=main"], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json.minPush).toBe(false);
+    expect(r.err).toContain(custom);
+  });
+
+  it("--target=main refuses an audit template edit when a second end marker sits in its project section", async () => {
+    const { cwd, head } = pushedToMain(
+      { [T1]: auditTemplate("block", "old", twoEnds) },
+      { [T1]: auditTemplate("block", "new project text", twoEnds) },
+      docsPaths,
+    );
+    const r = await run(cwd, [`--ref=${head}`, "--target=main"], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json.minPush).toBe(false);
+    expect(r.err).toContain(T1);
+  });
+
+  it("--target=main refuses a CRLF audit template edit even when minPushPaths matches docs/**", async () => {
+    process.env.GIT_CONFIG_COUNT = "1";
+    process.env.GIT_CONFIG_KEY_0 = "core.autocrlf";
+    process.env.GIT_CONFIG_VALUE_0 = "false";
+    const crlf = (text: string) => text.replace(/\n/g, "\r\n");
+    const { cwd, head } = pushedToMain(
+      { [T1]: crlf(belowOnly.before[T1]) },
+      { [T1]: crlf(belowOnly.after[T1]) },
+      docsPaths,
+    );
+    const r = await run(cwd, [`--ref=${head}`, "--target=main"], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json.minPush).toBe(false);
+    expect(r.err).toContain(T1);
+  });
+
+  it("--target=main refuses an audit template new to main whose project section sits below a duplicated bkit:end marker", async () => {
+    const cwd = mkdir("bkit-ci-main-");
+    git(cwd, "init", "-q", "-b", "feat/1-x");
+    write(cwd, "src/a.ts", "export {};\n");
+    write(cwd, "package.json", JSON.stringify(docsPaths));
+    const onMain = commit(cwd, "main");
+    git(cwd, "update-ref", "refs/remotes/origin/main", onMain);
+    write(cwd, T1, auditTemplate("block", "<!-- bkit:end -->\nnew project text"));
+    const onDev = commit(cwd, "docs(1): audit bkit [skip ci]");
+    git(cwd, "update-ref", "refs/remotes/origin/dev", onDev);
+    write(cwd, "docs/plans/202611/logs/1-x/status.jsonl", "{}\n");
+    const head = commit(cwd, "docs(1): plan bkit [skip ci]");
+    const r = await run(cwd, [`--ref=${head}`, "--target=main"], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json.minPush).toBe(false);
+    expect(r.err).toContain(T1);
+  });
+
+  it("--target=main still compares only the project section of a template whose block parses at both sides", async () => {
+    const { cwd, head } = pushedToMain(
+      { [T1]: auditTemplate("block", "p") },
+      { [T1]: auditTemplate("changed block", "p") },
+      docsPaths,
+    );
+    const r = await run(cwd, [`--ref=${head}`, "--target=main"], "min-push");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ minPush: true, reason: null, audit: [] });
+  });
+
+  it("--target=main is not proven a min push when a changed audit template cannot be read at the pushed commit", async () => {
+    const { cwd, base } = pushedToMain({ [T1]: auditTemplate("block", "old") }, {}, docsPaths);
+    git(cwd, "rm", "-q", "--cached", T1);
+    git(cwd, "update-index", "--add", "--cacheinfo", `160000,${base},${T1}`);
+    git(cwd, "commit", "-q", "-m", "docs(1): x [skip ci]");
+    const head = git(cwd, "rev-parse", "HEAD");
+    expect(git(cwd, "ls-tree", head, T1)).toMatch(/^160000 commit /);
+    const r = await run(cwd, [`--ref=${head}`, "--target=main"], "min-push");
+    expect(r.code).toBe(7);
+    expect(r.json).toMatchObject({ minPush: false, reason: "unknown" });
+  });
+
+  it("--target=main refuses a docs/audits change when a local branch named origin/main shadows the remote-tracking ref", async () => {
+    const { cwd, head } = pushedToMain({}, { "docs/audits/202611/security.md": "# Report\n" });
+    git(cwd, "branch", "origin/main", head);
+    expect(git(cwd, "rev-parse", "--verify", "--quiet", "refs/heads/origin/main")).toBe(head);
+    const r = await run(cwd, [`--ref=${head}`, "--target=main"], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json.minPush).toBe(false);
+    expect(r.err).toContain("docs/audits/202611/security.md");
+  });
+
+  it("--target=main refuses a docs/audits change when a local tag named origin/main shadows the remote-tracking ref", async () => {
+    const { cwd, head } = pushedToMain({}, { "docs/audits/202611/security.md": "# Report\n" });
+    git(cwd, "tag", "origin/main", head);
+    expect(git(cwd, "rev-parse", "--verify", "--quiet", "refs/tags/origin/main")).toBe(head);
+    const r = await run(cwd, [`--ref=${head}`, "--target=main"], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json.minPush).toBe(false);
+    expect(r.err).toContain("docs/audits/202611/security.md");
+  });
+
+  it("--target=main is not proven a min push when only a local branch named origin/main exists", async () => {
+    const { cwd, base, head } = pushedFrom({}, { "docs/decisions.jsonl": "{}\n" });
+    git(cwd, "branch", "origin/main", base);
+    const r = await run(cwd, [`--ref=${head}`, "--target=main"], "min-push");
+    expect(r.code).toBe(7);
+    expect(r.json).toMatchObject({ minPush: false, reason: "unknown" });
+  });
+
+  it("--target=main says on stderr that audit files may skip CI on dev only, and only on an audit refusal", async () => {
+    const audit = pushedToMain({}, { "docs/audits/202611/security.md": "# Report\n" });
+    const refused = await run(audit.cwd, [`--ref=${audit.head}`, "--target=main"], "min-push");
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain(
+      "audit reports and audit-template project sections may skip CI on dev only",
+    );
+    const code = pushedToMain({}, { "src/b.ts": "export {};\n" });
+    const outside = await run(code.cwd, [`--ref=${code.head}`, "--target=main"], "min-push");
+    expect(outside.code).toBe(1);
+    expect(outside.json.reason).toBe("outside");
+    expect(outside.err).not.toContain("may skip CI on dev only");
+  });
+
+  it("--target=main lists refused audit files in audit and keeps outside for files no min-push path matches", async () => {
+    const { cwd, head } = pushedToMain(
+      {},
+      { "docs/audits/202611/security.md": "# Report\n", "src/b.ts": "export {};\n" },
+    );
+    const r = await run(cwd, [`--ref=${head}`, "--target=main"], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({
+      minPush: false,
+      reason: "audit",
+      changed: 2,
+      audit: ["docs/audits/202611/security.md"],
+      outside: ["src/b.ts"],
+    });
+    expect(r.err).toContain("1 of 2 changed files match no min-push path");
+    const only = pushedToMain({}, { "docs/audits/202611/security.md": "# Report\n" });
+    const auditOnly = await run(only.cwd, [`--ref=${only.head}`, "--target=main"], "min-push");
+    expect(auditOnly.json).toMatchObject({
+      reason: "audit",
+      audit: ["docs/audits/202611/security.md"],
+      outside: [],
+    });
   });
 });

@@ -1225,6 +1225,7 @@ describe(".husky/pre-push min push", () => {
       const r = push(hook, head, "refs/heads/dev");
       expect(r.status).toBe(0);
       expect(r.stderr).not.toContain("CI-suppressing token");
+      expect(r.stderr).not.toContain("BLOCKED");
       expect(r.calls).toContain("bkit:gate:min");
       expect(r.calls).not.toContain("bkit:gate:static-unit");
     });
@@ -1242,8 +1243,112 @@ describe(".husky/pre-push min push", () => {
       const r = push(hook, head, "refs/heads/dev", remote);
       expect(r.status).toBe(0);
       expect(r.stderr).not.toContain("CI-suppressing token");
+      expect(r.stderr).not.toContain("BLOCKED");
       expect(r.calls).toContain("bkit:gate:min");
       expect(r.calls).not.toContain("bkit:gate:static-unit");
+    });
+
+    /** `origin/main` at the base commit `origin/dev` holds. */
+    const mainAtBase = () =>
+      gitIn(
+        "update-ref",
+        "refs/remotes/origin/main",
+        gitIn("rev-parse", "refs/remotes/origin/dev"),
+      );
+    const TEMPLATE_FILE = "docs/templates/bkit-audit-x.md";
+    const template = (project: string) =>
+      `<!-- bkit:start -->\n<!-- managed-version: 1 -->\nblock\n<!-- bkit:end -->\n\n## Project Instructions\n${project}\n`;
+
+    it(`${hook}: audit report to main under a [skip ci] head → blocked before any gate`, () => {
+      mainAtBase();
+      const head = commitFiles(
+        { "docs/audits/202611/security.md": "# Report\n" },
+        "docs(1): audit report bkit [skip ci]",
+      );
+      const r = push(hook, head, "refs/heads/main");
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("docs/audits/202611/security.md");
+      expect(r.calls).toEqual([]);
+    });
+
+    it(`${hook}: audit-template project section to main under a [skip ci] head → blocked before any gate`, () => {
+      const remote = commitFiles({ [TEMPLATE_FILE]: template("old") }, "docs(1): add template");
+      gitIn("update-ref", "refs/remotes/origin/dev", remote);
+      gitIn("update-ref", "refs/remotes/origin/main", remote);
+      const head = commitFiles(
+        { [TEMPLATE_FILE]: template("new project text") },
+        "docs(1): audit project section bkit [skip ci]",
+      );
+      const r = push(hook, head, "refs/heads/main", remote);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(TEMPLATE_FILE);
+      expect(r.calls).toEqual([]);
+    });
+
+    it(`${hook}: plans-only change to main under a [skip ci] head → allowed, light gate`, () => {
+      mainAtBase();
+      const r = push(hook, commitFiles(PLAN, "docs(1): plan bkit [skip ci]"), "refs/heads/main");
+      expect(r.status).toBe(0);
+      expect(r.stderr).not.toContain("BLOCKED");
+      expect(r.calls).toContain("bkit:gate:min");
+      expect(r.calls).not.toContain("bkit:gate:static-unit");
+    });
+
+    it(`${hook}: one push updating dev and main with an audit-only [skip ci] head → blocked before any gate`, () => {
+      mainAtBase();
+      const head = commitFiles(
+        { "docs/audits/202611/security.md": "# Report\n" },
+        "docs(1): audit report bkit [skip ci]",
+      );
+      const r = push(
+        hook,
+        head,
+        "refs/heads/dev",
+        ZERO,
+        `refs/heads/feat/1-x ${head} refs/heads/main ${ZERO}\n`,
+      );
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("docs/audits/202611/security.md");
+      expect(r.calls).toEqual([]);
+    });
+
+    const DEV_ONLY = "may skip CI on dev only";
+
+    it(`${hook}: audit report to main under a [skip ci] head → the dev-only audit sentence is printed`, () => {
+      mainAtBase();
+      const head = commitFiles(
+        { "docs/audits/202611/security.md": "# Report\n" },
+        "docs(1): audit report bkit [skip ci]",
+      );
+      const r = push(hook, head, "refs/heads/main");
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(DEV_ONLY);
+      expect(r.stderr.split(DEV_ONLY).length - 1).toBe(1);
+    });
+
+    it(`${hook}: code to main under a [skip ci] head → blocked, no claim that audit files were named`, () => {
+      mainAtBase();
+      commitFiles({ "src/a.ts": "b\n" }, "feat(1): a");
+      const head = commitFiles(PLAN, "docs(1): status bkit [skip ci]");
+      const r = push(hook, head, "refs/heads/main");
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(`BLOCKED: ${head} carries a CI-suppressing token`);
+      expect(r.stderr).not.toContain(DEV_ONLY);
+      expect(r.stderr).not.toContain("files are named above");
+      expect(r.calls).toEqual([]);
+    });
+
+    it(`${hook}: [skip ci] push to main with no origin/main → blocked, no claim that audit files were named`, () => {
+      const head = commitFiles(
+        { "docs/audits/202611/security.md": "# Report\n" },
+        "docs(1): audit report bkit [skip ci]",
+      );
+      const r = push(hook, head, "refs/heads/main");
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("not proven a min push");
+      expect(r.stderr).not.toContain(DEV_ONLY);
+      expect(r.stderr).not.toContain("files are named above");
+      expect(r.calls).toEqual([]);
     });
 
     it(`${hook}: code to dev with a clean head → not blocked, full gate`, () => {
