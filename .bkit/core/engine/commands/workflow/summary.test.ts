@@ -689,6 +689,268 @@ describe("buildSummary", () => {
     });
   });
 
+  describe("a fix round answered by the gate re-run", () => {
+    const LOG = "docs/plans/202611/logs/1065-gate-rerun";
+    const DEC = `${LOG}/build-decision-1-1.md`;
+    const FIX_LOG = `${LOG}/build-plan-gaps-remediate-holistic-1-1-log.md`;
+    let minute = 0;
+    const at = () => `2026-11-19T04:${String(minute++).padStart(2, "0")}:00Z`;
+    const step = (name: string, verdict: string | undefined, extra: object = {}) => ({
+      type: "step-done",
+      workflow: "build",
+      step: name,
+      status: "DONE",
+      at: at(),
+      ...(verdict === undefined ? {} : { verdict }),
+      attempt: 1,
+      ...extra,
+    });
+    /** `sourceChanged` null = a `decisions counts` call without `--source-changed`. */
+    const decision = (from: string, group?: number, sourceChanged: boolean | null = false) => ({
+      file: [
+        "Question: VERIFY_GAPS",
+        `From: ${from}`,
+        ...(group === undefined ? [] : [`Group: ${group}`]),
+        `Pause step: ${from === "holistic" ? 10 : 8}`,
+        "Plan: docs/plans/202611/1065-gate-rerun-plan.md",
+        "",
+      ].join("\n"),
+      rows: [
+        step("build-decision", undefined, { artifacts: [DEC], route: from }),
+        {
+          type: "decision-counts",
+          workflow: "build",
+          at: at(),
+          file: DEC,
+          ...(sourceChanged === null ? {} : { sourceChanged }),
+          gate: "FAIL",
+          loop: {
+            title: from === "holistic" ? "Holistic verify" : "Verify",
+            question: "try the red gate again?",
+            options: ["Try again", "Stop"],
+            recommended: "Try again",
+            reason: "the gate failed outside the change",
+            attempt: "1",
+            max: "2",
+          },
+        },
+      ],
+    });
+    const answer = (by: string) => ({
+      type: "decision-answer",
+      workflow: "build",
+      at: at(),
+      file: DEC,
+      q: 1,
+      answer: "Try again — the owner resumed the run, so the gate runs again first (2026-11-19)",
+      by,
+    });
+    const run = (rows: SummaryInput["rows"], decisionFile: string) => {
+      const started = {
+        type: "workflow-started",
+        workflow: "build",
+        at: "2026-11-19T03:00:00Z",
+        decisionLayout: "rows",
+      };
+      const all = [started, ...rows];
+      return buildSummary(
+        input({
+          rows: all,
+          decisionFiles: [DEC],
+          read: reader({
+            [DEC]: decisionFile,
+            [`${LOG}/status.jsonl`]: all.map((r) => JSON.stringify(r)).join("\n") + "\n",
+            [FIX_LOG]: "BLOCKED: the gate failed on load from other builds\nFixed: 0\n",
+          }),
+        }),
+      );
+    };
+    const resolvedOf = (s: ReturnType<typeof buildSummary>) =>
+      s.markdown.split("## Resolved Findings")[1]?.split("## ")[0] ?? "";
+
+    it("a holistic fix round FAIL is answered by the holistic gate passing on the re-run", () => {
+      minute = 0;
+      const pause = decision("holistic");
+      const s = run(
+        [
+          step("build-plan-verify-holistic", "PASS", { failures: 0 }),
+          step("build-holistic-gate", "FAIL"),
+          step("build-plan-gaps-remediate-holistic", "FAIL", {
+            artifacts: [FIX_LOG],
+            strategy: "STANDARD",
+          }),
+          ...pause.rows,
+          answer("rerun"),
+          step("build-holistic-gate", "PASS"),
+          step("build-run-tests", "PASS", { failures: 0 }),
+        ],
+        pause.file,
+      );
+      expect(s.reasons).not.toContain("build-plan-gaps-remediate-holistic FAIL");
+      expect(resolvedOf(s)).toContain(
+        `build-plan-gaps-remediate-holistic FAIL, resolved by build-holistic-gate on the gate re-run (\`${DEC}\`)`,
+      );
+      expect(s.verdict).not.toBe("FAIL");
+    });
+
+    it("a group fix round FAIL with no passing holistic verify after it is answered by that group's gate passing on the re-run", () => {
+      minute = 0;
+      const pause = decision("verify", 1);
+      const groupRows = () => [
+        step("build-plan-verify", "PASS", { group: 1, failures: 0 }),
+        step("build-group-gate", "FAIL", { group: 1 }),
+        step("build-plan-gaps-remediate", "FAIL", { group: 1, strategy: "STANDARD" }),
+        ...pause.rows,
+        answer("rerun"),
+        step("build-group-gate", "PASS", { group: 1 }),
+      ];
+      const s = run([...groupRows(), step("build-run-tests", "PASS", { failures: 0 })], pause.file);
+      expect(s.reasons).not.toContain("build-plan-gaps-remediate (group 1) FAIL");
+      expect(resolvedOf(s)).toContain(
+        `build-plan-gaps-remediate (group 1) FAIL, resolved by build-group-gate on the gate re-run (\`${DEC}\`)`,
+      );
+      expect(s.verdict).not.toBe("FAIL");
+
+      minute = 0;
+      const withHolistic = run(
+        [
+          ...groupRows(),
+          step("build-plan-verify-holistic", "PASS", { failures: 0 }),
+          step("build-run-tests", "PASS", { failures: 0 }),
+        ],
+        pause.file,
+      );
+      expect(resolvedOf(withHolistic)).toContain(
+        "build-plan-gaps-remediate (group 1) FAIL, resolved by build-plan-verify-holistic",
+      );
+    });
+
+    it("a fix round FAIL whose pause saw source change, or recorded no source-changed fact, stays FAIL", () => {
+      for (const sourceChanged of [true, null]) {
+        minute = 0;
+        const pause = decision("holistic", undefined, sourceChanged);
+        const s = run(
+          [
+            step("build-plan-verify-holistic", "PASS", { failures: 0 }),
+            step("build-holistic-gate", "FAIL"),
+            step("build-plan-gaps-remediate-holistic", "FAIL", { artifacts: [FIX_LOG] }),
+            ...pause.rows,
+            answer("rerun"),
+            step("build-holistic-gate", "PASS"),
+          ],
+          pause.file,
+        );
+        expect(s.reasons).toContain("build-plan-gaps-remediate-holistic FAIL");
+        expect(s.verdict).toBe("FAIL");
+      }
+    });
+
+    it("a pause for the other loop, a gate whose last run is not a clean PASS, or a re-run before the fix round leaves the FAIL", () => {
+      const fixRound = () => [
+        step("build-plan-verify-holistic", "PASS", { failures: 0 }),
+        step("build-holistic-gate", "FAIL"),
+        step("build-plan-gaps-remediate-holistic", "FAIL", { artifacts: [FIX_LOG] }),
+      ];
+      const stays = (s: ReturnType<typeof buildSummary>) => {
+        expect(s.reasons).toContain("build-plan-gaps-remediate-holistic FAIL");
+        expect(s.verdict).toBe("FAIL");
+      };
+
+      minute = 0;
+      const otherLoop = decision("verify", 1);
+      stays(
+        run(
+          [...fixRound(), ...otherLoop.rows, answer("rerun"), step("build-holistic-gate", "PASS")],
+          otherLoop.file,
+        ),
+      );
+
+      for (const last of [
+        { verdict: "PASS", extra: { failures: 2 } },
+        { verdict: "CONCERNS", extra: {} },
+      ]) {
+        minute = 0;
+        const pause = decision("holistic");
+        stays(
+          run(
+            [
+              ...fixRound(),
+              ...pause.rows,
+              answer("rerun"),
+              step("build-holistic-gate", last.verdict, last.extra),
+            ],
+            pause.file,
+          ),
+        );
+      }
+
+      minute = 0;
+      const early = decision("holistic");
+      stays(
+        run(
+          [
+            step("build-plan-verify-holistic", "PASS", { failures: 0 }),
+            step("build-holistic-gate", "FAIL"),
+            ...early.rows,
+            answer("rerun"),
+            step("build-plan-gaps-remediate-holistic", "FAIL", { artifacts: [FIX_LOG] }),
+            step("build-holistic-gate", "PASS"),
+          ],
+          early.file,
+        ),
+      );
+    });
+
+    it("a fix round FAIL with no later passing gate, or a pause not closed by the re-run, stays FAIL", () => {
+      minute = 0;
+      const pause = decision("holistic");
+      const head = () => [
+        step("build-plan-verify-holistic", "PASS", { failures: 0 }),
+        step("build-holistic-gate", "FAIL"),
+        step("build-plan-gaps-remediate-holistic", "FAIL", { artifacts: [FIX_LOG] }),
+        ...pause.rows,
+      ];
+      const stillRed = run(
+        [...head(), answer("rerun"), step("build-holistic-gate", "FAIL")],
+        pause.file,
+      );
+      expect(stillRed.reasons).toContain("build-plan-gaps-remediate-holistic FAIL");
+      expect(stillRed.verdict).toBe("FAIL");
+
+      minute = 0;
+      const noRerun = run(
+        [...head(), answer("owner"), step("build-holistic-gate", "PASS")],
+        pause.file,
+      );
+      expect(noRerun.reasons).toContain("build-plan-gaps-remediate-holistic FAIL");
+      expect(noRerun.verdict).toBe("FAIL");
+    });
+
+    it("a group fix round FAIL followed by another group's passing gate stays FAIL", () => {
+      minute = 0;
+      const head = () => [
+        step("build-group-gate", "FAIL", { group: 1 }),
+        step("build-plan-gaps-remediate", "FAIL", { group: 1 }),
+      ];
+      const own = decision("verify", 1);
+      const otherGate = run(
+        [...head(), ...own.rows, answer("rerun"), step("build-group-gate", "PASS", { group: 2 })],
+        own.file,
+      );
+      expect(otherGate.reasons).toContain("build-plan-gaps-remediate (group 1) FAIL");
+      expect(otherGate.verdict).toBe("FAIL");
+
+      minute = 0;
+      const other = decision("verify", 2);
+      const otherPause = run(
+        [...head(), ...other.rows, answer("rerun"), step("build-group-gate", "PASS", { group: 1 })],
+        other.file,
+      );
+      expect(otherPause.reasons).toContain("build-plan-gaps-remediate (group 1) FAIL");
+      expect(otherPause.verdict).toBe("FAIL");
+    });
+  });
+
   describe("a holistic pause", () => {
     const DEC = "log/build-decision-1-1.md";
     const row = (step: string, verdict: string, extra: object = {}) => ({

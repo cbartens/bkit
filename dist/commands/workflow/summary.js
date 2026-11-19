@@ -4,7 +4,7 @@
 // disk and passes `read` for the log files.
 import { coversList } from "./plans.js";
 import { issueIdOf } from "./fids.js";
-import { decisionFileHeader, decisionItems, unwrittenPause } from "./open-decision.js";
+import { decisionFileHeader, decisionItems, unwrittenPause, } from "./open-decision.js";
 import { parsePlanBlocks } from "./plan-blocks.js";
 import { parseJson } from "../../shared/json.js";
 import { oneLine } from "../../shared/text.js";
@@ -93,6 +93,20 @@ const RESOLVED_BY_RUN = {
     "build/build-plan-verify": ["build-plan-verify-holistic"],
     "build/build-group-gate": ["build-run-tests"],
     "build/build-holistic-gate": ["build-run-tests"],
+};
+/**
+ * Fix rounds that their own gate's later passing run answers, when a pause after the round
+ * was closed by the gate re-run (`decisions apply --by=rerun`: a `decision-answer` row with
+ * `by` = `rerun`), its `From` header (and, for a group, its `Group` header) names the round's
+ * loop, and its `Source changed` reads `false`.
+ */
+const RESOLVED_BY_RERUN = {
+    "build/build-plan-gaps-remediate": { gate: "build-group-gate", from: "verify", grouped: true },
+    "build/build-plan-gaps-remediate-holistic": {
+        gate: "build-holistic-gate",
+        from: "holistic",
+        grouped: false,
+    },
 };
 const RUN_TESTS = new Set(["build-run-tests", "debug-run-tests"]);
 const SEVERITY = /\*\*Severity:\*\*\s*(CRITICAL|HIGH|MEDIUM|LOW)\b/;
@@ -251,6 +265,35 @@ function stepGroups(rows) {
     return [...groups.values()];
 }
 const lastOf = (g) => g.rows.at(-1);
+/**
+ * The decision file of the pause the gate re-run closed after the fix round at `index` of task
+ * group `sub`, when the gate's last run, after that re-run, passed; undefined otherwise. The
+ * pause's `Source changed` must read `false`; a missing value refuses, as `skipProblem` does,
+ * because the re-run skips the verify that would check changed source.
+ */
+function gateRerunPause(rows, groups, index, sub, rule, read) {
+    if (rule.grouped !== (sub !== undefined))
+        return undefined;
+    const gate = groups.find((x) => x.key === (sub === undefined ? rule.gate : `${rule.gate}#${sub}`));
+    if (gate === undefined)
+        return undefined;
+    const last = lastOf(gate);
+    if (last.row.verdict !== "PASS" || (last.row.failures !== undefined && last.row.failures !== 0))
+        return undefined;
+    const pause = rows.find((r, i) => {
+        if (i <= index || i >= last.index)
+            return false;
+        if (r.type !== "decision-answer" || r.by !== "rerun" || r.q !== 1)
+            return false;
+        if (typeof r.file !== "string" || read(r.file) === null)
+            return false;
+        const header = decisionFileHeader(read, r.file);
+        return (header.From === rule.from &&
+            (sub === undefined || header.Group === String(sub)) &&
+            header["Source changed"] === "false");
+    });
+    return pause === undefined ? undefined : String(pause.file);
+}
 const PAUSE_RULES = {
     verify: {
         loop: "Verify",
@@ -474,8 +517,14 @@ export function buildSummary(input) {
             concerns.push(`${g.label} FAIL, tests passed since (${String(answer.row.step)})`);
         else if (answer !== undefined && !spike)
             resolved.set(g.key, String(answer.row.step));
-        else if (row.verdict === "FAIL")
-            fails.push(`${g.label} FAIL`);
+        else if (row.verdict === "FAIL") {
+            const rule = RESOLVED_BY_RERUN[`${workflow}/${g.step}`];
+            const pause = rule === undefined ? undefined : gateRerunPause(input.rows, groups, index, sub, rule, read);
+            if (rule !== undefined && pause !== undefined)
+                resolved.set(g.key, `${rule.gate} on the gate re-run (\`${pause}\`)`);
+            else
+                fails.push(`${g.label} FAIL`);
+        }
         else
             concerns.push(`${g.label} CONCERNS`);
     }
