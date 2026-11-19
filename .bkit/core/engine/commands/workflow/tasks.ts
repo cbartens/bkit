@@ -21,6 +21,7 @@ import { EXIT_DIFF_FAILED, fetchRemoteRef } from "./branches.js";
 import { decisionFileHeader, decisionItems } from "./open-decision.js";
 const DIFF_BASE = "origin/dev";
 import {
+  codeSpan,
   derivedTestMatrix,
   NO_MARKERS_REASON,
   parsePlanBlocks,
@@ -278,11 +279,11 @@ function takeoverTask(
   return [
     `<!-- bkit:task ${n} start -->`,
     "",
-    `- [ ] **TASK ${n}:** Take over \`${t.name}\` from TASK ${t.from}`,
+    `- [ ] **TASK ${n}:** Take over ${codeSpan(t.name)} from TASK ${t.from}`,
     ...(dependsOn === undefined ? [] : [`  - **DEPENDS ON:** ${dependsOn}`]),
-    `  - **DONE WHEN:** \`${t.test}\` \`${t.name}\` passes`,
+    `  - **DONE WHEN:** ${codeSpan(t.test)} ${codeSpan(t.name)} passes`,
     "  - **TEST FIRST:**",
-    `    - \`${t.test}\` \`${t.name}\` fails until ${until}: ${planWords(t.reason)}`,
+    `    - ${codeSpan(t.test)} ${codeSpan(t.name)} fails until ${until}: ${planWords(t.reason)}`,
     "",
     `<!-- bkit:task ${n} end -->`,
   ];

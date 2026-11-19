@@ -77,6 +77,7 @@ import {
   NO_MARKERS_REASON,
   outOfScope,
   parsePlanBlocks,
+  rawSpans,
   reuseInventory,
   type OutOfScopeRow,
 } from "./plan-blocks.js";
@@ -2327,7 +2328,7 @@ function planRowKeys(line: string): string[] {
   for (const raw of line.split(",")) {
     const entry = raw.trim().replace(/\.$/, "");
     if (entry.includes("`")) {
-      const ticked = [...entry.matchAll(/`([^`]+)`/g)].map((m) => m[1] ?? "");
+      const ticked = rawSpans(entry);
       if (ticked.length === 0) return [];
       keys.push(...ticked);
     } else if (/\s/.test(entry)) {
@@ -2677,7 +2678,7 @@ function declaredItems(rows: OutOfScopeRow[] | null): Set<string> {
     const item = row.cells[0] ?? "";
     if (item !== "") out.add(NORMAL(item));
     for (const cell of row.cells)
-      for (const m of cell.matchAll(/`([^`]+)`/g)) if (m[1]!.trim() !== "") out.add(NORMAL(m[1]!));
+      for (const s of rawSpans(cell)) if (s.trim() !== "") out.add(NORMAL(s));
   }
   return out;
 }

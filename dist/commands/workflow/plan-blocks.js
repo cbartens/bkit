@@ -78,7 +78,7 @@ export function reuseInventory(text) {
         const cells = tableCells(lines[i]);
         rows.push({
             line: lines[i],
-            files: [...(cells[file] ?? "").matchAll(/`([^`]+)`/g)].map((m) => path.posix.normalize(m[1])),
+            files: rawSpans(cells[file] ?? "").map((f) => path.posix.normalize(f)),
             decision: decision < 0 ? "" : (cells[decision] ?? ""),
         });
     }
@@ -157,26 +157,50 @@ const STRAY_TASK = /\*\*\s*task\s+\d+/i;
 /** A bold `**TASK N:**` inside a task block other than its own task line. */
 const INNER_TASK = /(?<!\S)\*\*task\s+\d+\s*:?\s*\*\*/i;
 const STRAY_FIELD = new RegExp(String.raw `\*\*\s*(${[...PLAN_FIELDS, "TEST-ORDER EXCEPTION"].join("|")})\s*(?::\*\*|\*\*\s*:)`, "i");
+/**
+ * One inline code span of a plan line, its text the one capture group: `\`` inside it is a
+ * backtick, so the span ends at the first later backtick no backslash precedes. A span ending
+ * in a backslash therefore runs on to the next unescaped backtick: into the next span on the
+ * line when one follows, else it ends at its own closing backtick.
+ */
+export const CODE_SPAN = /`((?:\\`|[^`])+)`/.source;
+/** A span of two or more backticks, a `CODE_SPAN`, or an empty one-backtick span. */
+const ANY_SPAN = new RegExp(String.raw `(\x60{2,})[\s\S]*?\1|${CODE_SPAN}|\x60\x60`, "g");
 /** `text` with inline code spans removed: prose naming a label is not the label. */
-const withoutCode = (text) => text.replace(/(`+)[\s\S]*?\1/g, "");
-const spansOf = (text) => [...text.matchAll(/`([^`]+)`/g)].map((m) => m[1].trim());
+const withoutCode = (text) => text.replace(ANY_SPAN, "");
+/** A `CODE_SPAN` capture as its value: each `\`` read as a backtick. */
+export const spanValue = (captured) => captured.replace(/\\`/g, "`");
+/** `value` as one inline code span that `CODE_SPAN` reads back: each backtick written `\``. */
+export const codeSpan = (value) => `\`${value.replace(/`/g, "\\`")}\``;
+/** The values of the inline code spans in `text`, untrimmed. */
+export const rawSpans = (text) => [...text.matchAll(new RegExp(CODE_SPAN, "g"))].map((m) => spanValue(m[1]));
+/** The values of the inline code spans in `text`, each trimmed. */
+export const spansOf = (text) => rawSpans(text).map((s) => s.trim());
+const SYMBOL_REF = new RegExp(String.raw `^${CODE_SPAN}\s+in\s+${CODE_SPAN}\s*(?::\s*([\s\S]*))?$`);
+const SECTION_REF = new RegExp(String.raw `^(§[^\x60]*?)\s+in\s+${CODE_SPAN}\s*(?::\s*([\s\S]*))?$`);
+const FILE_REF = new RegExp(String.raw `^${CODE_SPAN}\s*(?::\s*([\s\S]*))?$`);
 /** A CREATE / READ / UPDATE / DELETE value, or null when it is none of the forms. */
 export function parseRef(value, line) {
     const v = value.trim();
-    const sym = /^`([^`]+)`\s+in\s+`([^`]+)`\s*(?::\s*([\s\S]*))?$/.exec(v);
+    const sym = SYMBOL_REF.exec(v);
     if (sym)
-        return { symbol: sym[1].trim(), file: sym[2].trim(), what: (sym[3] ?? "").trim(), line };
-    const section = /^(§[^`]*?)\s+in\s+`([^`]+)`\s*(?::\s*([\s\S]*))?$/.exec(v);
+        return {
+            symbol: spanValue(sym[1]).trim(),
+            file: spanValue(sym[2]).trim(),
+            what: (sym[3] ?? "").trim(),
+            line,
+        };
+    const section = SECTION_REF.exec(v);
     if (section)
         return {
             symbol: section[1].trim(),
-            file: section[2].trim(),
+            file: spanValue(section[2]).trim(),
             what: (section[3] ?? "").trim(),
             line,
         };
-    const file = /^`([^`]+)`\s*(?::\s*([\s\S]*))?$/.exec(v);
+    const file = FILE_REF.exec(v);
     if (file)
-        return { file: file[1].trim(), what: (file[2] ?? "").trim(), line };
+        return { file: spanValue(file[1]).trim(), what: (file[2] ?? "").trim(), line };
     return null;
 }
 const testOf = (text, line) => {

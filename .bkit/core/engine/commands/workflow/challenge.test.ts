@@ -294,6 +294,41 @@ describe("bkit challenge merge", () => {
     expect(checkPlanText(merged).problems).toEqual([]);
   });
 
+  it("challenge merge reads a test name holding escaped backticks whole for its matrix row", async () => {
+    write(
+      PLAN,
+      [
+        plan(2),
+        "",
+        "## Derived Test Matrix",
+        "",
+        "<!-- prettier-ignore -->",
+        "| Test description | Type | Target file | Task |",
+        "| --- | --- | --- | --- |",
+        "| case 1 | Unit | `src/a.test.ts` | 1 |",
+        "",
+      ].join("\n"),
+    );
+    write(
+      R1,
+      report({
+        sev: "HIGH",
+        loc: "src/a.ts:10",
+        tests: ["`src/a.test.ts` `ASK on \\`git push\\` — hosts` fails on the bug"],
+      }),
+    );
+    expect((await merge(...args([R1]))).code).toBe(0);
+    const merged = read(PLAN);
+    expect(derivedTestMatrix(merged)?.rows.at(-1)?.cells.slice(0, 2)).toEqual([
+      "ASK on `git push` — hosts",
+      "Unit",
+    ]);
+    expect(readTestFirst(merged).at(-1)).toMatchObject({
+      task: 3,
+      tests: [{ test: "src/a.test.ts", name: "ASK on `git push` — hosts" }],
+    });
+  });
+
   it("challenge merge refuses a matrix row a pipe in the test name would break", async () => {
     write(
       PLAN,

@@ -237,6 +237,139 @@ describe("the planned-test lock across groups", () => {
   });
 });
 
+describe("a planned test whose name holds backticks", () => {
+  const NAME =
+    "ASK on `git reset HEAD~1 --soft` (a soft reset moves another agent's work) — all five hosts";
+  const STASH = "ASK on `git stash list` (every stash form asks) — all five hosts";
+  const FILE = "src/h.test.ts";
+  /** The test file: one double-quoted test per name, each asserting its own index, then `other row`. */
+  const bodyOf = (names: string[]) =>
+    [
+      'describe("hosts", () => {',
+      ...names.flatMap((n, i) => [
+        `  it("${n}", () => {`,
+        `    expect(ask(${i})).toBe(true);`,
+        "  });",
+        "",
+      ]),
+      '  it("other row", () => {',
+      "    expect(1).toBe(1);",
+      "  });",
+      "});",
+      "",
+    ].join("\n");
+
+  /**
+   * A one-task plan naming each of `names` in `src/h.test.ts` with escaped backticks, its
+   * tests step committed, and `bkit tests red` run and committed. Returns the red row.
+   */
+  const redFor = (names: string[]) => {
+    write(
+      "plan.md",
+      [
+        "# Plan",
+        "",
+        "<!-- bkit:group 1 start -->",
+        "### TASK GROUP 1: Hosts",
+        "<!-- bkit:task 1 start -->",
+        "- [ ] **TASK 1:** Ask on a soft reset",
+        "  - **CREATE:** `src/h.ts`: the ask",
+        "  - **DONE WHEN:** passes",
+        "  - **TEST FIRST:**",
+        ...names.map(
+          (n) =>
+            `    - \`${FILE}\` \`${n.replace(/`/g, "\\`")}\` fails on the git call being allowed`,
+        ),
+        "<!-- bkit:task 1 end -->",
+        "<!-- bkit:group 1 end -->",
+        "",
+      ].join("\n"),
+    );
+    // Every double-quoted `it(...)` of the file runs and fails, as a red run before the code.
+    write(
+      "runner.mjs",
+      [
+        'import fs from "node:fs";',
+        "const cases = process.argv.slice(2).flatMap((f) =>",
+        '  [...fs.readFileSync(f, "utf8").matchAll(/it\\("([^"]+)"/g)].map(',
+        '    (m) => `<testcase name="${m[1]}" file="${f}"><failure message="not yet"/></testcase>`,',
+        "  ),",
+        ");",
+        'fs.writeFileSync(process.env.BKIT_TEST_REPORT, "<testsuite>" + cases.join("") + "</testsuite>");',
+        "",
+      ].join("\n"),
+    );
+    write(FILE, bodyOf(names));
+    git("add", "-A");
+    git("commit", "-q", "-m", "plan and runner");
+    const red = bkit(
+      "tests",
+      "red",
+      `--file=${STATUS}`,
+      "--workflow=build",
+      "--group=1",
+      "--plan=plan.md",
+      "--log=logs/build-tests-red-1-1.md",
+    );
+    expect(red.status, red.stdout + red.stderr).toBe(0);
+    git("add", "-A");
+    git("commit", "-q", "-m", "group 1 tests");
+    return fs
+      .readFileSync(path.join(cwd, STATUS), "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, any>)
+      .find((r) => r.step === "build-tests-red")!;
+  };
+
+  /** The code step writes `body` into the test file and its code, logs DONE, and finishes. */
+  const codeStep = (body: string) => {
+    write(FILE, body);
+    write("src/h.ts", "export const ask = () => true;\n");
+    write(
+      "logs/execute-1-log.md",
+      "Verdict: PASS\n\n<!-- verdict:end -->\n\n# Build Plan\n\nDONE — TASK 1: asks on a soft reset\n",
+    );
+    return bkit(
+      ...finishArgs("build-plan-tasks", "bkit-build-plan-tasks", "logs/execute-1-log.md", 1),
+    );
+  };
+
+  it("tests red records it under its full name with a block, and an edit to another test of its file finishes the code step", () => {
+    const redRow = redFor([NAME]);
+    expect(redRow.tests).toEqual([
+      expect.objectContaining({
+        task: 1,
+        test: FILE,
+        testName: NAME,
+        state: "red",
+        block: expect.any(String),
+      }),
+    ]);
+    // The code step edits only the other test of the file: the planned test's own lines stay.
+    const code = codeStep(
+      bodyOf([NAME]).replace("expect(1).toBe(1)", "expect(1).toBe(1);\n    expect(2).toBe(2)"),
+    );
+    expect(code.status, code.stdout + code.stderr).toBe(0);
+  });
+
+  it("an edit inside the planned test is refused with exit 11 naming that test", () => {
+    redFor([NAME]);
+    const code = codeStep(bodyOf([NAME]).replace("toBe(true)", "toBe(false)"));
+    expect(code.status, code.stdout + code.stderr).toBe(11);
+    expect(code.json.tests).toEqual([expect.objectContaining({ test: FILE, name: NAME })]);
+  });
+
+  it("of two names sharing the text before their first backtick, an edit inside one names only that one", () => {
+    redFor([NAME, STASH]);
+    const code = codeStep(
+      bodyOf([NAME, STASH]).replace("ask(1)).toBe(true)", "ask(1)).toBe(false)"),
+    );
+    expect(code.status, code.stdout + code.stderr).toBe(11);
+    expect(code.json.tests).toEqual([expect.objectContaining({ test: FILE, name: STASH })]);
+  });
+});
+
 /** PLAN with group 2's task taking over group 1's planned test. */
 const TAKEOVER_PLAN = PLAN.replace(
   `    - \`${SECOND.file}\` \`${SECOND.name}\` fails on the stub`,

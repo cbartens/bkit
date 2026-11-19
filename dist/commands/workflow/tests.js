@@ -30,7 +30,7 @@ import { readPackageJson } from "../../shared/package-json.js";
 import { COULD_NOT_RUN_EXIT_CODES, scriptCommand } from "../../shared/package-manager.js";
 import { CONFIG_DEFAULTS, readBkitConfig } from "../../shared/settings.js";
 import { FILE_FLAG, GROUP_FLAG, WORKFLOW_FLAG, positiveInt, readStatusRows, readRuns, statusFile, str, } from "./status.js";
-import { NO_MARKERS_REASON, derivedTestMatrix, fenceNeverClosed, parsePlanBlocks, reuseInventory, supersessionInventory, } from "./plan-blocks.js";
+import { CODE_SPAN, NO_MARKERS_REASON, derivedTestMatrix, fenceNeverClosed, parsePlanBlocks, reuseInventory, spanValue, supersessionInventory, } from "./plan-blocks.js";
 import { writeStepRow } from "./steps.js";
 import { activeRunStart } from "./counters.js";
 import { REPORT_ENV, reportFailures, runGateUnderLock, runTestFile, runToLog, } from "./junit.js";
@@ -1317,25 +1317,23 @@ function takenOverEntry(top, reds, red) {
         diff: d?.diff ?? null,
     };
 }
+const BLOCKED_LINE = new RegExp(String.raw `^BLOCKED\s*[—–-]+\s*(TASK|Gap)\s+(\d+):\s*test\s+${CODE_SPAN}\s+${CODE_SPAN}\s*[—–-]+\s*(.+)$`, "gm");
+const PASSES_LINE = new RegExp(String.raw `^PASSES\s*[—–-]+\s*TASK\s+(\d+):\s*${CODE_SPAN}\s+${CODE_SPAN}\s*:\s*(.+)$`, "gm");
 /** Every BLOCKED line of a code step's log that names a planned test, with its reason. */
 export function blockedTests(log) {
-    return [
-        ...log.matchAll(/^BLOCKED\s*[—–-]+\s*(TASK|Gap)\s+(\d+):\s*test\s+`([^`]+)`\s+`([^`]+)`\s*[—–-]+\s*(.+)$/gm),
-    ].map((m) => ({
-        test: m[3].trim(),
-        name: m[4].trim(),
+    return [...log.matchAll(BLOCKED_LINE)].map((m) => ({
+        test: spanValue(m[3]).trim(),
+        name: spanValue(m[4]).trim(),
         reason: m[5].trim(),
         task: m[1] === "TASK" ? Number(m[2]) : null,
     }));
 }
 /** Every PASSES line of a tests step's log: the tests the writer saw passing and vouches for. */
 function passesLines(log) {
-    return [
-        ...log.matchAll(/^PASSES\s*[—–-]+\s*TASK\s+(\d+):\s*`([^`]+)`\s+`([^`]+)`\s*:\s*(.+)$/gm),
-    ].map((m) => ({
+    return [...log.matchAll(PASSES_LINE)].map((m) => ({
         task: Number(m[1]),
-        test: m[2].trim(),
-        name: m[3].trim(),
+        test: spanValue(m[2]).trim(),
+        name: spanValue(m[3]).trim(),
         reason: m[4].trim(),
     }));
 }

@@ -3067,6 +3067,19 @@ describe("blockedTests", () => {
     ]);
   });
 
+  it("reads a name holding escaped backticks whole, with real backticks", () => {
+    const log =
+      "BLOCKED — TASK 2: test `src/a.test.ts` `ASK on \\`git reset HEAD~1 --soft\\` — all five hosts` — rows moved";
+    expect(blockedTests(log)).toEqual([
+      {
+        test: "src/a.test.ts",
+        name: "ASK on `git reset HEAD~1 --soft` — all five hosts",
+        reason: "rows moved",
+        task: 2,
+      },
+    ]);
+  });
+
   it("ignores a BLOCKED line that names no test", () => {
     const log = [
       "BLOCKED — TASK 1: Add a row — the fixture cannot be built",

@@ -17,6 +17,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
+import { parsePlanBlocks } from "./plan-blocks";
 import { addTakeoverTasks, gappedTasks, tasksCommand } from "./tasks";
 import { checkPlanText, planTakeovers } from "./tests";
 
@@ -990,6 +991,18 @@ describe("bkit tasks takeover", () => {
     expect(text).not.toContain("<!-- bkit:group 4 start -->");
     expect(text).toContain("- [ ] **TASK 4:** Take over `counts rows` from TASK 1");
     expect(checkPlanText(text).problems).toEqual([]);
+  });
+
+  it("addTakeoverTasks writes a name holding backticks so the plan reads the same name back", () => {
+    setup();
+    const name = "ASK on `git reset HEAD~1 --soft` — all five hosts";
+    expect(takeover(name)).toEqual([3]);
+    const task3 = parsePlanBlocks(plan()).tasks.find((t) => t.task === 3)!;
+    expect(task3.testFirst!.malformed).toEqual([]);
+    expect(task3.testFirst!.tests.map((t) => [t.test, t.name])).toEqual([[TEST, name]]);
+    const once = plan();
+    expect(takeover(name)).toEqual([3]);
+    expect(plan()).toBe(once);
   });
 
   it("addTakeoverTasks takes the matrix tier from the test file's name", () => {

@@ -1795,7 +1795,7 @@ Build Step 8 runs `bkit:gate:static-unit` on the files the group changed (`tests
 
 ### Test-first
 
-Every plan task block carries a `**TEST FIRST:**` field — one sub-bullet per test, 1 to `package.json` `bkit.workflows.tasks.maxTestsPerTask` tests (default 10) across <= `bkit.workflows.tasks.maxTestFilesPerTask` test files (default 3), each a test file + test name + `fails on {what goes wrong}`, or `n/a — {reason}` (no behaviour change, or E2E / `@live` tier only; plan scope-check rejects an unjustified `n/a`). Build proves each named test failed before its task's code existed, by separation rather than order inside one agent: one subagent writes a group's tests and may touch nothing else, the engine records them red, and only then does another subagent write the group's code and may touch no planned test.
+Every plan task block carries a `**TEST FIRST:**` field — one sub-bullet per test, 1 to `package.json` `bkit.workflows.tasks.maxTestsPerTask` tests (default 10) across <= `bkit.workflows.tasks.maxTestFilesPerTask` test files (default 3), each a test file + test name + `fails on {what goes wrong}`, or `n/a — {reason}` (no behaviour change, or E2E / `@live` tier only; plan scope-check rejects an unjustified `n/a`). A backtick inside a test name is written `` \` `` and read back as a backtick; a test name cannot end in a backslash. Build proves each named test failed before its task's code existed, by separation rather than order inside one agent: one subagent writes a group's tests and may touch nothing else, the engine records them red, and only then does another subagent write the group's code and may touch no planned test.
 
 <!-- prettier-ignore -->
 | Moment | Who | What is checked |

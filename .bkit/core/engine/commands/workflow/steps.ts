@@ -82,7 +82,7 @@ import {
   postForVerb,
   type TrackerOutcome,
 } from "./tracker.js";
-import { parsePlanBlocks } from "./plan-blocks.js";
+import { codeSpan, parsePlanBlocks } from "./plan-blocks.js";
 import {
   blockedTests,
   PLAN_TASKS_STEP,
@@ -1514,7 +1514,9 @@ async function finish(ctx: RunContext): Promise<number> {
         return `${contradicts.map(nameOf).join(", ")} ${many ? "are" : "is"} owned by an earlier, ticked task (${owners}) and this change contradicts ${them}: the build added takeover TASK ${added}, which rewrites ${them} in its own tests step — put ${them} back as the tests step left ${them} (other edits to the file stay); a BLOCKED line does not keep ${them}, so the keep-the-edit choice does not apply to ${them}`;
       };
       const logLines = (list: typeof tests) =>
-        list.map((t) => `BLOCKED — TASK {N}: test \`${t.test}\` \`${t.name}\` — {why}`).join("; ");
+        list
+          .map((t) => `BLOCKED — TASK {N}: test ${codeSpan(t.test)} ${codeSpan(t.name)} — {why}`)
+          .join("; ");
       const part = (fromChange: boolean) => {
         const list = tests.filter(
           (t, i) => why[i]!.fromChange === fromChange && !isContradicted(t),

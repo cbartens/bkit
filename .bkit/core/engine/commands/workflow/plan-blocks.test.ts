@@ -3,7 +3,14 @@ import * as path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { derivedTestMatrix, outOfScope, parsePlanBlocks, reuseInventory } from "./plan-blocks";
+import {
+  codeSpan,
+  derivedTestMatrix,
+  outOfScope,
+  parsePlanBlocks,
+  reuseInventory,
+  spansOf,
+} from "./plan-blocks";
 
 const task = (n: number, body: string[] = [], tick = " ") => [
   `<!-- bkit:task ${n} start -->`,
@@ -156,6 +163,15 @@ describe("parsePlanBlocks", () => {
     ]);
   });
 
+  it("a label inside a code span holding escaped backticks is prose, not a stray label", () => {
+    const lines = [
+      "# Plan",
+      "Prose `a \\` **TASK 9:** b \\` **DONE WHEN:** c` and ``x ` **TASK 8:**`` end.",
+      ...group(1, task(1, ["  - **DONE WHEN:** x", "  - **TEST FIRST:** n/a — docs"])),
+    ];
+    expect(parsePlanBlocks(lines.join("\n")).errors).toEqual([]);
+  });
+
   it("ignores markers inside fenced code", () => {
     const lines = [
       "# Plan",
@@ -192,6 +208,62 @@ describe("parsePlanBlocks", () => {
       ["a.test.ts", "clamps high"],
       ["b.test.ts", "stores"],
     ]);
+  });
+
+  it("a TEST FIRST name may hold escaped backticks: it reads whole, with real backticks", () => {
+    const file = ".bkit/core/engine/install/modules/index.integration.test.ts";
+    const lines = group(
+      1,
+      task(1, [
+        "  - **TEST FIRST:**",
+        `    - \`${file}\` \`ASK on \\\`git reset HEAD~1 --soft\\\` (a soft reset moves another agent's work) — all five hosts\` fails on the soft reset still being allowed`,
+        `    - \`${file}\` \`ASK on \\\`git stash list\\\` (every stash form asks) — all five hosts\` fails on the stash being allowed`,
+      ]),
+    );
+    const tf = parsePlanBlocks(lines.join("\n")).tasks[0]!.testFirst!;
+    expect(tf.malformed).toEqual([]);
+    expect(tf.tests.map((x) => [x.test, x.name])).toEqual([
+      [
+        file,
+        "ASK on `git reset HEAD~1 --soft` (a soft reset moves another agent's work) — all five hosts",
+      ],
+      [file, "ASK on `git stash list` (every stash form asks) — all five hosts"],
+    ]);
+  });
+
+  it("a TEST FIRST name with one escaped backtick reads on past it to the closing one", () => {
+    const lines = group(
+      1,
+      task(1, ["  - **TEST FIRST:**", "    - `a.test.ts` `splits on \\` then more` fails on x"]),
+    );
+    const [t] = parsePlanBlocks(lines.join("\n")).tasks;
+    expect(t!.testFirst!.tests.map((x) => [x.test, x.name])).toEqual([
+      ["a.test.ts", "splits on ` then more"],
+    ]);
+  });
+
+  it("a backslash before no backtick stays in the name as written", () => {
+    const lines = group(
+      1,
+      task(1, ["  - **TEST FIRST:**", "    - `a.test.ts` `reads a\\b path` fails on x"]),
+    );
+    const [t] = parsePlanBlocks(lines.join("\n")).tasks;
+    expect(t!.testFirst!.tests.map((x) => x.name)).toEqual(["reads a\\b path"]);
+  });
+
+  it("a span ending in a backslash runs into the next span on the line", () => {
+    expect(spansOf("`C:\\dir\\` then `x`")).toEqual(["C:\\dir` then"]);
+    expect(spansOf("`C:\\dir\\` at the end")).toEqual(["C:\\dir\\"]);
+  });
+
+  it("a name written with codeSpan reads back as the same name", () => {
+    for (const name of ["plain", "ASK on `git push` — hosts", "a \\` literal", "`edge`"]) {
+      const lines = group(
+        1,
+        task(1, ["  - **TEST FIRST:**", `    - ${codeSpan("a.test.ts")} ${codeSpan(name)} fails`]),
+      );
+      expect(parsePlanBlocks(lines.join("\n")).tasks[0]!.testFirst!.tests[0]!.name).toBe(name);
+    }
   });
 
   it("rejects groups out of file order and tasks out of order within a group", () => {

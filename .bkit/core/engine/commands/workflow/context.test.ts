@@ -2058,6 +2058,32 @@ describe("bkit context brief", () => {
     expect(rows).not.toContain("src/t6.test.ts");
   });
 
+  it("--tests-only keeps a matrix row whose description holds one backtick", async () => {
+    const { dir, plan, logs } = setupWithTests("matrix-backtick");
+    fs.writeFileSync(
+      plan,
+      read(plan).replace("| logs it | unit |", "| logs `it, one backtick | unit |"),
+    );
+    const work = read((await testsOnly(plan, logs, dir)).json.artifact).split("## The work")[1]!;
+    expect(work.split("### Derived Test Matrix rows")[1]!).toContain(
+      "| logs `it, one backtick | unit | `src/t5.test.ts` |",
+    );
+  });
+
+  it("--tests-only writes an existing test's name holding backticks so a PASSES line copied from it reads back", async () => {
+    const { dir, plan, logs } = setupWithTests("existing-backtick");
+    fs.writeFileSync(plan, read(plan).replace("`rejects bad`", "`rejects \\`bad\\``"));
+    fs.mkdirSync(path.join(dir, "src"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "src/t3.test.ts"),
+      'it("rejects `bad`", () => {\n  expect(set("x")).toBe(false);\n});\n',
+    );
+    const work = read((await testsOnly(plan, logs, dir)).json.artifact).split("## The work")[1]!;
+    expect(work.split("### Planned tests that already exist")[1]!).toContain(
+      "- TASK 3 `src/t3.test.ts` `rejects \\`bad\\`` — exists at `src/t3.test.ts:1`;",
+    );
+  });
+
   it("--tests-only lists each planned test its file already holds, with the line it starts on, and leaves the section out when none exists", async () => {
     const { dir, plan, logs } = setupWithTests("existing");
     const none = read((await testsOnly(plan, logs, dir)).json.artifact);
@@ -2125,6 +2151,21 @@ describe("bkit context brief", () => {
       "- TASK 5 `src/t5.test.ts` `logs it` — taken over from TASK 2; rewrite that test case so it fails until this task's code exists",
     );
     expect(work).not.toContain("### Planned tests that already exist");
+  });
+
+  it("the tests brief writes a taken-over name holding backticks escaped, as the plan does", async () => {
+    const { dir, plan, logs, status } = setupTakeover("taken-over-backtick", false);
+    fs.writeFileSync(plan, read(plan).replaceAll("`logs it`", "`logs \\`it\\``"));
+    fs.writeFileSync(
+      path.join(dir, "src/t5.test.ts"),
+      'it("logs `it`", () => {\n  expect(log()).toBe(1);\n});\n',
+    );
+    const work = read((await testsOnly(plan, logs, dir, [`--file=${status}`])).json.artifact).split(
+      "## The work",
+    )[1]!;
+    expect(work.split("### Planned tests taken over from earlier tasks")[1]!).toContain(
+      "- TASK 5 `src/t5.test.ts` `logs \\`it\\`` — taken over from TASK 2;",
+    );
   });
 
   it("a taken-over test that existed before the run keeps the add-only wording", async () => {

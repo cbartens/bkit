@@ -28,7 +28,7 @@ import { EXIT_BASE, diffNumstat } from "./context.js";
 import { defaultRange } from "./feature-base.js";
 import { decisionItems } from "./open-decision.js";
 import { EXIT_ROW_REFUSED, EXIT_STAGE, appendLedgerRows } from "./ledgers.js";
-import { derivedTestMatrix, parsePlanBlocks, testTier } from "./plan-blocks.js";
+import { derivedTestMatrix, parsePlanBlocks, spansOf, testTier, } from "./plan-blocks.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { grantCount } from "./counters.js";
 import { checkPlanText, planCaps, readTestFirst } from "./tests.js";
@@ -244,7 +244,7 @@ const taskBlock = (n, f, round) => [
 function matrixRows(findings, firstTask) {
     const refused = [];
     const rows = findings.flatMap((f, i) => f.tests.map((entry) => {
-        const spans = [...entry.matchAll(/`([^`]+)`/g)].map((m) => m[1].trim());
+        const spans = spansOf(entry);
         const file = spans[0] ?? "";
         const name = spans[1] ?? entry.replace(/[`|]/g, "").trim();
         if (file.includes("|") || name.includes("|"))

@@ -29,7 +29,7 @@ import { EXIT_FOREIGN_PATH, activeRecord, ownPathCommit, ownSet, } from "./ledge
 import { readHolder, resolveMonth, workflowLockPath } from "./locks.js";
 import { EXIT_NO_STATUS, FILE_FLAG, GROUP_FLAG, STEP_FLAG, WORKFLOW_FLAG, extraField, nonNegativeInt, positiveInt, readRuns, readStatusRows, readRunsAt, statusFile, str, } from "./status.js";
 import { COMMENT_FILE_OUTPUT, POST_FLAG, TRACKER_OUTPUT, commentFileOf, postForVerb, } from "./tracker.js";
-import { parsePlanBlocks } from "./plan-blocks.js";
+import { codeSpan, parsePlanBlocks } from "./plan-blocks.js";
 import { blockedTests, PLAN_TASKS_STEP, readTestFirst, runPlanPath, sameTestName, touchedTests, baselineDiff, } from "./tests.js";
 import { addTakeoverTasks } from "./tasks.js";
 import { addAllButCopied } from "./worktrees.js";
@@ -1230,7 +1230,9 @@ async function finish(ctx) {
                 const added = [...new Set(contradicts.map((x) => x.takeover))].join(", ");
                 return `${contradicts.map(nameOf).join(", ")} ${many ? "are" : "is"} owned by an earlier, ticked task (${owners}) and this change contradicts ${them}: the build added takeover TASK ${added}, which rewrites ${them} in its own tests step — put ${them} back as the tests step left ${them} (other edits to the file stay); a BLOCKED line does not keep ${them}, so the keep-the-edit choice does not apply to ${them}`;
             };
-            const logLines = (list) => list.map((t) => `BLOCKED — TASK {N}: test \`${t.test}\` \`${t.name}\` — {why}`).join("; ");
+            const logLines = (list) => list
+                .map((t) => `BLOCKED — TASK {N}: test ${codeSpan(t.test)} ${codeSpan(t.name)} — {why}`)
+                .join("; ");
             const part = (fromChange) => {
                 const list = tests.filter((t, i) => why[i].fromChange === fromChange && !isContradicted(t));
                 if (list.length === 0)

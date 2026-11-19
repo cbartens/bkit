@@ -58,8 +58,10 @@ import { defaultRange } from "./feature-base.js";
 export { defaultRange, featureBase } from "./feature-base.js";
 import { buildComment } from "./issues.js";
 import {
+  codeSpan,
   derivedTestMatrix,
   parsePlanBlocks,
+  rawSpans,
   reuseInventory,
   type PlanGroup,
   type PlanTaskBlock,
@@ -1084,8 +1086,7 @@ const INVENTORY_SECTION = "Reuse Inventory";
 const ARCHITECTURE_SECTION = "Architecture & Component Changes";
 
 /** Backticked repo-relative paths in `text`, normalised. */
-const backticked = (text: string) =>
-  [...text.matchAll(/`([^`]+)`/g)].map((m) => path.posix.normalize(m[1]!));
+const backticked = (text: string) => rawSpans(text).map((s) => path.posix.normalize(s));
 
 /**
  * The Reuse Inventory table's header and separator lines (`reuseInventory`), and its rows
@@ -1259,7 +1260,7 @@ export function briefText(o: BriefInput): { text: string; workBytes: number } {
       work.push("### Planned tests that already exist", "");
       for (const e of existing)
         work.push(
-          `- TASK ${e.task} \`${e.test}\` \`${e.name}\` — exists at \`${e.test}:${e.line}\`; update that test in place: add expectations, never remove or loosen one`,
+          `- TASK ${e.task} ${codeSpan(e.test)} ${codeSpan(e.name)} — exists at \`${e.test}:${e.line}\`; update that test in place: add expectations, never remove or loosen one`,
         );
       work.push("");
     }
@@ -1268,7 +1269,7 @@ export function briefText(o: BriefInput): { text: string; workBytes: number } {
       work.push("### Planned tests taken over from earlier tasks", "");
       for (const k of takenOver)
         work.push(
-          `- TASK ${k.task} \`${k.test}\` \`${k.name}\` — taken over from TASK ${k.from}; rewrite that test case so it fails until this task's code exists`,
+          `- TASK ${k.task} ${codeSpan(k.test)} ${codeSpan(k.name)} — taken over from TASK ${k.from}; rewrite that test case so it fails until this task's code exists`,
         );
       work.push("");
     }
@@ -1288,7 +1289,7 @@ function matrixRows(plan: string, open: PlanTaskBlock[]): string[] {
   if (matrix === null) return [];
   const files = new Set(plannedTests(open).map((t) => path.posix.normalize(t.test)));
   const rows = matrix.rows.filter((r) =>
-    [...r.line.matchAll(/`([^`]+)`/g)].some((m) => files.has(path.posix.normalize(m[1]!))),
+    r.cells.some((c) => rawSpans(c).some((s) => files.has(path.posix.normalize(s)))),
   );
   return rows.length === 0
     ? []

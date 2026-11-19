@@ -23,7 +23,7 @@ import { CORRECTION_LIMIT, spendCorrection } from "./counters.js";
 import { auditLedgerRows, auditTotals, ledgerKeys, parseAuditReport } from "./audit-report.js";
 import { FID_PATTERNS } from "./fids.js";
 import { readStatusRows, str } from "./status.js";
-import { NO_MARKERS_REASON, outOfScope, parsePlanBlocks, reuseInventory, } from "./plan-blocks.js";
+import { NO_MARKERS_REASON, outOfScope, parsePlanBlocks, rawSpans, reuseInventory, } from "./plan-blocks.js";
 /** Root is not a directory or repo, git is too old, or a ref does not resolve. */
 export const EXIT_ROOT = 3;
 /** `git add` / `git add -u` / mkdir / copy failed. */
@@ -1890,7 +1890,7 @@ function planRowKeys(line) {
     for (const raw of line.split(",")) {
         const entry = raw.trim().replace(/\.$/, "");
         if (entry.includes("`")) {
-            const ticked = [...entry.matchAll(/`([^`]+)`/g)].map((m) => m[1] ?? "");
+            const ticked = rawSpans(entry);
             if (ticked.length === 0)
                 return [];
             keys.push(...ticked);
@@ -2172,9 +2172,9 @@ function declaredItems(rows) {
         if (item !== "")
             out.add(NORMAL(item));
         for (const cell of row.cells)
-            for (const m of cell.matchAll(/`([^`]+)`/g))
-                if (m[1].trim() !== "")
-                    out.add(NORMAL(m[1]));
+            for (const s of rawSpans(cell))
+                if (s.trim() !== "")
+                    out.add(NORMAL(s));
     }
     return out;
 }

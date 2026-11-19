@@ -38,7 +38,7 @@ import { checkedTable } from "../../shared/text.js";
 import { defaultRange } from "./feature-base.js";
 export { defaultRange, featureBase } from "./feature-base.js";
 import { buildComment } from "./issues.js";
-import { derivedTestMatrix, parsePlanBlocks, reuseInventory, } from "./plan-blocks.js";
+import { codeSpan, derivedTestMatrix, parsePlanBlocks, rawSpans, reuseInventory, } from "./plan-blocks.js";
 import { COMMENT_FILE_OUTPUT, commentFileOf } from "./tracker.js";
 import { EXIT_NO_STATUS, FILE_FLAG, positiveInt, readRuns, str } from "./status.js";
 import { EXIT_COMMIT, writeStepRow } from "./steps.js";
@@ -879,7 +879,7 @@ function loggedDone(dir) {
 const INVENTORY_SECTION = "Reuse Inventory";
 const ARCHITECTURE_SECTION = "Architecture & Component Changes";
 /** Backticked repo-relative paths in `text`, normalised. */
-const backticked = (text) => [...text.matchAll(/`([^`]+)`/g)].map((m) => path.posix.normalize(m[1]));
+const backticked = (text) => rawSpans(text).map((s) => path.posix.normalize(s));
 /**
  * The Reuse Inventory table's header and separator lines (`reuseInventory`), and its rows
  * whose `File` cell names a file in `files`. No table or no `File` column → no rows.
@@ -1017,14 +1017,14 @@ export function briefText(o) {
         if (existing.length > 0) {
             work.push("### Planned tests that already exist", "");
             for (const e of existing)
-                work.push(`- TASK ${e.task} \`${e.test}\` \`${e.name}\` — exists at \`${e.test}:${e.line}\`; update that test in place: add expectations, never remove or loosen one`);
+                work.push(`- TASK ${e.task} ${codeSpan(e.test)} ${codeSpan(e.name)} — exists at \`${e.test}:${e.line}\`; update that test in place: add expectations, never remove or loosen one`);
             work.push("");
         }
         const takenOver = (o.takenOver ?? []).filter((k) => open.some((t) => t.task === k.task));
         if (takenOver.length > 0) {
             work.push("### Planned tests taken over from earlier tasks", "");
             for (const k of takenOver)
-                work.push(`- TASK ${k.task} \`${k.test}\` \`${k.name}\` — taken over from TASK ${k.from}; rewrite that test case so it fails until this task's code exists`);
+                work.push(`- TASK ${k.task} ${codeSpan(k.test)} ${codeSpan(k.name)} — taken over from TASK ${k.from}; rewrite that test case so it fails until this task's code exists`);
             work.push("");
         }
     }
@@ -1044,7 +1044,7 @@ function matrixRows(plan, open) {
     if (matrix === null)
         return [];
     const files = new Set(plannedTests(open).map((t) => path.posix.normalize(t.test)));
-    const rows = matrix.rows.filter((r) => [...r.line.matchAll(/`([^`]+)`/g)].some((m) => files.has(path.posix.normalize(m[1]))));
+    const rows = matrix.rows.filter((r) => r.cells.some((c) => rawSpans(c).some((s) => files.has(path.posix.normalize(s)))));
     return rows.length === 0
         ? []
         : ["### Derived Test Matrix rows", "", ...matrix.head, ...rows.map((r) => r.line), ""];

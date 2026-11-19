@@ -18,7 +18,7 @@ import { CommandError, EXIT, git, runGit } from "../lib.js";
 import { EXIT_DIFF_FAILED, fetchRemoteRef } from "./branches.js";
 import { decisionFileHeader, decisionItems } from "./open-decision.js";
 const DIFF_BASE = "origin/dev";
-import { derivedTestMatrix, NO_MARKERS_REASON, parsePlanBlocks, testTier, } from "./plan-blocks.js";
+import { codeSpan, derivedTestMatrix, NO_MARKERS_REASON, parsePlanBlocks, testTier, } from "./plan-blocks.js";
 import { positiveInt, readStatusRows, str } from "./status.js";
 import { writeStepRow } from "./steps.js";
 import { doneTasks, readTestFirst, redEntries, redKey, sameTestName, TAKEOVER_STEP, } from "./tests.js";
@@ -226,11 +226,11 @@ function takeoverTask(n, t, dependsOn) {
     return [
         `<!-- bkit:task ${n} start -->`,
         "",
-        `- [ ] **TASK ${n}:** Take over \`${t.name}\` from TASK ${t.from}`,
+        `- [ ] **TASK ${n}:** Take over ${codeSpan(t.name)} from TASK ${t.from}`,
         ...(dependsOn === undefined ? [] : [`  - **DEPENDS ON:** ${dependsOn}`]),
-        `  - **DONE WHEN:** \`${t.test}\` \`${t.name}\` passes`,
+        `  - **DONE WHEN:** ${codeSpan(t.test)} ${codeSpan(t.name)} passes`,
         "  - **TEST FIRST:**",
-        `    - \`${t.test}\` \`${t.name}\` fails until ${until}: ${planWords(t.reason)}`,
+        `    - ${codeSpan(t.test)} ${codeSpan(t.name)} fails until ${until}: ${planWords(t.reason)}`,
         "",
         `<!-- bkit:task ${n} end -->`,
     ];
