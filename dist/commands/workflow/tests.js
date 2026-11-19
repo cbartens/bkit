@@ -44,7 +44,7 @@ import { testsJumpVerb } from "./tests-jump.js";
 import { readPlanRows } from "./ledgers.js";
 /** Exit code: no candidate gate is declared in package.json. */
 export const EXIT_NO_GATE = 3;
-/** Exit code: the gate could not run (exit 126 / 127, or the package runner is missing). */
+/** Exit code: the gate could not run (exit 126 / 127, or the package runner is missing), or the tests lock refused the run or its hold limit was hit. */
 export const EXIT_COULD_NOT_RUN = 4;
 /** Exit code: --artifact could not be written, trimmed or recorded. */
 export const EXIT_ARTIFACT_STEP = 5;
@@ -1563,7 +1563,7 @@ export const testsCommand = {
             textOmit: ["clamp", "row"],
             exitCodes: {
                 [EXIT_NO_GATE]: "no candidate gate is declared in package.json",
-                [EXIT_COULD_NOT_RUN]: "the gate could not run (exit 126 / 127): not a test failure",
+                [EXIT_COULD_NOT_RUN]: "the gate could not run (exit 126 / 127), or the tests lock refused the run or its hold limit was hit: not a test failure",
                 [EXIT_ARTIFACT_STEP]: "--artifact could not be written, trimmed or recorded",
             },
             run: (ctx) => {

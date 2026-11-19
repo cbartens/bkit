@@ -22,7 +22,7 @@ Mechanical step work runs as `bkit <noun> <verb> --flag=value` (also `--flag val
 | stdout | one output object as text: `key: value` lines, nested keys indented two spaces under their parent, a list of flat rows as a markdown table; a string that would read as another type (`"null"`, `"5"`) is quoted. `--json` prints the same object as one JSON line for scripts. Keys camelCase, matching `status.jsonl` (`parentSha`, `group`). A verb's `textOmit` keys (the written ledger `row`, a `clamp` record) appear under `--json` only. |
 | stderr | Human log lines, tagged `[bkit-<noun>]`. |
 | Flags | kebab-case; same name for the same thing everywhere: `--workflow --step --fid --month --group --attempt --verdict --artifact` (repeatable). |
-| Exit `0` / `1` / `2` | ok / the answer is no (gate failed, max attempts, lock held) / usage error or missing dependency. |
+| Exit `0` / `1` / `2` | ok / the answer is no (gate failed, max attempts) / usage error or missing dependency. A held workflow lock is exit 8 of `locks acquire` / `workflows start`; a held tests lock is the exit 81 wait. |
 | Exit `3`-`79` | Command-specific; listed in that verb's `--help`. |
 | Exit `80` / `81` / `82` | Do it via MCP (`runtimeGithubCli=false`) / hand the wait back to the agent turn loop / needs a human. |
 | Month | `YYYYMM` in UTC. |
@@ -118,7 +118,7 @@ Gates CI and the git hooks run.
 | `prose` | by hand | `--glob` | Run Vale over tracked and unignored Markdown, or explicit globs; fail when sources, Vale or required styles are unavailable. |
 | `skip-token` | by hand | `--ref` | Whether a commit message carries a GitHub skip-CI token ([skip ci] and kin). |
 | `min-push` | by hand | `--ref` `--base` `--target` `--update` | Exit 0 when every file a push changes is one bkit writes or bkit.testing.minPushPaths / ciSkipPaths adds (the pre-push light gate). |
-| `push-gate` | by hand | **`--gate`** | Run a consumer push gate and record successful full-gate proof for the exact clean commit. |
+| `push-gate` | by hand | **`--gate`** | Run a consumer push gate and record successful full-gate proof for the exact clean commit; exits with the gate script's own code, where 75, 73 and 124 can also mean the tests-lock wrapper gave up waiting, refused the run or hit its hold limit. |
 | `bookkeeping-push` | by hand | **`--from`** `--to` `--branch` | Exit 0 when a feature-branch push adds bookkeeping only on top of the remote head (ship's --scope=pr allow-list). |
 | `pins` | by hand | `--file` | Download each *_VERSION + *_SHA256 pinned tool in the files and fail when a hash differs. |
 

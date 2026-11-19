@@ -18,7 +18,7 @@ import { stepBase, stepRun } from "./step-base.js";
 const RUN_STATUS_FILE = /^docs\/plans\/[^/]+\/logs\/[^/]+\/status\.jsonl$/;
 /** Exit code: neither `bkit:gate:changed` nor the --fallback gate is declared. */
 const EXIT_NO_GATE = 3;
-/** Exit code: the gate could not run (exit 126 / 127, or the package runner is missing). */
+/** Exit code: the gate could not run (exit 126 / 127, or the package runner is missing), or the tests lock refused the run or its hold limit was hit. */
 const EXIT_COULD_NOT_RUN = 4;
 /** The NUL-separated paths `git <args>` prints in `top`; none when it fails. */
 const gitPaths = (top, args) => (git(top, args) ?? "").split("\0").filter(Boolean);
@@ -177,7 +177,7 @@ export const testsChangedVerb = {
     },
     exitCodes: {
         [EXIT_NO_GATE]: `neither \`${BKIT_GATE_CHANGED_SCRIPT}\` nor the --fallback gate is declared in package.json`,
-        [EXIT_COULD_NOT_RUN]: "the gate could not run (exit 126 / 127): not a test failure",
+        [EXIT_COULD_NOT_RUN]: "the gate could not run (exit 126 / 127), or the tests lock refused the run or its hold limit was hit: not a test failure",
     },
     run: (ctx) => {
         const waitSource = ctx.flags.lockWaitS ?? process.env.BKIT_LOCK_WAIT_S;

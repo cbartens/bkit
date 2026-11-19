@@ -36,7 +36,7 @@ import { renderText } from "../shared/text.js";
 /** Codes every command shares. A command's own codes sit in 3-79. */
 export const EXIT = {
   OK: 0,
-  /** The answer is "no": gate failed, max attempts exceeded, lock held. */
+  /** The answer is "no": gate failed, max attempts exceeded. */
   NO: 1,
   /** Usage error or missing dependency. */
   USAGE: 2,
@@ -50,7 +50,7 @@ export const EXIT = {
 
 export const SHARED_EXIT_CODES: Readonly<Record<number, string>> = {
   [EXIT.OK]: "ok",
-  [EXIT.NO]: "the answer is no (gate failed, max attempts exceeded, lock held)",
+  [EXIT.NO]: "the answer is no (gate failed, max attempts exceeded)",
   [EXIT.USAGE]: "usage error or missing dependency",
   [EXIT.USE_MCP]: "do this through MCP instead (gh unavailable in this runtime)",
   [EXIT.AGENT_WAIT]: "hand the wait back to the agent's turn loop",

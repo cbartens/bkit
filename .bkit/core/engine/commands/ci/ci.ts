@@ -1030,7 +1030,7 @@ export const ciCommand: CommandSpec = {
     },
     "push-gate": {
       summary:
-        "Run a consumer push gate and record successful full-gate proof for the exact clean commit.",
+        "Run a consumer push gate and record successful full-gate proof for the exact clean commit; exits with the gate script's own code, where 75, 73 and 124 can also mean the tests-lock wrapper gave up waiting, refused the run or hit its hold limit.",
       use: "by-hand",
       flags: [
         {
