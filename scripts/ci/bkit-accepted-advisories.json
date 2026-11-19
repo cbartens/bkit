@@ -3,11 +3,5 @@
     "critical": 7,
     "high": 30
   },
-  "accepted": [
-    {
-      "advisory": "GHSA-fc5q-39xc-vjpf",
-      "reason": "picomatch ReDoS with no fixed version. It reaches the lockfile only through dev tools (slop-scan, vite, vitest, lint-staged), which read glob patterns from this repo's own config; the package's one runtime dependency is cross-spawn. Accepted by the owner on 2026-11-18.",
-      "expires": "2026-12-18"
-    }
-  ]
+  "accepted": []
 }
