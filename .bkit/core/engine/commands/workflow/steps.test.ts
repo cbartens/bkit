@@ -3674,7 +3674,7 @@ describe("bkit steps finish — a build code step makes the generated output cur
     dirs.push(bin);
     write(bin, "pnpm", "#!/bin/sh\nkill -KILL $$\n");
     fs.chmodSync(path.join(bin, "pnpm"), 0o755);
-    vi.stubEnv("PATH", `${bin}${path.delimiter}${process.env["PATH"] ?? ""}`);
+    vi.stubEnv("PATH", `${bin}${path.delimiter}${process.env["PATH"]}`);
     vi.stubEnv("BKIT_ENGINE_JOURNAL", "on");
     let r: Awaited<ReturnType<typeof run>>;
     try {
