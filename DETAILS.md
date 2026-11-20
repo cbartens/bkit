@@ -19,7 +19,7 @@
 
 **Explore bkit in detail** · [← Short README](README.md)
 
-[What's included](#whats-inside) · [How it works](#how-it-works) · [Models](#models) · [Reviews and checks](#why-its-different) · [Agents and CI](#agents-and-ci) · [Engine](#engine) · [Project knowledge](#knowledge) · [Audits](#audits) · [Templates and code map](#templates) · [Other capabilities](#what-else-you-get) · [Token costs](#token-costs) · [Measurements](#measurements) · [FAQ](#faq) · [Documentation](#documentation) · [Quick start](#quick-start) · [Credits](#credits) · [Licence](#license)
+[What's included](#whats-inside) · [How it works](#how-it-works) · [Models](#models) · [Why it's different](#why-its-different) · [Agents and CI](#agents-and-ci) · [Engine](#engine) · [Project knowledge](#knowledge) · [Audits](#audits) · [Templates and code map](#templates) · [Other capabilities](#what-else-you-get) · [You stay in control](#you-stay-in-control) · [Token costs](#token-costs) · [Measurements](#measurements) · [FAQ](#faq) · [Documentation](#documentation) · [Quick start](#quick-start) · [Credits](#credits) · [License](#license)
 
 ---
 
@@ -110,7 +110,7 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-models-dark.svg">
-    <img alt="The Claude model and effort behind each bkit agent: Opus 5.5 for /bkit-design, /bkit-plan, /bkit-debug and 27 agents; Sonnet 5.5 for /bkit-build, /bkit-ship and 12 agents. Pick the model at launch and leave the effort alone." src=".github/assets/bkit-models-light.svg" width="100%">
+    <img alt="The Claude model and effort behind each bkit agent: Opus 5.5 for /bkit-design, /bkit-plan, /bkit-debug and 27 agents; Sonnet 5.5 for /bkit-build, /bkit-ship and 13 agents. Pick the model at launch and leave the effort alone." src=".github/assets/bkit-models-light.svg" width="100%">
   </picture>
 </p>
 

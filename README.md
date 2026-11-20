@@ -19,7 +19,7 @@
 
 **Short README** · [Explore bkit in detail →](DETAILS.md)
 
-[What's included](DETAILS.md#whats-inside) · [How it works](DETAILS.md#how-it-works) · [Models](DETAILS.md#models) · [Reviews and checks](DETAILS.md#why-its-different) · [Agents and CI](DETAILS.md#agents-and-ci) · [Engine](DETAILS.md#engine) · [Project knowledge](DETAILS.md#knowledge) · [Audits](DETAILS.md#audits) · [Templates and code map](DETAILS.md#templates) · [Other capabilities](DETAILS.md#what-else-you-get) · [Token costs](DETAILS.md#token-costs) · [Measurements](DETAILS.md#measurements) · [FAQ](DETAILS.md#faq) · [Documentation](DETAILS.md#documentation) · [Quick start](DETAILS.md#quick-start) · [Credits](DETAILS.md#credits) · [Licence](DETAILS.md#license)
+[What's included](DETAILS.md#whats-inside) · [How it works](DETAILS.md#how-it-works) · [Models](DETAILS.md#models) · [Why it's different](DETAILS.md#why-its-different) · [Agents and CI](DETAILS.md#agents-and-ci) · [Engine](DETAILS.md#engine) · [Project knowledge](DETAILS.md#knowledge) · [Audits](DETAILS.md#audits) · [Templates and code map](DETAILS.md#templates) · [Other capabilities](DETAILS.md#what-else-you-get) · [You stay in control](DETAILS.md#you-stay-in-control) · [Token costs](DETAILS.md#token-costs) · [Measurements](DETAILS.md#measurements) · [FAQ](DETAILS.md#faq) · [Documentation](DETAILS.md#documentation) · [Quick start](DETAILS.md#quick-start) · [Credits](DETAILS.md#credits) · [License](DETAILS.md#license)
 
 ---
 

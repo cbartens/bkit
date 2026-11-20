@@ -551,7 +551,8 @@ function fences(t) {
     const order = Math.min(1, (x - X0) / (X1 - X0 - 120));
     const ang = (rnd() * 2 - 1) * Math.PI * 0.75 * (1 - order) ** 1.5 + (CY - y) * 0.004 * order;
     const c = agentCol(x);
-    b += `<line x1="${(x - Math.cos(ang) * 30).toFixed(1)}" y1="${(y - Math.sin(ang) * 30).toFixed(1)}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${c}" stroke-width="3" stroke-linecap="round" opacity="0.55"/>`;
+    // The line points the way the agent heads: out in front of the dot, like the output's line
+    b += `<line x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(x + Math.cos(ang) * 30).toFixed(1)}" y2="${(y + Math.sin(ang) * 30).toFixed(1)}" stroke="${c}" stroke-width="3" stroke-linecap="round" opacity="0.55"/>`;
     b += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="9" fill="${c}"/>`;
   }
   for (const [x, side] of bounces) {
