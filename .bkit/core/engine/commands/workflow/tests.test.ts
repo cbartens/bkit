@@ -3050,6 +3050,464 @@ describe("testBlock — a planned test's own lines, by name and indentation", ()
     expect(testBlock(null, "adds a row")).toBeNull();
     expect(blockHash(VITEST, "removes a row")).toBeNull();
   });
+
+  describe("a test titled by an it.each template, named by the title the runner reports", () => {
+    const EACH = [
+      "describe('rows', () => {",
+      '  it.each(["build"])(',
+      '    "%s: commits a thing",',
+      "    (lane) => {",
+      "      expect(commit(lane)).toBe(1);",
+      "    },",
+      "  );",
+      "",
+      "  it('counts rows', () => {",
+      "    expect(count()).toBe(0);",
+      "  });",
+      "});",
+    ].join("\n");
+
+    it("starts on the it.each line and ends on its closing line", () => {
+      expect(testSpan(EACH, "build: commits a thing")).toEqual({ start: 2, end: 7 });
+      expect(testBlock(EACH, "build: commits a thing")).toBe(
+        EACH.split("\n").slice(1, 7).join("\n"),
+      );
+    });
+
+    it("keeps the suite-path retry: `suite > expanded name` finds the same block", () => {
+      expect(testSpan(EACH, "rows > build: commits a thing")).toEqual({ start: 2, end: 7 });
+      expect(testBlock(EACH, "rows > build: commits a thing")).toBe(
+        testBlock(EACH, "build: commits a thing"),
+      );
+    });
+
+    it("tells two templates apart by their literal text", () => {
+      const text = [
+        'it.each(["build"])("%s: commits a thing", (lane) => {',
+        "  expect(commit(lane)).toBe(1);",
+        "});",
+        'it.each(["build"])("%s: drops a thing", (lane) => {',
+        "  expect(drop(lane)).toBe(1);",
+        "});",
+      ].join("\n");
+      expect(testSpan(text, "build: commits a thing")).toEqual({ start: 1, end: 3 });
+      expect(testSpan(text, "build: drops a thing")).toEqual({ start: 4, end: 6 });
+    });
+
+    it("finds one block for every row of the table", () => {
+      const text = [
+        'it.each(["build", "debug"])("%s: x", (lane) => {',
+        "  expect(run(lane)).toBe(1);",
+        "});",
+        "it('other', () => {});",
+      ].join("\n");
+      expect(testSpan(text, "build: x")).toEqual({ start: 1, end: 3 });
+      expect(testSpan(text, "debug: x")).toEqual({ start: 1, end: 3 });
+    });
+
+    it("reads an object-row `$name` placeholder", () => {
+      const text = [
+        'it.each([{ lane: "build" }])("$lane: commits a thing", ({ lane }) => {',
+        "  expect(commit(lane)).toBe(1);",
+        "});",
+      ].join("\n");
+      expect(testSpan(text, "build: commits a thing")).toEqual({ start: 1, end: 3 });
+    });
+
+    it("matches no name with a template that holds no literal text", () => {
+      const text = ['it.each(["a"])("%s", (x) => {', "  expect(x).toBeTruthy();", "});"].join("\n");
+      expect(testSpan(text, "b")).toBeNull();
+      expect(testSpan(text, "anything at all")).toBeNull();
+    });
+
+    it("prefers a test that carries the name literally over a template that matches it", () => {
+      const text = [
+        'it.each(["build"])("%s: commits a thing", (lane) => {',
+        "  expect(commit(lane)).toBe(1);",
+        "});",
+        'it("build: commits a thing", () => {',
+        "  expect(commit('build')).toBe(1);",
+        "});",
+      ].join("\n");
+      expect(testSpan(text, "build: commits a thing")).toEqual({ start: 4, end: 6 });
+    });
+
+    it("resolves a suite path to the test that carries its last segment literally, not to a template", () => {
+      const text = [
+        'it.each(["build"])("%s: x", (lane) => {',
+        "  expect(run(lane)).toBe(1);",
+        "});",
+        'describe("rows", () => {',
+        '  it("build: x", () => {',
+        "    expect(run('build')).toBe(1);",
+        "  });",
+        "});",
+      ].join("\n");
+      expect(testSpan(text, "rows > build: x")).toEqual({ start: 5, end: 7 });
+    });
+
+    it("resolves a suite path to the each-test when no line carries its last segment", () => {
+      const text = [
+        'describe("rows", () => {',
+        '  it.each(["build"])("%s: x", (lane) => {',
+        "    expect(run(lane)).toBe(1);",
+        "  });",
+        "});",
+      ].join("\n");
+      expect(testSpan(text, "rows > build: x")).toEqual({ start: 2, end: 4 });
+      expect(testSpan(text, "rows > build: x")).toEqual(testSpan(text, "build: x"));
+    });
+
+    it("finds a template whose literal text holds ` > ` by its full expanded name", () => {
+      const text = [
+        'it.each([["a", "b"]])("%s > %s ok", (x, y) => {',
+        "  expect(x + y).toBeTruthy();",
+        "});",
+        "it('other', () => {});",
+      ].join("\n");
+      expect(testSpan(text, "a > b ok")).toEqual({ start: 1, end: 3 });
+    });
+
+    it("rejects a long near-miss against a ten-placeholder template in well under a second", () => {
+      const title = `%s${"-%s".repeat(9)}!`;
+      const text = [`it.each(["x"])("${title}", (x) => {`, "  expect(x).toBeTruthy();", "});"].join(
+        "\n",
+      );
+      const name = `${"x-".repeat(2500)}?`;
+      const began = performance.now();
+      expect(testSpan(text, name)).toBeNull();
+      expect(performance.now() - began).toBeLessThan(500);
+      expect(testSpan(text, `${"x-".repeat(9)}x!`)).toEqual({ start: 1, end: 3 });
+    });
+
+    it("counts neighbouring placeholders as one hole", () => {
+      const text = [
+        'it.each([["build", ""]])("%s%s: x", (a, b) => {',
+        "  expect(a + b).toBeTruthy();",
+        "});",
+      ].join("\n");
+      expect(testSpan(text, "build: x")).toEqual({ start: 1, end: 3 });
+    });
+
+    it("matches a template's literal pieces only in order", () => {
+      const text = [
+        'it.each([["x", "y"]])("%s: a %s b", (x) => {',
+        "  expect(x).toBeTruthy();",
+        "});",
+      ].join("\n");
+      expect(testSpan(text, "x: b a")).toBeNull();
+      expect(testSpan(text, "x: a y b")).toEqual({ start: 1, end: 3 });
+    });
+
+    it("is null when neither a line nor a template matches the name", () => {
+      expect(testSpan(EACH, "build: drops a thing")).toBeNull();
+      expect(testSpan(EACH, "build: commits a thing twice")).toBeNull();
+    });
+
+    it("touchedTests locks the each-test's own lines, not its whole file, after a red recorded no block", () => {
+      const top = tmp("bkit-touched-each-");
+      const NAME = "build: commits a thing";
+      const TEST = "src/a.test.ts";
+      spawnSync("git", ["init", "-q", top]);
+      fs.mkdirSync(path.join(top, "src"));
+      fs.writeFileSync(path.join(top, TEST), EACH);
+      const blob = spawnSync("git", ["hash-object", "-w", "--", TEST], {
+        cwd: top,
+        encoding: "utf-8",
+      }).stdout.trim();
+      const file = path.join(top, "status.jsonl");
+      const row = {
+        type: "step-done",
+        workflow: "build",
+        step: "build-tests-red",
+        status: "DONE",
+        group: 1,
+        attempt: 1,
+        tests: [{ task: 1, test: TEST, testName: NAME, state: "red", blob, block: null }],
+      };
+      fs.writeFileSync(file, `${JSON.stringify(row)}\n`);
+      const touched = (text: string) => {
+        fs.writeFileSync(path.join(top, TEST), text);
+        return touchedTests(top, file, "build").map((t) => t.name);
+      };
+      expect(touched(EACH.replace("toBe(0)", "toBe(2)"))).toEqual([]);
+      expect(touched(EACH.replace("toBe(1)", "toBe(2)"))).toEqual([NAME]);
+      expect(touched(EACH.replace("commits a thing", "commits a thing again"))).toEqual([NAME]);
+      expect(touched(EACH.replace('["build"]', '["build", "debug"]'))).toEqual([NAME]);
+    });
+
+    describe("only a curried each-title whose table opens in the block and holds each hole's text", () => {
+      /** A repo whose status file holds a red for `name` with no block, and `extra` rows after it. */
+      const lockRepo = (
+        base: string,
+        name: string,
+        extra: (blob: string) => object[] = () => [],
+      ) => {
+        const top = tmp("bkit-touched-each-");
+        const TEST = "src/a.test.ts";
+        spawnSync("git", ["init", "-q", top]);
+        fs.mkdirSync(path.join(top, "src"));
+        fs.writeFileSync(path.join(top, TEST), base);
+        const blob = spawnSync("git", ["hash-object", "-w", "--", TEST], {
+          cwd: top,
+          encoding: "utf-8",
+        }).stdout.trim();
+        const red = {
+          type: "step-done",
+          workflow: "build",
+          step: "build-tests-red",
+          status: "DONE",
+          group: 1,
+          attempt: 1,
+          tests: [{ task: 1, test: TEST, testName: name, state: "red", blob, block: null }],
+        };
+        const file = path.join(top, "status.jsonl");
+        const rows = [red, ...extra(blob)];
+        fs.writeFileSync(file, `${rows.map((r) => JSON.stringify(r)).join("\n")}\n`);
+        return (text: string) => {
+          expect(text).not.toBe(base);
+          fs.writeFileSync(path.join(top, TEST), text);
+          return touchedTests(top, file, "build").map((t) => t.name);
+        };
+      };
+      const OTHER = ['it("other", () => {', "  expect(1).toBe(1);", "});"];
+      const otherEdit = (s: string) => s.replace("expect(1).toBe(1)", "expect(1).toBe(2)");
+
+      const CLOSER_TITLE = [
+        'describe("status row", () => {',
+        "  it.each([",
+        '    [["--type=step-done"], 2],',
+        '    [["--type=Ship_Gate"], 2],',
+        '  ])("refuses %j", async (flags, code) => {',
+        "    expect(run(flags)).toBe(code);",
+        "  });",
+        ...OTHER.map((l) => `  ${l}`),
+        "});",
+      ].join("\n");
+      const CLOSER_NAME = 'status row > refuses ["--type=step-done"]';
+
+      it('starts a table closed by `])("title"` at the line that opens the table, and locks its rows', () => {
+        expect(testSpan(CLOSER_TITLE, CLOSER_NAME)).toEqual({ start: 2, end: 7 });
+        const touched = lockRepo(CLOSER_TITLE, CLOSER_NAME);
+        expect(
+          touched(CLOSER_TITLE.replace('[["--type=step-done"], 2]', '[["--type=step-done"], 0]')),
+        ).toEqual([CLOSER_NAME]);
+        expect(touched(CLOSER_TITLE.replace('    [["--type=Ship_Gate"], 2],\n', ""))).toEqual([
+          CLOSER_NAME,
+        ]);
+        expect(touched(otherEdit(CLOSER_TITLE))).toEqual([]);
+      });
+
+      const CLOSER_LINE = [
+        "it.each([",
+        '  ["build", 1],',
+        '  ["debug", 1],',
+        "])(",
+        '  "%s: commits a thing",',
+        "  (lane, want) => {",
+        "    expect(commit(lane)).toBe(want);",
+        "  },",
+        ");",
+        ...OTHER,
+      ].join("\n");
+
+      it("starts a table closed by `])(` above the title line at the line that opens the table, and locks its rows", () => {
+        const name = "build: commits a thing";
+        expect(testSpan(CLOSER_LINE, name)).toEqual({ start: 1, end: 9 });
+        const touched = lockRepo(CLOSER_LINE, name);
+        expect(touched(CLOSER_LINE.replace('["build", 1]', '["build", 0]'))).toEqual([name]);
+        expect(touched(CLOSER_LINE.replace('  ["debug", 1],\n', ""))).toEqual([name]);
+        expect(touched(otherEdit(CLOSER_LINE))).toEqual([]);
+      });
+
+      const BACKTICK = [
+        "it.each`",
+        "  a    | b",
+        "  ${1} | ${2}",
+        "  ${3} | ${4}",
+        '`("adds $a and $b", ({ a, b }) => {',
+        "  expect(a + b).toBeGreaterThan(0);",
+        "});",
+        ...OTHER,
+      ].join("\n");
+
+      it("starts a backtick table at its opening line, and locks its rows", () => {
+        const name = "adds 1 and 2";
+        expect(testSpan(BACKTICK, name)).toEqual({ start: 1, end: 7 });
+        const touched = lockRepo(BACKTICK, name);
+        expect(touched(BACKTICK.replace("${3} | ${4}", "${3} | ${5}"))).toEqual([name]);
+        expect(touched(BACKTICK.replace("  ${3} | ${4}\n", ""))).toEqual([name]);
+        expect(touched(otherEdit(BACKTICK))).toEqual([]);
+      });
+
+      it("is null when a shallower line comes before the line that opens the table", () => {
+        const text = [
+          "run([",
+          '    ["a"],',
+          '  ])("refuses %j", (f) => {',
+          "    expect(f).toBeTruthy();",
+          "  });",
+        ].join("\n");
+        expect(testSpan(text, 'refuses ["a"]')).toBeNull();
+      });
+
+      it.each([
+        ["console.log", ['console.log("%s: commits a thing", lane);'], "build: commits a thing"],
+        [
+          "util.format",
+          ['const msg = util.format("%s: commits a thing", "x");'],
+          "build: commits a thing",
+        ],
+        ["a trailing comment", ['const a = 1; // "%s: commits a thing"'], "build: commits a thing"],
+        [
+          "a SQL `$1` string",
+          ['const q = "select * from t where id = $1";'],
+          "select * from t where id = 42",
+        ],
+        [
+          'it("costs $5")',
+          ['it("costs $5", () => {', "  expect(price()).toBe(5);", "});"],
+          "costs $500",
+        ],
+      ])("finds no each-title in %s", (_what, probe, name) => {
+        expect(testSpan([...probe, ...OTHER].join("\n"), name)).toBeNull();
+      });
+
+      it("matches a broad each-title only when its table holds the hole's text", () => {
+        const broad = [
+          'it.each(["a.txt"])("refuses %s", (p) => {',
+          "  expect(classify(p)).toBe('refuse');",
+          "});",
+        ];
+        expect(
+          testSpan(broad.join("\n"), "refuses malformed final local and remote messages"),
+        ).toBeNull();
+        const text = [
+          ...broad,
+          'it.each(["build"])("refuses %s merges", (lane) => {',
+          "  expect(merge(lane)).toBe(false);",
+          "});",
+        ].join("\n");
+        expect(testSpan(text, "refuses build merges")).toEqual({ start: 4, end: 6 });
+      });
+
+      it("locks the whole file for a test named only through a `${}` string next to an unrelated each-test", () => {
+        const text = [
+          'it.each(["a.txt"])("refuses %s", (p) => {',
+          "  expect(classify(p)).toBe('refuse');",
+          "});",
+          "",
+          'for (const lane of ["build"]) {',
+          "  it(`refuses ${lane} merges`, () => {",
+          "    expect(merge(lane)).toBe(false);",
+          "  });",
+          "}",
+        ].join("\n");
+        const name = "refuses build merges";
+        expect(testSpan(text, name)).toBeNull();
+        const touched = lockRepo(text, name);
+        expect(touched(text.replace("toBe(false)", "toBeDefined()"))).toEqual([name]);
+      });
+
+      it("is null for a table held in a variable", () => {
+        const text = [
+          'it.each(cases)("%s works", (c) => {',
+          "  expect(c).toBeTruthy();",
+          "});",
+        ].join("\n");
+        expect(testSpan(text, "build works")).toBeNull();
+      });
+
+      /** A one-test file: `it.each(table)(title)` with a body, then OTHER. */
+      const eachText = (table: string, title: string) =>
+        [
+          `it.each(${table})("${title}", (...v) => {`,
+          "  expect(v).toBeTruthy();",
+          "});",
+          ...OTHER,
+        ].join("\n");
+
+      it("is null for a table passed as a variable, a call or a spread, whatever the hole's text", () => {
+        // `xs works`, not `s works`: `s works` is a whole word in `"%s works"`, found as on HEAD.
+        expect(testSpan(eachText("cases", "x%s works"), "xs works")).toBeNull();
+        expect(testSpan(eachText("cases", "%s works"), "cases works")).toBeNull();
+        expect(testSpan(eachText("rows()", "%s works"), "rows works")).toBeNull();
+        expect(testSpan(eachText("[...cases]", "%s works"), "cases works")).toBeNull();
+      });
+
+      it("finds a hole's text only as a whole value of the table, not inside a longer word", () => {
+        expect(testSpan(eachText('["rebuild"]', "%s: x"), "build: x")).toBeNull();
+        expect(testSpan(eachText('["build"]', "%s: x"), "build: x")).toEqual({ start: 1, end: 3 });
+        expect(testSpan(eachText("[[1, 2]]", "adds %d and %d"), "adds 1 and 2")).toEqual({
+          start: 1,
+          end: 3,
+        });
+        expect(testSpan(eachText('["a failed ship"]', "%s: x"), "a failed ship: x")).toEqual({
+          start: 1,
+          end: 3,
+        });
+        const backtick = [
+          "it.each`",
+          "  a    | b",
+          "  ${1} | ${2}",
+          '`("adds $a and $b", ({ a, b }) => {',
+          "  expect(a + b).toBeGreaterThan(0);",
+          "});",
+        ].join("\n");
+        expect(testSpan(backtick, "adds 1 and 2")).toEqual({ start: 1, end: 6 });
+      });
+
+      it("takes `%#` and `%$` as digits, without the table check", () => {
+        const text = (p: string) =>
+          [
+            `it.each(["a", "b"])("case ${p} runs", (x) => {`,
+            "  expect(x).toBeTruthy();",
+            "});",
+          ].join("\n");
+        expect(testSpan(text("%#"), "case 0 runs")).toEqual({ start: 1, end: 3 });
+        expect(testSpan(text("%$"), "case 12 runs")).toEqual({ start: 1, end: 3 });
+        expect(testSpan(text("%#"), "case x runs")).toBeNull();
+        expect(testSpan(text("%$"), "case a runs")).toBeNull();
+      });
+
+      it("reads Jest's `%p` placeholder", () => {
+        const text = [
+          'it.each(["x"])("%p: done", (x) => {',
+          "  expect(x).toBeTruthy();",
+          "});",
+        ].join("\n");
+        expect(testSpan(text, '"x": done')).toEqual({ start: 1, end: 3 });
+      });
+
+      it("derives a change record's missing block from its after blob: no edit since it is no touch", () => {
+        const name = "build: commits a thing";
+        const touched = lockRepo(EACH, name, (blob) => [
+          {
+            type: "step-done",
+            workflow: "build",
+            step: "build-plan-tasks",
+            status: "DONE",
+            group: 1,
+            changedTests: [
+              {
+                task: 1,
+                test: "src/a.test.ts",
+                testName: name,
+                block: null,
+                reason: "needs a new row",
+                blob,
+                after: blob,
+              },
+            ],
+          },
+        ]);
+        expect(touched(otherEdit(`${EACH}\n${OTHER.join("\n")}`))).toEqual([]);
+        expect(touched(`${EACH.replace("toBe(1)", "toBe(2)")}\n${OTHER.join("\n")}`)).toEqual([
+          name,
+        ]);
+      });
+    });
+  });
 });
 
 describe("blockedTests", () => {

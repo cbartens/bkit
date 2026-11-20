@@ -600,7 +600,8 @@ function plannedKeys(plan: string | undefined): Set<string> | null {
  * The planned tests (every group) a code step changed since their baseline (`lockBaselines`): a
  * test whose own lines (`testBlock`) no longer hash to the recorded block. A record with no
  * block (written before per-test locking, or when no line carried the name) derives the block
- * from the recorded blob; when that holds no block either, the whole file's blob is compared.
+ * from the recorded blob (a `changedTests` record from its `after` blob); when that holds no
+ * block either, the whole file's blob is compared.
  * Other edits to a test file are free. With `plan` (the plan's text), only tests a `TEST FIRST`
  * line still names are checked: a name the plan dropped locks nothing. Each result carries the
  * test's task, its current block and the reasons already recorded, for `finish`.
@@ -635,7 +636,7 @@ export function touchedTests(
         wholeFile,
       });
     let block = t.block ?? null;
-    if (block === null) block = blockHash(blobText(top, t.blob), t.testName);
+    if (block === null) block = blockHash(blobText(top, t.blob ?? t.text), t.testName);
     if (block === null) {
       if (t.blob === null && t.fromChange) {
         if (now !== null && t.reasons.length > 0) hit(true);
@@ -704,13 +705,169 @@ function testStart(lines: string[], matches: (line: string) => boolean): number 
   return suite;
 }
 
+/** A quoted string on a line (`"…"`, `'…'` or a backtick string), its escapes kept. */
+const QUOTED = /"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|`((?:[^`\\]|\\.)*)`/g;
+
+/**
+ * A title placeholder of Vitest's `test.each`: the printf forms (`%s`, `%d`, `%i`, `%f`, `%j`,
+ * `%o`, `%#`, `%$`, and Jest's `%p`), `%%` (a literal `%`) and `$name` / `$name.path` / `$0`.
+ */
+const PLACEHOLDER = /%[sdifjop#$%]|\$[$\p{ID_Continue}.]+/gu;
+
+/** A hole of a title template: the text of the name it stands for, and whether only `%#` / `%$` make it. */
+interface Hole {
+  text: string;
+  index: boolean;
+}
+
+/**
+ * The holes of the quoted string `title` when it is a title template that expands to the whole
+ * of `name`, else null: it holds at least one placeholder and literal text beyond spaces, and
+ * with each placeholder standing for any text, its literal text matches `name` exactly and in
+ * order. The literal pieces are matched in order by leftmost `indexOf`, so the check is linear
+ * in the name per piece; each hole's text is what lies between the pieces it sits between.
+ */
+function expandsTo(title: string, name: string): Hole[] | null {
+  const raw = title.replace(/\\(.)/g, "$1");
+  /** The literal pieces around the holes; `pieces.length - 1` is the hole count. */
+  const pieces = [""];
+  const index: boolean[] = [];
+  let last = 0;
+  for (const m of raw.matchAll(PLACEHOLDER)) {
+    pieces[pieces.length - 1] += raw.slice(last, m.index) + (m[0] === "%%" ? "%" : "");
+    last = m.index + m[0].length;
+    if (m[0] === "%%") continue;
+    const isIndex = m[0] === "%#" || m[0] === "%$";
+    // Neighbouring placeholders, with nothing between them, are one hole.
+    if (pieces.length === 1 || pieces.at(-1) !== "") {
+      pieces.push("");
+      index.push(isIndex);
+    } else index[index.length - 1] = index.at(-1)! && isIndex;
+  }
+  pieces[pieces.length - 1] += raw.slice(last);
+  if (pieces.length < 2 || pieces.join("").trim() === "") return null;
+  const first = pieces[0]!;
+  const end = pieces.at(-1)!;
+  if (first.length + end.length > name.length) return null;
+  if (!name.startsWith(first) || !name.endsWith(end)) return null;
+  const limit = name.length - end.length;
+  const holes: Hole[] = [];
+  let pos = first.length;
+  for (let k = 1; k < pieces.length - 1; k++) {
+    const piece = pieces[k]!;
+    const at = name.indexOf(piece, pos);
+    if (at < 0 || at + piece.length > limit) return null;
+    holes.push({ text: name.slice(pos, at), index: index[k - 1]! });
+    pos = at + piece.length;
+  }
+  holes.push({ text: name.slice(pos, limit), index: index.at(-1)! });
+  return holes;
+}
+
+/** The text before an each-title, spaces removed, ends a curried call: `)(` or a backtick and `(`. */
+const CURRIED = /[)`]\($/;
+
+/** A line whose first character closes a table: `]`, `)`, `}` or a backtick. */
+const TABLE_CLOSER = /^[)\]}`]/;
+
+/** Whether the first `.each` of `table` (spaces removed) takes a table written inline: `([` or a backtick. */
+function inlineTable(table: string): boolean {
+  const at = table.indexOf(".each");
+  return at >= 0 && /^(?:\(\[|`)/.test(table.slice(at + ".each".length));
+}
+
+/** An identifier character, or `$`: a value's text next to one is part of a longer word. */
+const WORD_CHAR = /[$\p{ID_Continue}]/u;
+
+/** Whether `value` occurs in `table` as a whole value: no identifier character or `$` on either side. */
+function holdsValue(table: string, value: string): boolean {
+  for (let at = table.indexOf(value); at >= 0; at = table.indexOf(value, at + 1)) {
+    const prev = table[at - 1] ?? "";
+    const next = table[at + value.length] ?? "";
+    if (!WORD_CHAR.test(prev) && !WORD_CHAR.test(next)) return true;
+  }
+  return false;
+}
+
+/**
+ * The lines of the each-test named `name` (`testSpan`'s last way), or null when no quoted
+ * string proves itself the title of that test. Candidates go in file order, a non-suite line
+ * before a suite line and comment lines skipped; the first that meets all three wins:
+ * - the string is the first argument of a curried call (`CURRIED`, on its line or, when the
+ *   string opens its line, on the line before);
+ * - the table opens inside the block: when the call's line starts with a closing character, the
+ *   block starts at the nearest earlier line of the same indent, past deeper or blank lines only;
+ * - the table is written inline and each hole's text is one of its values: in the block's text
+ *   up to the title, spaces removed, the first `.each` is followed by `([` or a backtick, no
+ *   `...` spread appears, and each hole's text, spaces removed, occurs as a whole value
+ *   (`holdsValue`); a hole only `%#` / `%$` make is digits instead, and an empty hole fails.
+ */
+function eachSpan(lines: string[], name: string): { start: number; end: number } | null {
+  for (const suites of [false, true])
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
+      const lead = line.trimStart();
+      if (COMMENT.test(lead) || SUITE.test(lead) !== suites) continue;
+      for (const m of line.matchAll(QUOTED)) {
+        const holes = expandsTo(m[1] ?? m[2] ?? m[3]!, name);
+        if (holes === null) continue;
+        const before = line.slice(0, m.index).replace(/\s/g, "");
+        const opensLine = before === "" && i > 0;
+        if (!CURRIED.test(opensLine ? lines[i - 1]!.replace(/\s/g, "") : before)) continue;
+        const from = opensLine ? i - 1 : i;
+        let start = from;
+        if (TABLE_CLOSER.test(lines[from]!.trimStart())) {
+          const base = indentOf(lines[from]!);
+          start = -1;
+          for (let j = from - 1; j >= 0; j--) {
+            if (lines[j]!.trim() === "" || indentOf(lines[j]!) > base) continue;
+            if (indentOf(lines[j]!) === base) start = j;
+            break;
+          }
+          if (start < 0) continue;
+        }
+        const table = [...lines.slice(start, i), line.slice(0, m.index)]
+          .join("")
+          .replace(/\s/g, "");
+        if (!inlineTable(table) || table.includes("...")) continue;
+        const proven = holes.every(({ text, index }) => {
+          const bare = text.replace(/\s/g, "");
+          if (bare === "") return false;
+          return index ? /^\d+$/.test(bare) : holdsValue(table, bare);
+        });
+        if (proven) return { start: start + 1, end: blockEnd(lines, from) + 1 };
+      }
+    }
+  return null;
+}
+
+/** The 0-based last line of the block opened at `from`: deeper lines, then one closing line at its indent. */
+function blockEnd(lines: string[], from: number): number {
+  const base = indentOf(lines[from]!);
+  let end = from;
+  for (let i = from + 1; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (line.trim() === "") continue;
+    if (indentOf(line) > base) {
+      end = i;
+      continue;
+    }
+    if (indentOf(line) === base && CLOSER.test(line.trimStart())) end = i;
+    break;
+  }
+  return end;
+}
+
 /**
  * The lines of the test named `name` in `text`, or null when no line names it. The test
  * starts on the first line naming it as a quoted string (else as a whole word) that is no
- * comment and opens no suite, or on the line before when the name opens its line and that
+ * comment and opens no suite, or on the line before when the string opens its line and that
  * line ends with `(`; it runs through every deeper-indented line after the start, and one
- * closing line (`}`, `)`, `]`, `end`) at the start's indent. Framework-agnostic: it needs
- * only a name and indentation.
+ * closing line (`}`, `)`, `]`, `end`) at the start's indent. Else an `it.each` / `test.each`
+ * title template that expands to the whole name and proves itself that test's title
+ * (`eachSpan`) starts it at the line that opens its table. A suite path (`suite > test`) tries
+ * its last segment, by the same three ways, before a template of the whole path.
+ * Framework-agnostic: it needs only a name, quoted strings and indentation.
  */
 export function testBlock(text: string | null, name: string): string | null {
   if (text === null) return null;
@@ -738,7 +895,8 @@ export function testSpan(text: string, name: string): { start: number; end: numb
   if (at < 0) {
     // A suite path (`suite > test`, as a JUnit report names it): the last segment is the test.
     const last = name.split(" > ").pop()!;
-    return last === name ? null : testSpan(text, last);
+    const span = last === name ? null : testSpan(text, last);
+    return span ?? eachSpan(lines, name);
   }
   let start = at;
   while (
@@ -747,19 +905,7 @@ export function testSpan(text: string, name: string): { start: number; end: numb
     /\($/.test(lines[start - 1]!.trimEnd())
   )
     start -= 1;
-  const base = indentOf(lines[start]!);
-  let end = start;
-  for (let i = start + 1; i < lines.length; i++) {
-    const line = lines[i]!;
-    if (line.trim() === "") continue;
-    if (indentOf(line) > base) {
-      end = i;
-      continue;
-    }
-    if (indentOf(line) === base && CLOSER.test(line.trimStart())) end = i;
-    break;
-  }
-  return { start: start + 1, end: end + 1 };
+  return { start: start + 1, end: blockEnd(lines, start) + 1 };
 }
 
 /**
