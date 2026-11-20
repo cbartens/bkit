@@ -191,7 +191,8 @@ export function gitRaw(
   return { status, stdout: res.stdout ?? "", stderr: (res.stderr ?? "").trim() };
 }
 
-const nulList = (out: string) => out.split("\0").filter((p) => p !== "");
+/** The entries of a NUL-delimited (`-z`) git listing. */
+export const nulList = (out: string) => out.split("\0").filter((p) => p !== "");
 
 function requireRepo(root: string): void {
   if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {

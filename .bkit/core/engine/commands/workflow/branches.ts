@@ -58,7 +58,9 @@ import {
   bookPathspecs,
   checkOnlyBookkeeping,
   commitBookkeeping,
+  gitRaw,
   markRecordPushed,
+  nulList,
   recordOnBranch,
   type SharedCheckoutRecord,
 } from "./ledgers.js";
@@ -2919,19 +2921,30 @@ function revLines(root: string, rev: string, p: string): string[] {
  * Put back the `.jsonl` rows `branch` added that the squash dropped: `-X ours`
  * keeps dev's side of a conflicting hunk, and a ledger git does not union-merge
  * (a consumer's `.bkit/friction.jsonl`) loses the branch's rows there. Each
- * missing row is appended to the staged file.
+ * missing row is appended to the staged file. `branch` is any revision; it runs
+ * while a merge is open (`MERGE_HEAD` set), as the merge base with a merged tip
+ * is the tip itself once the merge commit exists.
  */
-function restoreBranchRows(dir: string, branch: string): void {
+export function restoreBranchRows(dir: string, branch: string): void {
   const base = git(dir, ["merge-base", "HEAD", branch]);
   if (base === null) return;
-  const changed = (
-    git(dir, ["diff", "--name-only", "--no-renames", "--diff-filter=d", base, branch]) ?? ""
-  )
-    .split("\n")
-    .filter((p) => p.endsWith(".jsonl"));
+  const changed = nulList(
+    gitRaw(dir, ["diff", "--name-only", "-z", "--no-renames", "--diff-filter=d", base, branch])
+      .stdout,
+  ).filter((p) => p.endsWith(".jsonl"));
   for (const p of changed) {
     const before = new Set(revLines(dir, base, p));
     const file = path.join(dir, p);
+    // Never write through a symlink or outside `dir`.
+    const stat = fs.lstatSync(file, { throwIfNoEntry: false });
+    if (stat !== undefined && !stat.isFile()) continue;
+    if (stat === undefined) {
+      const parent = path.dirname(file);
+      if (!fs.existsSync(parent)) continue;
+      const realParent = fs.realpathSync(parent);
+      const realDir = fs.realpathSync(dir);
+      if (realParent !== realDir && !realParent.startsWith(realDir + path.sep)) continue;
+    }
     const wrote = withTargetLock(file, () => {
       const text = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
       const have = new Set(text.split("\n").map((l) => l.trim()));

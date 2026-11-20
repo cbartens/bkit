@@ -28,11 +28,14 @@ import { check as checkCompleteness, deriveContract, parseRows, readCompleteness
 import { getWorkflowsRoot } from "../../shared/package-roots.js";
 import { ASK_POINTS, readBkitConfig } from "../../shared/settings.js";
 import { gradeCompliance } from "../comply.js";
-import { fetchDev, landDir, pushToDev } from "../land.js";
+import { minPushOutside, minPushPathspecs } from "../ci/ci.js";
+import { requiredPushGate, runPushGate } from "../ci/push-gate.js";
+import { readPackageJson } from "../../shared/package-json.js";
+import { fetchDev, landDir, pushToDev, sleep } from "../land.js";
 import { CommandError, DEV, EXIT, git, isSharedBranch, parseJson, repoRoot, runGh, runGit, statusLocation, statusRelPath, } from "../lib.js";
-import { anchorBkitStatus, pushBranch, readAnchor, stampAnchor } from "./branches.js";
+import { anchorBkitStatus, pushBranch, readAnchor, restoreBranchRows, stampAnchor, } from "./branches.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX, buildComment, issueParts, parseComments, sortOldestFirst, trackerState, transitionLabels, } from "./issues.js";
-import { EXIT_EMPTY, activeRecord, appendRunCommits, commitBookkeeping, ownPathCommit, ownSet, removeRecord, appendLedgerRows, runRows, unionLedgers, writeParkedCommits, } from "./ledgers.js";
+import { EXIT_EMPTY, activeRecord, changedOutside, appendRunCommits, commitBookkeeping, gitRaw, nulList, ownPathCommit, ownSet, removeRecord, appendLedgerRows, runRows, unionLedgers, writeParkedCommits, } from "./ledgers.js";
 import { readIssueTracker } from "./fids.js";
 import { agentContextBlock, buildBlock, chatFingerprint, ciList, claudeTranscripts, hostChat, planBlock, planFiles, runChats, runLines, runStatusRows, stepsBlock, timeBlock, } from "./run-facts.js";
 import { buildSummary, refOf, SUMMARY_WORKFLOWS } from "./summary.js";
@@ -530,7 +533,7 @@ function carryBook(src, dst, month, fid) {
 const SHARED_LEDGERS = [
     ":(glob)docs/*.jsonl",
     ":(glob).bkit/*.jsonl",
-    ":(exclude).bkit/issues.jsonl",
+    ":(icase,exclude).bkit/issues.jsonl",
 ];
 /**
  * Kinds no workflow run writes: bkit's harvest script writes them to `harvest/`, and a
@@ -730,7 +733,9 @@ async function landFailedRecord(ctx, o) {
                 ? async (dir, stderr) => {
                     refusal = stderr;
                     ctx.log(`dev refused the ${o.workflow} FAILED push — publishing it through a PR: ${stderr}`);
-                    pr = closePr(ctx, dir, {
+                    pr = await closePr(ctx, dir, {
+                        fid: o.fid,
+                        book,
                         title: `chore(${o.fid}): ${o.workflow} FAILED`,
                         branch: `ship-failed/${o.fid}`,
                         subject: `chore(${o.fid}): ${o.workflow} FAILED bkit [skip ci]`,
@@ -787,7 +792,7 @@ async function landFailedRecord(ctx, o) {
                 code: EXIT.OK,
                 pushed: true,
                 ref: landedPr.ref,
-                linkRef: landedPr.via === "close-pr" ? DEV : landedPr.ref,
+                linkRef: landedPr.via === "close-pr" ? DEV : landedPr.sha,
                 skipped: null,
             };
         }
@@ -1325,36 +1330,255 @@ export function closeWorkflow(cwd, o, log) {
     };
 }
 /**
- * Publish a commit dev refused through its own `branch` PR titled `title`,
- * merged with an empty body. Returns where it landed, or why it did not.
+ * The landing gate `checkLanding` picks, run on the merged leftover tip before
+ * it is pushed. Returns why it must not be pushed, or null.
  */
-function closePr(ctx, dir, o) {
+function gateMerged(dir, branch) {
+    const head = headSha(dir);
+    const base = git(dir, ["rev-parse", `origin/${DEV}`]);
+    if (base === null || !readPackageJson(dir).ok)
+        return `landing gate for ${branch} cannot run: no base or unreadable package.json — nothing pushed`;
+    const diff = minPushOutside(dir, base, head, minPushPathspecs(readBkitConfig(dir)));
+    if (!diff.ok)
+        return `landing gate for ${branch} cannot classify the merge: ${diff.stderr}`;
+    const gate = diff.outside.length === 0 ? "bkit:gate:min" : requiredPushGate(dir);
+    if (!gate)
+        return `${branch} has no declared landing gate — nothing pushed`;
+    const status = runPushGate(dir, gate, () => { });
+    if (status !== 0)
+        return `landing ${gate} failed (exit ${status}) on the merge of ${branch} — nothing pushed`;
+    return null;
+}
+/** A path segment a leftover tip may use in the run's log folder. */
+const LOG_NAME = /^[A-Za-z0-9._-]+$/;
+/** Path names from a branch, escaped for a message: each one JSON-quoted. */
+const quotedNames = (paths) => [...new Set(paths)].map((p) => JSON.stringify(p)).join(", ");
+/** `p` and every folder above it: `a/b/c` → `a`, `a/b`, `a/b/c`. */
+const withFolders = (p) => p.split("/").map((_, i, s) => s.slice(0, i + 1).join("/"));
+/**
+ * Why a leftover `branch` tip must not be merged into the record, or null.
+ * A record writes only `.md` logs and `.jsonl` files directly in this feature's
+ * log folder, and rows of the shared ledgers; it only appends ledger rows.
+ * Which of its shared-ledger lines land is {@link keepHeldLedgerLines}'s call.
+ */
+function leftoverRefusal(dir, mergeBase, tip, o) {
+    const at = `origin's ${o.branch} at ${tip}`;
+    const logs = `docs/plans/*/logs/${o.fid}`;
+    // `:(glob)` stops `*` at `/`.
+    const diff = changedOutside(dir, mergeBase, tip, [
+        `:(glob)${logs}/*.md`,
+        `:(glob)${logs}/*.jsonl`,
+        ...SHARED_LEDGERS,
+    ]);
+    if (!diff.ok)
+        return `cannot diff ${at}: ${diff.stderr}`;
+    if (diff.outside.length > 0)
+        return `${at} changes files outside the record's paths, so it is not merged: ${quotedNames(diff.outside)}`;
+    // A case- and normalization-insensitive file system checks out two such paths as one file.
+    const fold = (q) => q.normalize("NFC").toLowerCase();
+    const known = new Map();
+    for (const rev of [mergeBase, "HEAD", tip]) {
+        const tree = gitRaw(dir, ["ls-tree", "-r", "-z", "--name-only", rev]);
+        if (tree.status !== 0)
+            return `cannot list ${rev} for ${at}: ${tree.stderr}`;
+        for (const p of nulList(tree.stdout))
+            for (const q of withFolders(p)) {
+                const k = fold(q);
+                known.set(k, (known.get(k) ?? new Set()).add(q));
+            }
+    }
+    const lookalike = diff.changed.filter((p) => withFolders(p).some((q) => [...(known.get(fold(q)) ?? [])].some((k) => k !== q)));
+    if (lookalike.length > 0)
+        return `${at} adds paths that differ from another path only in letter case, so it is not merged: ${quotedNames(lookalike)}`;
+    const badName = diff.changed.filter((p) => p.startsWith("docs/plans/") &&
+        !p
+            .slice("docs/plans/".length)
+            .split("/")
+            .every((s) => LOG_NAME.test(s)));
+    if (badName.length > 0)
+        return `${at} names log files outside ${LOG_NAME.source}, so it is not merged: ${quotedNames(badName)}`;
+    // A record only appends ledger rows and adds or rewrites its own logs.
+    const gone = gitRaw(dir, [
+        "diff",
+        "--name-only",
+        "-z",
+        "--no-renames",
+        "--diff-filter=D",
+        mergeBase,
+        tip,
+    ]);
+    const nums = gitRaw(dir, ["diff", "--numstat", "-z", "--no-renames", mergeBase, tip]);
+    if (gone.status !== 0 || nums.status !== 0)
+        return `cannot diff ${at}: ${gone.stderr || nums.stderr}`;
+    const counts = nulList(nums.stdout)
+        .map((l) => /^(-|\d+)\t(-|\d+)\t([\s\S]*)$/.exec(l))
+        .filter((m) => m !== null && m[3].endsWith(".jsonl"));
+    const binary = counts.filter((m) => m[1] === "-" || m[2] === "-").map((m) => m[3]);
+    if (binary.length > 0)
+        return `${at} turns ledgers binary, so it is not merged: ${quotedNames(binary)}`;
+    const removed = [
+        ...nulList(gone.stdout),
+        ...counts.filter((m) => Number(m[2]) > 0).map((m) => m[3]),
+    ];
+    if (removed.length > 0)
+        return `${at} deletes files or ledger rows, so it is not merged: ${quotedNames(removed)}`;
+    const raw = runGit(dir, ["diff", "--raw", "--no-renames", "--diff-filter=AMT", mergeBase, tip]);
+    if (!raw.ok)
+        return `cannot diff ${at}: ${raw.stderr}`;
+    const special = raw.stdout
+        .split("\n")
+        .map((l) => /^:\d+ (\d+) \S+ \S+ \S+\t(.*)$/.exec(l))
+        .filter((m) => m !== null && (m[1] === "120000" || m[1] === "160000"))
+        .map((m) => m[2]);
+    if (special.length > 0)
+        return `${at} adds or changes entries that are not regular files, so it is not merged: ${quotedNames(special)}`;
+    return null;
+}
+/**
+ * In an open merge of `tip`, set each shared ledger the tip changed to HEAD's
+ * copy plus the non-blank lines the tip added that the same ledger in `book`
+ * (the checkout the record is carried from) holds byte for byte, and stage it.
+ * Any other line the tip added never lands; a ledger only the tip has, left with
+ * no line, is removed. Returns why it could not, or null.
+ */
+function keepHeldLedgerLines(dir, mergeBase, tip, book, log) {
+    const changed = gitRaw(dir, [
+        "diff",
+        "--name-only",
+        "-z",
+        "--no-renames",
+        mergeBase,
+        tip,
+        "--",
+        ...SHARED_LEDGERS,
+    ]);
+    if (changed.status !== 0)
+        return changed.stderr;
+    const lines = (text) => text.split("\n").filter((l) => l !== "");
+    const shown = (rev, p) => {
+        const r = gitRaw(dir, ["show", `${rev}:${p}`]);
+        return r.status === 0 ? r.stdout : null;
+    };
+    const regular = (abs) => fs.lstatSync(abs, { throwIfNoEntry: false })?.isFile() === true;
+    const left = [];
+    for (const p of nulList(changed.stdout)) {
+        const abs = path.join(dir, p);
+        if (fs.lstatSync(abs, { throwIfNoEntry: false }) !== undefined && !regular(abs))
+            return `${JSON.stringify(p)} is not a regular file`;
+        const ours = shown("HEAD", p);
+        const have = new Set(lines(ours ?? ""));
+        const before = new Set(lines(shown(mergeBase, p) ?? ""));
+        const mine = path.join(book, p);
+        const held = new Set(regular(mine) ? lines(fs.readFileSync(mine, "utf-8")) : []);
+        const added = lines(shown(tip, p) ?? "").filter((l) => !before.has(l) && !have.has(l));
+        const keep = added.filter((l) => l.trim() !== "" && held.has(l));
+        if (keep.length < added.length)
+            left.push(p);
+        if (ours === null && keep.length === 0) {
+            fs.rmSync(abs, { force: true });
+            const rm = runGit(dir, ["rm", "-q", "--cached", "--ignore-unmatch", "--", p]);
+            if (!rm.ok)
+                return rm.stderr;
+            continue;
+        }
+        const text = ours ?? "";
+        const sep = text !== "" && !text.endsWith("\n") ? "\n" : "";
+        fs.mkdirSync(path.dirname(abs), { recursive: true });
+        fs.writeFileSync(abs, keep.length > 0 ? `${text}${sep}${keep.join("\n")}\n` : text);
+        const add = runGit(dir, ["add", "--", p]);
+        if (!add.ok)
+            return add.stderr;
+    }
+    if (left.length > 0)
+        log(`left out ${tip}'s shared-ledger lines the local checkout does not hold: ${quotedNames(left)}`);
+    return null;
+}
+/**
+ * Publish a commit dev refused through its own `branch` PR titled `title`,
+ * merged with an empty body. Builds on a branch an earlier attempt left: its
+ * tip is merged into the record (`-X ours`, its ledger rows put back, its
+ * shared-ledger lines kept only where the local checkout holds them) so the
+ * push fast-forwards, and an open PR for the branch is reused. Returns where
+ * it landed and the pushed commit, or why it did not.
+ */
+async function closePr(ctx, dir, o) {
     const { branch, title, subject } = o;
+    // An empty answer is no branch; a failed read is not.
+    const tipRead = runGit(dir, ["ls-remote", "origin", `refs/heads/${branch}`]);
+    if (!tipRead.ok)
+        return { failed: `cannot read origin's ${branch}: ${tipRead.stderr}` };
+    const tip = tipRead.stdout.split(/\s+/)[0] || null;
+    if (tip !== null && !runGit(dir, ["merge-base", "--is-ancestor", tip, "HEAD"]).ok) {
+        if (!runGit(dir, ["fetch", "origin", `refs/heads/${branch}`]).ok)
+            return { failed: `cannot fetch origin's ${branch}` };
+        const mergeBase = git(dir, ["merge-base", "HEAD", tip]);
+        if (mergeBase === null)
+            return { failed: `${branch} at ${tip} shares no history with ${DEV}` };
+        const refused = leftoverRefusal(dir, mergeBase, tip, o);
+        if (refused !== null)
+            return { failed: refused };
+        const merged = runGit(dir, ["merge", "--no-ff", "--no-commit", "-X", "ours", tip]);
+        if (!merged.ok) {
+            runGit(dir, ["merge", "--abort"]);
+            return { failed: `merge of origin's ${branch} at ${tip} stopped: ${merged.stderr}` };
+        }
+        restoreBranchRows(dir, tip);
+        const kept = keepHeldLedgerLines(dir, mergeBase, tip, o.book, ctx.log);
+        if (kept !== null) {
+            runGit(dir, ["merge", "--abort"]);
+            return { failed: `merge of origin's ${branch} at ${tip} stopped: ${kept}` };
+        }
+        const made = runGit(dir, ["commit", "-m", subject]);
+        if (!made.ok) {
+            runGit(dir, ["merge", "--abort"]);
+            return { failed: `merge commit of origin's ${branch} at ${tip} failed: ${made.stderr}` };
+        }
+        // The merge commit is pushed without checkLanding, and a [skip ci] squash runs no CI.
+        const gated = gateMerged(dir, branch);
+        if (gated !== null)
+            return { failed: gated };
+    }
     const head = headSha(dir);
     if (!runGit(dir, ["push", "origin", `HEAD:refs/heads/${branch}`]).ok)
         return { failed: `close branch push failed for ${branch}` };
-    const created = runGh(dir, [
-        "pr",
-        "create",
-        "--base",
-        DEV,
-        "--head",
-        branch,
-        "--title",
-        title,
-        "--body",
-        "",
-    ]);
-    if (!created.ok)
-        return { failed: `gh pr create failed: ${created.stderr}` };
-    const pr = probePr(dir, { head: branch, base: DEV, state: "open" });
+    // Only a branch an earlier attempt left can already have a PR.
+    const open = tip === null ? null : probePr(dir, { head: branch, base: DEV, state: "open" });
+    const reused = open?.kind === "ok" && open.pr?.number !== undefined && open.pr.headRefName === branch;
+    if (!reused) {
+        const created = runGh(dir, [
+            "pr",
+            "create",
+            "--base",
+            DEV,
+            "--head",
+            branch,
+            "--title",
+            title,
+            "--body",
+            "",
+        ]);
+        if (!created.ok)
+            return {
+                failed: `gh pr create failed for ${branch}, which holds the record: ${created.stderr}`,
+            };
+    }
+    const pr = reused ? open : probePr(dir, { head: branch, base: DEV, state: "open" });
     const number = pr.kind === "ok" ? pr.pr?.number : undefined;
     if (number === undefined)
         return { failed: `close PR not found for ${branch}` };
+    if (reused) {
+        // GitHub moves a PR's head to a push a moment later; merge only once it has.
+        for (let i = 0; i < 20; i++) {
+            const seen = probePr(dir, { number: String(number), state: "open" });
+            if (seen.kind === "ok" && seen.pr?.headRefOid === head)
+                break;
+            await sleep(500);
+        }
+    }
     const merged = mergePr(dir, { number: String(number), subject, matchHead: head, deleteBranch: true }, ctx.log);
     if (!merged.out.merged)
         ctx.log(`close PR #${number} (${branch}) opened but not merged — merge it by hand`);
-    return { ref: branch, via: merged.out.merged ? "close-pr" : "close-pr-open" };
+    return { ref: branch, via: merged.out.merged ? "close-pr" : "close-pr-open", sha: head };
 }
 /**
  * Ship's close, in the run's tree (the feature worktree, or the adopted
@@ -1393,7 +1617,9 @@ async function shipClose(ctx, o, token) {
             },
             refused: async (dir, stderr) => {
                 ctx.log(`dev refused the close push — publishing it through a PR: ${stderr}`);
-                viaPr = closePr(ctx, dir, {
+                viaPr = await closePr(ctx, dir, {
+                    fid: o.fid,
+                    book,
                     title: `docs(${o.fid}): ship DONE`,
                     branch: `ship-close/${o.fid}`,
                     subject,
@@ -1418,7 +1644,7 @@ async function shipClose(ctx, o, token) {
                 ctx.log(`${pr === null ? "close PR not attempted" : pr.failed} — ${kept}`);
                 return { code: EXIT_FLUSH_FAILED, out: null };
             }
-            landed = pr;
+            landed = { ref: pr.ref, via: pr.via };
             break;
         }
         case "push-failed":

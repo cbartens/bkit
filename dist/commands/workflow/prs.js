@@ -19,7 +19,7 @@ import { EXIT_NO_STATUS, FILE_FLAG, readRuns, readStatusRows, statusFile, str } 
 // ---------------------------------------------------------------------------
 // gh
 // ---------------------------------------------------------------------------
-const PR_FIELDS = "number,url,state,baseRefName,headRefName,headRefOid,title,mergeCommit";
+const PR_FIELDS = "number,url,state,baseRefName,headRefName,headRefOid,title,mergeCommit,isCrossRepository";
 /**
  * The `owner/repo` a PR URL points at, or undefined when it is not a recognizable
  * GitHub PR URL. Lets a caller compare the repo a PR resolved in against `--repo`.
@@ -99,7 +99,7 @@ export function probePr(cwd, opts) {
     }
     const prs = parsed.value;
     const pr = opts.state === "open"
-        ? prs[0]
+        ? prs.find((p) => p.isCrossRepository !== true)
         : (prs.find((p) => p.state === "OPEN") ?? prs.find((p) => p.state === "MERGED"));
     return qualify(pr);
 }

@@ -23,6 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
+_(refreshed 2026-11-20T03:34:27Z)_
 _(refreshed 2026-11-20T05:24:03Z)_
 _(refreshed 2026-11-20T00:53:47Z)_
 
@@ -67,6 +68,7 @@ _(refreshed 2026-11-20T00:53:47Z)_
 | 1032-verbose-ci-head | 1032-verbose-ci-head | 1795152243724 |
 | 1035-ledger-commit-outbox | 1035-ledger-commit-outbox | 1795003365889 |
 | 1039-ledger-query-status | 1039-ledger-query-status | 1794984068525 |
+| 1042-ship-s-pr | 1042-ship-s-pr | 1795145667439 |
 | 1048-pre-push-dist | 1048-pre-push-dist | 1795072108927 |
 | 1050-host-made-worktrees | 1050-host-made-worktrees | 1795081458715 |
 | 1051-build-code-step | 1051-build-code-step | 1795136027376 |

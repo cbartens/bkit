@@ -9963,7 +9963,7 @@ Every command has a `🤖 Failure Path` section before Step 1. Any step, tool or
 
 5. **STOP** — no downstream steps.
 
-**Ship exception:** no separate abort commit, no second push. After the optional handover subagent, `bkit workflows handover --workflow=ship --flush --worktree=` carries the book (handover, deferred-sweep, ledger rows) into a throwaway `origin/dev` checkout → one `chore({FID}): ship FAILED bkit [skip ci]` commit and one push to `dev` (`dev` moved → rebuilt and pushed again; refused → `ship-failed/{FID}` PR; else the record stays in `BOOK_ROOT`). It never touches the open PR's validated head, so the open-PR guard does not apply, and the handover survives the branch prune. The comment is posted only when `handoverNeeded`, and linked only where the flush pushed.
+**Ship exception:** no separate abort commit, no second push. After the optional handover subagent, `bkit workflows handover --workflow=ship --flush --worktree=` carries the book (handover, deferred-sweep, ledger rows) into a throwaway `origin/dev` checkout → one `chore({FID}): ship FAILED bkit [skip ci]` commit and one push to `dev` (`dev` moved → rebuilt and pushed again; refused → `ship-failed/{FID}` PR, built on a branch an earlier attempt left and reusing its open PR; else the record stays in `BOOK_ROOT`). It never touches the open PR's validated head, so the open-PR guard does not apply, and the handover survives the branch prune. The comment is posted only when `handoverNeeded`, and linked only where the flush pushed.
 
 `/bkit-design` and `/bkit-plan` run no handover subagent (no max-retry loop); they still keep the record.
 ```

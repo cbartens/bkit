@@ -135,7 +135,7 @@ The design and plan Close Workflow lands docs on `dev` in one of two ways. Every
 - **Branch protection on `dev` permits the autonomous merge**, because no human review is required. The PR-path merge does not wait for checks: its merge subject carries `bkit [skip ci]`, so a docs-only close dispatches no run to wait for. A rule requiring status checks to pass will block it.
 - **"Automatically delete head branches" is enabled** (repo Settings → General). The PR-path close deliberately does not pass `--delete-branch`, because `gh` would also delete the local branch. That fails when the branch is checked out in a worktree, and returns non-zero after a successful merge. Head-branch cleanup relies on the repo setting instead.
 
-A refused ship FAILED flush (`bkit workflows handover --flush`) opens and merges a `ship-failed/{FID}` PR under the same two prerequisites.
+A refused ship FAILED flush (`bkit workflows handover --flush`) opens and merges a `ship-failed/{FID}` PR under the same two prerequisites; a `ship-failed/{FID}` branch already on origin is merged into the new record, and its open PR is reused.
 
 Confirm both before running phase closes from a cloud agent session.
 
@@ -354,7 +354,7 @@ Ship's docs sync, summaries, `SHIPPED` roadmap row and skill removals ride the P
 
 - Ship pushes it to `dev`.
 - **If** `dev` moved → ship rebuilds the commit and pushes again.
-- **If** the push is refused → ship opens a `ship-close/{FID}` PR.
+- **If** the push is refused → ship opens a `ship-close/{FID}` PR, or reuses the open one; a `ship-close/{FID}` branch already on origin is merged into the new record first.
 
 ## Smoke trigger plumbing
 

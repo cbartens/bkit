@@ -52,7 +52,8 @@ import { EXIT_NO_STATUS, FILE_FLAG, readRuns, readStatusRows, statusFile, str } 
 // gh
 // ---------------------------------------------------------------------------
 
-const PR_FIELDS = "number,url,state,baseRefName,headRefName,headRefOid,title,mergeCommit";
+const PR_FIELDS =
+  "number,url,state,baseRefName,headRefName,headRefOid,title,mergeCommit,isCrossRepository";
 
 export interface PrInfo {
   number: number;
@@ -64,6 +65,7 @@ export interface PrInfo {
   title: string;
   mergeCommit: { oid?: string } | null;
   mergeable?: string;
+  isCrossRepository?: boolean;
 }
 
 export type Probe =
@@ -163,7 +165,7 @@ export function probePr(
   const prs = parsed.value as PrInfo[];
   const pr =
     opts.state === "open"
-      ? prs[0]
+      ? prs.find((p) => p.isCrossRepository !== true)
       : (prs.find((p) => p.state === "OPEN") ?? prs.find((p) => p.state === "MERGED"));
   return qualify(pr);
 }

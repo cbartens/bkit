@@ -21,6 +21,7 @@ import {
   embedDocs,
   readAnchor,
   replayBuild,
+  restoreBranchRows,
   stampAnchor,
 } from "./branches";
 import { appendRecordCommit, newRecord, writeRecord } from "./ledgers";
@@ -4918,5 +4919,47 @@ describe("branches scan-diff --since-step", { timeout: GIT_TIMEOUT }, () => {
     const r = await scan(clone, file);
     expect(r.code).toBe(0);
     expect(r.json).toEqual({ found: true, paths: ["src/fix.ts"] });
+  });
+});
+
+describe("restoreBranchRows", { timeout: GIT_TIMEOUT }, () => {
+  it("restoreBranchRows writes nothing through a symlinked ledger", () => {
+    const dir = makeRepo("restore-symlink");
+    const outside = tmp("restore-symlink-outside");
+    const planted = path.join(outside, "planted");
+    git(dir, "checkout", "-q", "-b", "feat");
+    fs.mkdirSync(path.join(dir, "docs"), { recursive: true });
+    fs.symlinkSync(planted, path.join(dir, "docs/evil.jsonl"));
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "feat: a symlinked ledger");
+    git(dir, "checkout", "-q", "main");
+    write(dir, "src.txt", "code v1\n");
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "main: moves on");
+    const merge = git(dir, "merge", "--no-ff", "--no-commit", "-X", "ours", "feat");
+    expect(merge.ok, merge.err).toBe(true);
+    expect(fs.lstatSync(path.join(dir, "docs/evil.jsonl")).isSymbolicLink()).toBe(true);
+    restoreBranchRows(dir, "feat");
+    expect(fs.existsSync(planted)).toBe(false);
+  });
+
+  it("restoreBranchRows puts back a row in a ledger whose name git quotes", () => {
+    const dir = makeRepo("restore-quoted");
+    const quoted = 'docs/q"x.jsonl';
+    write(dir, quoted, '{"key":"r0"}\n');
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "base: a quoted ledger");
+    git(dir, "checkout", "-q", "-b", "feat");
+    fs.appendFileSync(path.join(dir, quoted), '{"key":"r1"}\n');
+    git(dir, "commit", "-q", "-am", "feat: a row");
+    git(dir, "checkout", "-q", "main");
+    fs.appendFileSync(path.join(dir, quoted), '{"key":"r2"}\n');
+    git(dir, "commit", "-q", "-am", "main: another row");
+    const merge = git(dir, "merge", "--no-ff", "--no-commit", "-X", "ours", "feat");
+    expect(merge.ok, merge.err).toBe(true);
+    expect(read(dir, quoted)).not.toContain('"r1"');
+    restoreBranchRows(dir, "feat");
+    expect(read(dir, quoted)).toContain('"r1"');
+    expect(git(dir, "diff", "--cached", "--name-only", "-z").out).toContain(quoted);
   });
 });

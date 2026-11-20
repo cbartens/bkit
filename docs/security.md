@@ -90,6 +90,8 @@ Action SHA-pinning and the dependency-update pipeline (Renovate / Dependabot, Tr
 - `bkit-cloud.yml` does not dispatch on Renovate PRs.
 - As a result, a compromised dependency PR cannot reach agent API credentials.
 
+**No workflow on a `[skip ci]` push to `dev`:** no workflow runs on it, the secret scan included. A landing's content is checked only by the local landing gate (`bkit:gate:min` or the full push gate) before the push, including the merge of a leftover `ship-close/{FID}` or `ship-failed/{FID}` tip.
+
 **Scanner isolation:** The CI vulnerability scanner (e.g. `bkit-trivy.yml`) runs with `contents: read`, `persist-credentials: false` and no secret. Its image or action is pinned by digest, never by a floating tag. Setup is in `.bkit/templates.md` § Trivy.
 
 The shared untrusted-content contract lives in `.bkit/prompts.md` § Untrusted Content & Prompt Injection.

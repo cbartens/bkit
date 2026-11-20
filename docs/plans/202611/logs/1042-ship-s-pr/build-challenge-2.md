@@ -1,0 +1,41 @@
+Verdict: FAIL
+Failures: 1
+
+<!-- verdict:end -->
+
+# Build Challenge
+
+Lens: Security — auth, secrets, input validation, data exposure, OWASP, data-access policies / tenancy.
+
+## Findings Log
+
+<!-- bkit:task 1 start -->
+
+- [ ] **TASK 1:** Anyone who can push `ship-failed/{FID}` or `ship-close/{FID}` adds `docs/plans/x/y/logs/{FID}/.prettierrc.mjs` and a `.md` file beside it; the record-path check admits both, and `gateMerged` then runs `bkit:gate:min` (here `prettier --check .`) on the merged checkout, so Prettier imports the planted file and runs the attacker's code on the ship host with the operator's environment
+      **Severity:** CRITICAL · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/workflows.ts:1726`
+  - **DONE WHEN:** `closePr` admits a leftover tip only when every path its `mergeBase..tip` diff touches is a file a record writes: a `*.md` file directly in `docs/plans/*/logs/{fid}/` (what `carryLogs` copies) or a ledger. Every pattern carries `:(glob)` magic so `*` stops at `/`, as `SHARED_LEDGERS` at `.bkit/core/engine/commands/workflow/workflows.ts:734` already does. A tip that touches `docs/plans/x/y/logs/{fid}/a.md`, `{log folder}/.prettierrc.mjs`, `{log folder}/.gitattributes` or `{log folder}/sub/x.test.ts` is refused before the merge: nothing is merged or pushed, the failure names the branch and the paths, and the exit code is 10 for the flush and 11 for the close. Checked in this challenge: in a scratch repo, `git diff --name-only` with the pathspecs `closePr` passes (`docs/plans/*/logs/12-export-csv/*` plus `UNION_PATHSPECS`) listed `docs/plans/a/b/logs/12-export-csv/.prettierrc.mjs`, `docs/plans/a/b/logs/12-export-csv/x.md` and `docs/plans/202611/logs/12-export-csv/sub/pwn.test.ts` as allowed. `git check-ignore` with bkit's `.prettierignore` line `docs/plans/*/logs/**` reports `docs/plans/a/b/logs/12-export-csv/x.md` as not ignored. Prettier 3.9.10 searches for a config file upward from each checked file's folder (`loadPrettierConfig2`, `node_modules/.pnpm/prettier@3.9.10/node_modules/prettier/index.mjs:15283-15287`), and `.prettierrc.mjs` is in its list (line 13779). Not run: this session's permissions blocked running Prettier on a planted config, so the code execution step is read from Prettier's source and was not observed. `runPushGate` passes the full `process.env` through `gitEnv()`. Once merged, the file also sits on `dev`, where every later `prettier --check .` run imports it, including `bkit:gate:min` and `bkit:gate:static` on any machine that runs them. `docs/security.md` § Untrusted Content & Prompt Injection says the load-bearing control is structural, and § Trust boundaries says the CLI validates its inputs.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/workflows.test.ts` `--flush refused by dev does not merge a leftover tip that adds files below a deeper logs folder` fails on the flush exiting 0 with the files on the branch (the leftover tip adds `docs/plans/x/y/logs/${FID}/.prettierrc.mjs` and `docs/plans/x/y/logs/${FID}/a.md`; it expects exit 10, a log naming `ship-failed/{FID}` and `docs/plans/x/y/logs/${FID}/.prettierrc.mjs`, and the remote branch still at the leftover tip)
+    - `.bkit/core/engine/commands/workflow/workflows.test.ts` `--flush refused by dev does not merge a leftover tip that adds a non-log file to the run's log folder` fails on the flush exiting 0 with the files on the branch (the leftover tip adds `${REL}/.prettierrc.mjs` and `${REL}/sub/x.test.ts`; it expects exit 10, a log naming `ship-failed/{FID}`, `${REL}/.prettierrc.mjs` and `${REL}/sub/x.test.ts`, and the remote branch still at the leftover tip)
+
+<!-- bkit:task 1 end -->
+
+<!-- bkit:task 2 start -->
+
+- [ ] **TASK 2:** Anyone who can push `ship-failed/{FID}` or `ship-close/{FID}` deletes ledger history on `dev`: a leftover tip that removes rows from `docs/decisions.jsonl`, deletes `docs/knowledge.jsonl` or empties another feature's `status.jsonl` (resetting its `dev-dispatch` budget) passes the record-path check and merges cleanly, because the check limits which paths change, not how they change
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/workflows.ts:1725`
+  - **DONE WHEN:** `closePr` refuses a leftover tip whose `mergeBase..tip` diff deletes any file (status `D`) or removes any line from a `.jsonl` file (a deleted-lines count above 0 in `git diff --numstat`). A record only appends ledger rows and adds or rewrites its own `.md` logs, so a tip an earlier attempt left never does either. On refusal nothing is merged or pushed, the failure names the branch and the paths, and the exit code is 10 for the flush and 11 for the close. Checked in this challenge: in a scratch repo with `*.jsonl merge=union`, a tip that removed one row from `docs/decisions.jsonl`, deleted `docs/knowledge.jsonl` and emptied `docs/plans/202607/logs/99-other/status.jsonl` had all three paths listed as allowed by the `closePr` pathspecs. The special-mode check (`--diff-filter=AMT`) flagged none of them, and `git merge --no-ff --no-commit -X ours` exited 0, leaving the row gone, `docs/knowledge.jsonl` removed and the other status log at 0 lines. `.agents/docs.md` marks `docs/decisions.jsonl` and `docs/knowledge.jsonl` append-only. `docs/security.md` § CI Auto-Route Trust (bkit-cloud) counts the dispatch budget from `dev-dispatch` rows on `origin/dev` and names only a principal with `dev` write as able to reset it; here a principal without `dev` write resets it through bkit's own merge.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/workflows.test.ts` `--flush refused by dev does not merge a leftover tip that deletes ledger rows` fails on the flush exiting 0 with the rows gone from the branch (while `dev` still takes pushes, a scratch clone pushes `dev` holding `docs/decisions.jsonl` with rows `r1` and `r2` and `docs/knowledge.jsonl` with row `k1`, then pushes `ship-failed/{FID}` cut from that `dev` with `r1` removed and `docs/knowledge.jsonl` deleted; it expects exit 10, a log naming `ship-failed/{FID}`, `docs/decisions.jsonl` and `docs/knowledge.jsonl`, and the remote branch still at the leftover tip)
+
+<!-- bkit:task 2 end -->
+
+<!-- bkit:task 3 start -->
+
+- [ ] **TASK 3:** A landing gate that commits or rewrites files in the merged checkout still lets `closePr` push, so the commit that reaches `ship-failed/{FID}` and then `dev` is one the gate never checked: `gateMerged` runs the gate without the before-and-after HEAD and clean-tree check that `checkLanding` applies, and `closePr` reads `head` only after the gate ran
+      **Severity:** LOW · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/workflows.ts:1696`
+  - **DONE WHEN:** `gateMerged` records HEAD and requires a clean `git status --porcelain --untracked-files=all --ignore-submodules=none` before the gate, and refuses when HEAD or the status differs after it, as `unchanged()` in `checkLanding` (`.bkit/core/engine/commands/land.ts:186-208`) does. On refusal nothing is pushed, the failure names the branch and says that the landing gate changed the checkout, and the exit code is 10 for the flush and 11 for the close. `.bkit/core/.bkit/workflows.md` § One landing routine for every dev write says that "failed checks and a changed landing tree stop the push", and the edited lines in that file and `docs/security.md` § Supply-Chain (GitHub Actions) describe the leftover-tip merge as gated by the same landing gate.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/workflows.test.ts` `--flush refused by dev does not push a merged leftover tip the landing gate changed` fails on the flush exiting 0 with the gate's extra commit on the branch (`dev`'s `package.json` declares `bkit:gate:min` as `if [ -e ${REL}/ship-earlier.md ]; then git commit -q --allow-empty -m moved; fi`, which does nothing on the record alone and moves HEAD only on the merge of a leftover tip carrying `earlier`; it expects exit 10, a log naming `ship-failed/{FID}`, the remote branch still at the leftover tip, and no `pr create` call)
+
+<!-- bkit:task 3 end -->

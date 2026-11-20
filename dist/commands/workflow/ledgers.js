@@ -98,7 +98,8 @@ export function gitRaw(cwd, args, env = {}, input) {
     const status = res.error && res.status === 0 ? 1 : res.status;
     return { status, stdout: res.stdout ?? "", stderr: (res.stderr ?? "").trim() };
 }
-const nulList = (out) => out.split("\0").filter((p) => p !== "");
+/** The entries of a NUL-delimited (`-z`) git listing. */
+export const nulList = (out) => out.split("\0").filter((p) => p !== "");
 function requireRepo(root) {
     if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
         throw new CommandError(EXIT_ROOT, `root not a directory: ${root}`);

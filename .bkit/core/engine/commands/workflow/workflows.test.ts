@@ -2430,21 +2430,38 @@ const startedThenFailed = (workflow: string, start: number) =>
     { type: "workflow-failed", workflow, at: new Date(start + 500).toISOString() },
   ]);
 
+/** What a `ghStub` does beyond its default: an open PR throughout, `pr create` and `pr merge` succeeding. */
+type GhOptions = {
+  /** `pr list` answers `[]` until `pr create` has run. */
+  openAfterCreate?: boolean;
+  /** `pr create` exits 1. */
+  createFails?: boolean;
+  /** `pr merge` exits 1, so the PR stays open. */
+  mergeFails?: boolean;
+};
+
 /** A gh on PATH that records its calls and answers one open PR on `head`, merging on request. */
-function ghStub(head: string, base: "dev" | "none" = "dev") {
+function ghStub(head: string, base: "dev" | "none" = "dev", options: GhOptions = {}) {
   const bin = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-workflows-gh-")));
   dirs.push(bin);
   const baseField = base === "dev" ? ',"baseRefName":"dev"' : "";
+  const open = `[{"number":9,"url":"https://github.com/o/r/pull/9","state":"OPEN"${baseField},"headRefName":"${head}"}]`;
   fs.writeFileSync(
     path.join(bin, "gh"),
     [
       "#!/bin/sh",
       `echo "$*" >> "${bin}/calls"`,
       'case "$1 $2" in',
-      '  "pr create") exit 0 ;;',
-      `  "pr list") echo '[{"number":9,"url":"https://github.com/o/r/pull/9","state":"OPEN"${baseField},"headRefName":"${head}"}]' ;;`,
+      options.createFails
+        ? '  "pr create") exit 1 ;;'
+        : `  "pr create") : > "${bin}/created"; exit 0 ;;`,
+      options.openAfterCreate
+        ? `  "pr list") if [ -f "${bin}/created" ]; then echo '${open}'; else echo '[]'; fi ;;`
+        : `  "pr list") echo '${open}' ;;`,
       `  "pr view") if [ -f "${bin}/merged" ]; then echo '{"number":9,"state":"MERGED","baseRefName":"dev","mergeCommit":{"oid":"abc"}}'; else echo '{"number":9,"state":"OPEN"${baseField}}'; fi ;;`,
-      `  "pr merge") : > "${bin}/merged"; exit 0 ;;`,
+      options.mergeFails
+        ? '  "pr merge") echo "merge blocked" >&2; exit 1 ;;'
+        : `  "pr merge") : > "${bin}/merged"; exit 0 ;;`,
       "esac",
       "",
     ].join("\n"),
@@ -2457,6 +2474,37 @@ function ghStub(head: string, base: "dev" | "none" = "dev") {
   return { bin, calls };
 }
 
+/**
+ * A branch an earlier attempt left on the bare `remote`: one commit on `branch` from the remote's
+ * `dev` carrying `files`, pushed from a scratch clone. Returns the tip.
+ */
+function leftBranch(
+  remote: string,
+  branch: string,
+  files: Record<string, string>,
+  links: Record<string, string> = {},
+) {
+  const clone = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-workflows-left-")));
+  dirs.push(clone);
+  git(clone, "clone", "-q", remote, ".");
+  git(clone, "config", "user.email", "t@t");
+  git(clone, "config", "user.name", "t");
+  git(clone, "checkout", "-q", "-b", branch, "origin/dev");
+  for (const [rel, body] of Object.entries(files)) write(clone, rel, body);
+  for (const [rel, target] of Object.entries(links)) {
+    fs.mkdirSync(path.dirname(path.join(clone, rel)), { recursive: true });
+    fs.symlinkSync(target, path.join(clone, rel));
+  }
+  git(clone, "add", "-A");
+  git(clone, "commit", "-qm", "chore: an earlier attempt's record [skip ci]");
+  git(clone, "push", "-q", "origin", `HEAD:refs/heads/${branch}`);
+  return git(clone, "rev-parse", "HEAD");
+}
+
+/** A pre-receive hook that refuses only pushes to dev. */
+const DEV_ONLY_HOOK =
+  '#!/bin/sh\nwhile read o n ref; do [ "$ref" = refs/heads/dev ] && { echo "dev is protected" >&2; exit 1; }; done\nexit 0\n';
+
 async function withGhOnPath<T>(bin: string, fn: () => Promise<T>): Promise<T> {
   const saved = process.env.PATH;
   process.env.PATH = `${bin}${path.delimiter}${saved ?? ""}`;
@@ -2465,6 +2513,22 @@ async function withGhOnPath<T>(bin: string, fn: () => Promise<T>): Promise<T> {
   } finally {
     process.env.PATH = saved;
   }
+}
+
+/** A gh on PATH running `body` (a `case "$1 $2"` arm list); records its calls in `{bin}/calls`. */
+function rawGh(body: string[]) {
+  const bin = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-workflows-gh-")));
+  dirs.push(bin);
+  fs.writeFileSync(
+    path.join(bin, "gh"),
+    ["#!/bin/sh", `echo "$*" >> "${bin}/calls"`, 'case "$1 $2" in', ...body, "esac", ""].join("\n"),
+    { mode: 0o755 },
+  );
+  const calls = () =>
+    fs.existsSync(path.join(bin, "calls"))
+      ? fs.readFileSync(path.join(bin, "calls"), "utf-8").trim().split("\n")
+      : [];
+  return { bin, calls };
 }
 
 describe("bkit workflows handover", () => {
@@ -2697,6 +2761,614 @@ describe("bkit workflows handover", () => {
     expect(create[0]).toContain("--title chore(12-export-csv): ship FAILED");
     expect(create[0]).toContain(`--head ship-failed/${FID}`);
     expect(create[0]).not.toContain("ship DONE");
+  });
+
+  /** A remote whose dev refuses pushes, after `prepare` ran against it while dev still took them. */
+  function refusedAfter(prepare: (remote: string) => void) {
+    const s = withDevRemote();
+    prepare(s.remote);
+    fs.writeFileSync(path.join(s.remote, "hooks", "pre-receive"), DEV_ONLY_HOOK, { mode: 0o755 });
+    return s;
+  }
+  const flush = (wt: string, ...extra: string[]) =>
+    run(wt, wf("handover", "ship", `--month=${M}`, "--flush", ...extra));
+  const branchRows = (remote: string, branch: string) =>
+    git(remote, "show", `${branch}:${REL}/status.jsonl`)
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+  const isAncestor = (remote: string, a: string, b: string) =>
+    spawnSync("git", ["merge-base", "--is-ancestor", a, b], { cwd: remote }).status === 0;
+  const earlier = {
+    [`${REL}/status.jsonl`]: jsonl([
+      { type: "workflow-failed", workflow: "ship", note: "earlier" },
+    ]),
+    [`${REL}/ship-earlier.md`]: "# Earlier record\n",
+  };
+
+  it("--flush refused by dev twice for one FID publishes the second record through a PR", async () => {
+    const { remote, wt } = devOnlyRefused();
+    const gh = ghStub(`ship-failed/${FID}`, "dev", { openAfterCreate: true, mergeFails: true });
+    const first = await withGhOnPath(gh.bin, () => flush(wt));
+    expect(first.code).toBe(0);
+    const firstTip = git(remote, "rev-parse", `ship-failed/${FID}`);
+    write(
+      wt,
+      `${REL}/status.jsonl`,
+      jsonl([{ type: "workflow-failed", workflow: "ship", note: "second" }]),
+    );
+    const second = await withGhOnPath(gh.bin, () => flush(wt));
+    expect(second.code, second.err).toBe(0);
+    expect(second.json).toMatchObject({ pushed: true, ref: `ship-failed/${FID}` });
+    const tip = git(remote, "rev-parse", `ship-failed/${FID}`);
+    expect(tip).not.toBe(firstTip);
+    expect(isAncestor(remote, firstTip, tip)).toBe(true);
+    // The first record's row (no note) and the second's both sit on the branch.
+    expect(branchRows(remote, `ship-failed/${FID}`).map((r) => r.note)).toEqual(
+      expect.arrayContaining([undefined, "second"]),
+    );
+    expect(gh.calls().filter((c) => c.startsWith("pr create"))).toHaveLength(1);
+  });
+
+  it("--flush refused by dev with ship-failed left on origin and no PR opens one PR on that branch", async () => {
+    const { remote, wt } = refusedAfter((rm) => leftBranch(rm, `ship-failed/${FID}`, earlier));
+    write(
+      wt,
+      `${REL}/status.jsonl`,
+      jsonl([{ type: "workflow-failed", workflow: "ship", note: "new" }]),
+    );
+    const gh = ghStub(`ship-failed/${FID}`, "dev", { openAfterCreate: true });
+    const r = await withGhOnPath(gh.bin, () => flush(wt));
+    expect(r.code, r.err).toBe(0);
+    const create = gh.calls().filter((c) => c.startsWith("pr create"));
+    expect(create).toHaveLength(1);
+    expect(create[0]).toContain(`--head ship-failed/${FID}`);
+    expect(git(remote, "show", `ship-failed/${FID}:${REL}/ship-earlier.md`)).toBe(
+      "# Earlier record",
+    );
+    const notes = branchRows(remote, `ship-failed/${FID}`).map((x) => x.note);
+    expect(notes).toEqual(expect.arrayContaining(["earlier", "new"]));
+  });
+
+  it("--flush refused by dev with a squash-merged ship-failed tip left on origin lands the new record", async () => {
+    const { remote, wt } = refusedAfter((rm) => {
+      leftBranch(rm, `ship-failed/${FID}`, earlier);
+      // The same change reaches dev as a separate commit, as a squash merge leaves it.
+      const clone = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-workflows-sq-")));
+      dirs.push(clone);
+      git(clone, "clone", "-q", rm, ".");
+      git(clone, "config", "user.email", "t@t");
+      git(clone, "config", "user.name", "t");
+      git(clone, "checkout", "-q", "dev");
+      for (const [rel, body] of Object.entries(earlier)) write(clone, rel, body);
+      git(clone, "add", "-A");
+      git(clone, "commit", "-qm", "chore: squash of the earlier record");
+      git(clone, "push", "-q", "origin", "dev");
+    });
+    write(
+      wt,
+      `${REL}/status.jsonl`,
+      jsonl([{ type: "workflow-failed", workflow: "ship", note: "new" }]),
+    );
+    const gh = ghStub(`ship-failed/${FID}`, "dev", { openAfterCreate: true });
+    const r = await withGhOnPath(gh.bin, () => flush(wt));
+    expect(r.code, r.err).toBe(0);
+    const diff = git(remote, "diff", "dev", `ship-failed/${FID}`, "--name-only").split("\n");
+    expect(diff).toContain(`${REL}/status.jsonl`);
+    expect(diff).not.toContain(`${REL}/ship-earlier.md`);
+  });
+
+  it("--flush refused by dev does not merge a leftover tip that changes code", async () => {
+    let tip = "";
+    const { remote, wt } = refusedAfter((rm) => {
+      tip = leftBranch(rm, `ship-failed/${FID}`, { ...earlier, "src/app.ts": "export {};\n" });
+    });
+    write(
+      wt,
+      `${REL}/status.jsonl`,
+      jsonl([{ type: "workflow-failed", workflow: "ship", note: "new" }]),
+    );
+    const gh = ghStub(`ship-failed/${FID}`, "dev", { openAfterCreate: true });
+    const r = await withGhOnPath(gh.bin, () => flush(wt));
+    expect(r.code).toBe(10);
+    expect(r.err).toContain(`ship-failed/${FID}`);
+    expect(r.err).toContain("src/app.ts");
+    expect(git(remote, "rev-parse", `ship-failed/${FID}`)).toBe(tip);
+  });
+
+  it("--flush refused by dev with gh pr create failing names the pushed ship-failed branch", async () => {
+    const { remote, wt } = devOnlyRefused();
+    const gh = ghStub(`ship-failed/${FID}`, "dev", { createFails: true });
+    const r = await withGhOnPath(gh.bin, () => flush(wt));
+    expect(r.code).toBe(10);
+    expect(git(remote, "rev-parse", "--verify", `ship-failed/${FID}`)).toMatch(/^[0-9a-f]{40}$/);
+    expect(r.err).toContain(`pr create failed for ship-failed/${FID}`);
+  });
+
+  it("--flush refused by dev links the handover comment at the pushed commit when the PR did not merge", async () => {
+    const { remote, wt } = devOnlyRefused();
+    write(wt, `${REL}/ship-handover.md`, "# Handover\n");
+    const gh = ghStub(`ship-failed/${FID}`, "dev", { mergeFails: true });
+    const r = await withGhOnPath(gh.bin, () => flush(wt, "--owner-repo=o/r"));
+    expect(r.json).toMatchObject({ pushed: true, ref: `ship-failed/${FID}` });
+    const tip = git(remote, "rev-parse", `ship-failed/${FID}`);
+    expect(r.json.comment).toContain(`/blob/${tip}/`);
+    expect(r.json.comment).not.toContain("/blob/ship-failed/");
+  });
+
+  it("--flush refused by dev keeps the unmerged handover link readable after the branch is deleted", async () => {
+    const { remote, wt } = devOnlyRefused();
+    write(wt, `${REL}/ship-handover.md`, "# Handover\n");
+    const gh = ghStub(`ship-failed/${FID}`, "dev", { mergeFails: true });
+    const r = await withGhOnPath(gh.bin, () => flush(wt, "--owner-repo=o/r"));
+    const sha = /\/blob\/([0-9a-f]{40})\//.exec(String(r.json.comment))?.[1];
+    expect(sha).toBeDefined();
+    git(remote, "update-ref", "-d", `refs/heads/ship-failed/${FID}`);
+    const read = spawnSync("git", ["cat-file", "-e", `${sha}:${REL}/ship-handover.md`], {
+      cwd: remote,
+    });
+    expect(read.status).toBe(0);
+  });
+
+  const newRecordRow = () => jsonl([{ type: "workflow-failed", workflow: "ship", note: "new" }]);
+
+  it("--flush refused by dev does not merge a leftover tip that adds a symlinked ledger", async () => {
+    const outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-workflows-out-")));
+    dirs.push(outside);
+    const planted = path.join(outside, "planted");
+    let tip = "";
+    const { remote, wt } = refusedAfter((rm) => {
+      tip = leftBranch(rm, `ship-failed/${FID}`, earlier, { [`${REL}/evil.jsonl`]: planted });
+    });
+    write(wt, `${REL}/status.jsonl`, newRecordRow());
+    const gh = ghStub(`ship-failed/${FID}`, "dev", { openAfterCreate: true });
+    const r = await withGhOnPath(gh.bin, () => flush(wt));
+    expect(r.code).toBe(10);
+    expect(r.err).toContain(`ship-failed/${FID}`);
+    expect(r.err).toContain("evil.jsonl");
+    expect(git(remote, "rev-parse", `ship-failed/${FID}`)).toBe(tip);
+    expect(fs.existsSync(planted)).toBe(false);
+  });
+
+  it("--flush refused by dev with a fork PR on the ship-failed branch name opens its own PR", async () => {
+    const { wt } = refusedAfter((rm) => leftBranch(rm, `ship-failed/${FID}`, earlier));
+    write(wt, `${REL}/status.jsonl`, newRecordRow());
+    const head = `ship-failed/${FID}`;
+    const pr = (n: number, cross: boolean) =>
+      `{"number":${n},"url":"https://github.com/o/r/pull/${n}","state":"OPEN","baseRefName":"dev","headRefName":"${head}","headRefOid":"${"0".repeat(40)}","isCrossRepository":${cross}}`;
+    const gh = rawGh([
+      `  "pr create") : > "$0.created"; exit 0 ;;`,
+      `  "pr list") if [ -f "$0.created" ]; then echo '[${pr(7, true)},${pr(9, false)}]'; else echo '[${pr(7, true)}]'; fi ;;`,
+      `  "pr view") if [ -f "$0.merged" ]; then echo '{"number":9,"state":"MERGED","baseRefName":"dev","mergeCommit":{"oid":"abc"}}'; else echo '${pr(9, false)}'; fi ;;`,
+      `  "pr merge") : > "$0.merged"; exit 0 ;;`,
+    ]);
+    const r = await withGhOnPath(gh.bin, () => flush(wt));
+    expect(r.code, r.err).toBe(0);
+    const create = gh.calls().filter((c) => c.startsWith("pr create"));
+    expect(create).toHaveLength(1);
+    expect(create[0]).toContain(`--head ${head}`);
+    expect(gh.calls().some((c) => c.startsWith("pr merge 7"))).toBe(false);
+  });
+
+  it("--flush refused by dev onto a leftover ship-failed branch keeps the skip token on the pushed head", async () => {
+    const { remote, wt } = refusedAfter((rm) => leftBranch(rm, `ship-failed/${FID}`, earlier));
+    write(wt, `${REL}/status.jsonl`, newRecordRow());
+    const gh = ghStub(`ship-failed/${FID}`, "dev", { mergeFails: true });
+    const r = await withGhOnPath(gh.bin, () => flush(wt));
+    expect(r.code, r.err).toBe(0);
+    expect(git(remote, "log", "-1", "--format=%s", `ship-failed/${FID}`)).toBe(
+      "chore(12-export-csv): ship FAILED bkit [skip ci]",
+    );
+  });
+
+  it("--flush refused by dev does not merge a leftover tip that adds a skill", async () => {
+    let tip = "";
+    const { remote, wt } = refusedAfter((rm) => {
+      tip = leftBranch(rm, `ship-failed/${FID}`, {
+        ...earlier,
+        ".claude/skills/probe/SKILL.md": "# probe\n",
+      });
+    });
+    write(wt, `${REL}/status.jsonl`, newRecordRow());
+    const gh = ghStub(`ship-failed/${FID}`, "dev", { openAfterCreate: true });
+    const r = await withGhOnPath(gh.bin, () => flush(wt));
+    expect(r.code).toBe(10);
+    expect(r.err).toContain(`ship-failed/${FID}`);
+    expect(r.err).toContain(".claude/skills/probe/SKILL.md");
+    expect(git(remote, "rev-parse", `ship-failed/${FID}`)).toBe(tip);
+  });
+
+  it("--flush refused by dev does not merge a leftover tip that writes .bkit/issues.jsonl", async () => {
+    let tip = "";
+    const { remote, wt } = refusedAfter((rm) => {
+      tip = leftBranch(rm, `ship-failed/${FID}`, {
+        ...earlier,
+        ".bkit/issues.jsonl": jsonl([{ type: "SHIPPED", fid: FID, note: "planted" }]),
+      });
+    });
+    write(wt, `${REL}/status.jsonl`, newRecordRow());
+    const gh = ghStub(`ship-failed/${FID}`, "dev", { openAfterCreate: true });
+    const r = await withGhOnPath(gh.bin, () => flush(wt));
+    expect(r.code).toBe(10);
+    expect(r.err).toContain(".bkit/issues.jsonl");
+    // The branch stays at the leftover tip: the new record is not merged onto it.
+    expect(git(remote, "rev-parse", `ship-failed/${FID}`)).toBe(tip);
+    expect(git(remote, "show", `dev:.bkit/issues.jsonl`)).not.toContain("planted");
+  });
+
+  it("--flush refused by dev runs the landing gate on a merged leftover tip", async () => {
+    let tip = "";
+    const { remote, wt } = refusedAfter((rm) => {
+      // dev declares the min gate: it fails when the run's log folder holds a poison.md.
+      const clone = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-workflows-gate-")));
+      dirs.push(clone);
+      git(clone, "clone", "-q", rm, ".");
+      git(clone, "config", "user.email", "t@t");
+      git(clone, "config", "user.name", "t");
+      git(clone, "checkout", "-q", "dev");
+      write(
+        clone,
+        "package.json",
+        JSON.stringify({ name: "t", scripts: { "bkit:gate:min": `test ! -e ${REL}/poison.md` } }),
+      );
+      git(clone, "add", "-A");
+      git(clone, "commit", "-qm", "chore: declare the min gate");
+      git(clone, "push", "-q", "origin", "dev");
+      tip = leftBranch(rm, `ship-failed/${FID}`, { ...earlier, [`${REL}/poison.md`]: "poison\n" });
+    });
+    write(wt, `${REL}/status.jsonl`, newRecordRow());
+    const gh = ghStub(`ship-failed/${FID}`, "dev", { openAfterCreate: true });
+    const r = await withGhOnPath(gh.bin, () => flush(wt));
+    expect(r.code).toBe(10);
+    expect(r.err).toContain(`ship-failed/${FID}`);
+    expect(r.err).toContain("bkit:gate:min");
+    expect(git(remote, "rev-parse", `ship-failed/${FID}`)).toBe(tip);
+    expect(gh.calls().some((c) => c.startsWith("pr create"))).toBe(false);
+  });
+
+  it("--flush refused by dev does not merge a leftover tip that adds files below a deeper logs folder", async () => {
+    let tip = "";
+    const deeper = `docs/plans/x/y/logs/${FID}`;
+    const { remote, wt } = refusedAfter((rm) => {
+      tip = leftBranch(rm, `ship-failed/${FID}`, {
+        ...earlier,
+        [`${deeper}/.prettierrc.mjs`]: "export default {};\n",
+        [`${deeper}/a.md`]: "# a\n",
+      });
+    });
+    write(wt, `${REL}/status.jsonl`, newRecordRow());
+    const gh = ghStub(`ship-failed/${FID}`, "dev", { openAfterCreate: true });
+    const r = await withGhOnPath(gh.bin, () => flush(wt));
+    expect(r.code).toBe(10);
+    expect(r.err).toContain(`ship-failed/${FID}`);
+    expect(r.err).toContain(`${deeper}/.prettierrc.mjs`);
+    expect(git(remote, "rev-parse", `ship-failed/${FID}`)).toBe(tip);
+  });
+
+  it("--flush refused by dev does not merge a leftover tip that adds a non-log file to the run's log folder", async () => {
+    let tip = "";
+    const { remote, wt } = refusedAfter((rm) => {
+      tip = leftBranch(rm, `ship-failed/${FID}`, {
+        ...earlier,
+        [`${REL}/.prettierrc.mjs`]: "export default {};\n",
+        [`${REL}/sub/x.test.ts`]: "export {};\n",
+      });
+    });
+    write(wt, `${REL}/status.jsonl`, newRecordRow());
+    const gh = ghStub(`ship-failed/${FID}`, "dev", { openAfterCreate: true });
+    const r = await withGhOnPath(gh.bin, () => flush(wt));
+    expect(r.code).toBe(10);
+    expect(r.err).toContain(`ship-failed/${FID}`);
+    expect(r.err).toContain(`${REL}/.prettierrc.mjs`);
+    expect(r.err).toContain(`${REL}/sub/x.test.ts`);
+    expect(git(remote, "rev-parse", `ship-failed/${FID}`)).toBe(tip);
+  });
+
+  it("--flush refused by dev does not merge a leftover tip that deletes ledger rows", async () => {
+    let tip = "";
+    const { remote, wt } = refusedAfter((rm) => {
+      const clone = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-workflows-del-")));
+      dirs.push(clone);
+      git(clone, "clone", "-q", rm, ".");
+      git(clone, "config", "user.email", "t@t");
+      git(clone, "config", "user.name", "t");
+      git(clone, "checkout", "-q", "dev");
+      write(clone, "docs/decisions.jsonl", jsonl([{ id: "r1" }, { id: "r2" }]));
+      write(clone, "docs/knowledge.jsonl", jsonl([{ id: "k1" }]));
+      git(clone, "add", "-A");
+      git(clone, "commit", "-qm", "chore: seed ledgers");
+      // The hook is not installed yet, so dev still takes this push.
+      git(clone, "push", "-q", "origin", "dev");
+      git(clone, "checkout", "-q", "-b", `ship-failed/${FID}`);
+      write(clone, "docs/decisions.jsonl", jsonl([{ id: "r2" }]));
+      git(clone, "rm", "-q", "docs/knowledge.jsonl");
+      git(clone, "add", "-A");
+      git(clone, "commit", "-qm", "chore: an earlier attempt's record [skip ci]");
+      git(clone, "push", "-q", "origin", `HEAD:refs/heads/ship-failed/${FID}`);
+      tip = git(clone, "rev-parse", "HEAD");
+    });
+    write(wt, `${REL}/status.jsonl`, newRecordRow());
+    const gh = ghStub(`ship-failed/${FID}`, "dev", { openAfterCreate: true });
+    const r = await withGhOnPath(gh.bin, () => flush(wt));
+    expect(r.code).toBe(10);
+    expect(r.err).toContain(`ship-failed/${FID}`);
+    expect(r.err).toContain("docs/decisions.jsonl");
+    expect(r.err).toContain("docs/knowledge.jsonl");
+    expect(git(remote, "rev-parse", `ship-failed/${FID}`)).toBe(tip);
+  });
+
+  /**
+   * Seed dev with `seed`, then leave `branch` on origin with `files` written
+   * straight into the index, so names that differ only in letter case stay
+   * apart on a case-insensitive file system. Returns the branch tip.
+   */
+  function indexBranch(
+    remote: string,
+    branch: string,
+    seed: Record<string, string>,
+    files: Record<string, string>,
+  ): string {
+    const clone = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-workflows-idx-")));
+    dirs.push(clone);
+    git(clone, "clone", "-q", remote, ".");
+    // Names reach the index in the normal form given, never precomposed.
+    git(clone, "config", "core.precomposeunicode", "false");
+    git(clone, "checkout", "-q", "dev");
+    if (Object.keys(seed).length > 0) {
+      for (const [rel, body] of Object.entries(seed)) write(clone, rel, body);
+      git(clone, "add", "-A");
+      git(clone, "commit", "-qm", "chore: seed dev");
+      git(clone, "push", "-q", "origin", "dev");
+    }
+    git(clone, "checkout", "-q", "-b", branch);
+    for (const [rel, body] of Object.entries(files)) {
+      const blob = spawnSync("git", ["hash-object", "-w", "--stdin"], {
+        cwd: clone,
+        input: body,
+        encoding: "utf-8",
+      }).stdout.trim();
+      git(clone, "update-index", "--add", "--cacheinfo", `100644,${blob},${rel}`);
+    }
+    git(clone, "commit", "-qm", "chore: an earlier attempt's record [skip ci]");
+    git(clone, "push", "-q", "origin", `HEAD:refs/heads/${branch}`);
+    return git(clone, "rev-parse", "HEAD");
+  }
+
+  /**
+   * Flush a new record onto a leftover tip `prepare` leaves, with `local` written
+   * into the run's tree first; returns the run and the tip.
+   */
+  async function flushOnto(
+    prepare: (remote: string) => string,
+    local: Record<string, string> = {},
+  ) {
+    let tip = "";
+    const { remote, wt } = refusedAfter((rm) => {
+      tip = prepare(rm);
+    });
+    write(wt, `${REL}/status.jsonl`, newRecordRow());
+    for (const [rel, body] of Object.entries(local)) write(wt, rel, body);
+    const gh = ghStub(`ship-failed/${FID}`, "dev", { openAfterCreate: true });
+    const r = await withGhOnPath(gh.bin, () => flush(wt));
+    return { r, tip, remote, gh };
+  }
+
+  it("--flush refused by dev does not merge a leftover tip that turns a ledger binary", async () => {
+    const { r, tip, remote } = await flushOnto((rm) =>
+      indexBranch(
+        rm,
+        `ship-failed/${FID}`,
+        { "docs/decisions.jsonl": jsonl([{ id: "r1" }, { id: "r2" }]) },
+        { "docs/decisions.jsonl": `${JSON.stringify({ id: "forged" })}\n\0\n` },
+      ),
+    );
+    expect(r.code).toBe(10);
+    expect(r.err).toContain(`ship-failed/${FID}`);
+    expect(r.err).toContain("binary");
+    expect(r.err).toContain(JSON.stringify("docs/decisions.jsonl"));
+    expect(git(remote, "rev-parse", `ship-failed/${FID}`)).toBe(tip);
+  });
+
+  it("--flush refused by dev does not merge a leftover tip that deletes a row from a ledger whose name git quotes", async () => {
+    const quoted = 'docs/q"x.jsonl';
+    const { r, tip, remote } = await flushOnto((rm) =>
+      indexBranch(
+        rm,
+        `ship-failed/${FID}`,
+        { [quoted]: jsonl([{ id: "r1" }, { id: "r2" }]) },
+        { [quoted]: jsonl([{ id: "r2" }]) },
+      ),
+    );
+    expect(r.code).toBe(10);
+    expect(r.err).toContain("deletes files or ledger rows");
+    expect(r.err).toContain(JSON.stringify(quoted));
+    expect(git(remote, "rev-parse", `ship-failed/${FID}`)).toBe(tip);
+  });
+
+  it("--flush refused by dev does not merge a leftover tip that writes .bkit/issues.jsonl in other letter case", async () => {
+    const { r, tip, remote } = await flushOnto((rm) =>
+      indexBranch(
+        rm,
+        `ship-failed/${FID}`,
+        {},
+        { ".bkit/ISSUES.jsonl": jsonl([{ type: "SHIPPED", fid: FID, note: "planted" }]) },
+      ),
+    );
+    expect(r.code).toBe(10);
+    expect(r.err).toContain(JSON.stringify(".bkit/ISSUES.jsonl"));
+    expect(git(remote, "rev-parse", `ship-failed/${FID}`)).toBe(tip);
+  });
+
+  it("--flush refused by dev does not merge a leftover tip whose path differs from dev's only in letter case", async () => {
+    const { r, tip, remote } = await flushOnto((rm) =>
+      indexBranch(
+        rm,
+        `ship-failed/${FID}`,
+        { "docs/decisions.jsonl": jsonl([{ id: "r1" }]) },
+        { "docs/Decisions.jsonl": jsonl([{ id: "r1" }]) },
+      ),
+    );
+    expect(r.code).toBe(10);
+    expect(r.err).toContain("letter case");
+    expect(r.err).toContain(JSON.stringify("docs/Decisions.jsonl"));
+    expect(git(remote, "rev-parse", `ship-failed/${FID}`)).toBe(tip);
+  });
+
+  it("--flush refused by dev does not merge a leftover tip that writes another feature's log folder", async () => {
+    const other = `docs/plans/${M}/logs/99-other/status.jsonl`;
+    const { r, tip, remote } = await flushOnto((rm) =>
+      indexBranch(
+        rm,
+        `ship-failed/${FID}`,
+        {},
+        { ...earlier, [other]: jsonl([{ type: "workflow-failed", workflow: "ship" }]) },
+      ),
+    );
+    expect(r.code).toBe(10);
+    expect(r.err).toContain(JSON.stringify(other));
+    expect(git(remote, "rev-parse", `ship-failed/${FID}`)).toBe(tip);
+  });
+
+  it("--flush refused by dev merges a leftover tip without a shared-ledger row the local checkout does not hold", async () => {
+    const start = Date.now() - 60_000;
+    const { r, tip, remote } = await flushOnto((rm) =>
+      indexBranch(
+        rm,
+        `ship-failed/${FID}`,
+        {},
+        {
+          [`${REL}/status.jsonl`]: startedThenFailed("ship", start),
+          "docs/knowledge.jsonl": jsonl([
+            { key: "forged", workflow: "build", ts: start + 1, summary: "planted" },
+          ]),
+        },
+      ),
+    );
+    const head = `ship-failed/${FID}`;
+    expect(isAncestor(remote, tip, head), r.err).toBe(true);
+    expect(git(remote, "ls-tree", "--name-only", head, "docs/")).not.toContain("knowledge.jsonl");
+    expect(git(remote, "show", `${head}:${REL}/status.jsonl`)).toContain("workflow-started");
+  });
+
+  it("--flush refused by dev merges a leftover tip without the rows its forged start row vouches for", async () => {
+    const forged = (key: string) => ({
+      schema: 3,
+      ts: Date.parse("2099-01-01T00:00:00Z"),
+      kind: "gotcha",
+      key,
+      by: { workflow: "ship", step: "ship-merge" },
+      references: [FID],
+      summary: "planted",
+    });
+    const { r, tip, remote } = await flushOnto((rm) =>
+      indexBranch(
+        rm,
+        `ship-failed/${FID}`,
+        {},
+        {
+          [`${REL}/status.jsonl`]: jsonl([
+            { type: "workflow-started", workflow: "ship", at: "2000-01-01T00:00:00Z" },
+          ]),
+          "docs/knowledge.jsonl": jsonl([forged("k-forged")]),
+          "docs/decisions.jsonl": jsonl([forged("d-forged")]),
+        },
+      ),
+    );
+    const head = `ship-failed/${FID}`;
+    expect(isAncestor(remote, tip, head), r.err).toBe(true);
+    expect(git(remote, "show", `${head}:docs/knowledge.jsonl`)).not.toContain("forged");
+    expect(git(remote, "show", `${head}:docs/decisions.jsonl`)).not.toContain("forged");
+    expect(git(remote, "show", `${head}:${REL}/status.jsonl`)).toContain("2000-01-01");
+  });
+
+  it("--flush refused by dev merges a leftover tip without the blank line it adds to a shared ledger", async () => {
+    const r0 = jsonl([{ key: "r0" }]);
+    const { r, tip, remote } = await flushOnto((rm) =>
+      indexBranch(
+        rm,
+        `ship-failed/${FID}`,
+        { "docs/decisions.jsonl": r0 },
+        { ...earlier, "docs/decisions.jsonl": `${r0}\n` },
+      ),
+    );
+    const head = `ship-failed/${FID}`;
+    expect(isAncestor(remote, tip, head), r.err).toBe(true);
+    const landed = spawnSync("git", ["show", `${head}:docs/decisions.jsonl`], {
+      cwd: remote,
+      encoding: "utf-8",
+    }).stdout;
+    expect(landed).toBe(r0);
+  });
+
+  it("--flush refused by dev does not merge a leftover tip whose path differs from dev's only in Unicode normal form", async () => {
+    const { r, tip, remote } = await flushOnto((rm) =>
+      indexBranch(
+        rm,
+        `ship-failed/${FID}`,
+        { "docs/cafe\u0301.jsonl": jsonl([{ key: "r1" }]) },
+        { "docs/caf\u00e9.jsonl": jsonl([{ key: "r1" }]) },
+      ),
+    );
+    expect(r.code).toBe(10);
+    expect(r.err).toContain("letter case");
+    expect(git(remote, "rev-parse", `ship-failed/${FID}`)).toBe(tip);
+  });
+
+  it("--flush refused by dev does not merge a leftover tip that adds two paths differing only in letter case", async () => {
+    const { r, tip, remote } = await flushOnto((rm) =>
+      indexBranch(
+        rm,
+        `ship-failed/${FID}`,
+        {},
+        { [`${REL}/a.md`]: "# a\n", [`${REL}/A.md`]: "# A\n" },
+      ),
+    );
+    expect(r.code).toBe(10);
+    expect(r.err).toContain("letter case");
+    expect(r.err).toContain(JSON.stringify(`${REL}/A.md`));
+    expect(git(remote, "rev-parse", `ship-failed/${FID}`)).toBe(tip);
+  });
+
+  it("--flush refused by dev merges a leftover tip whose shared-ledger rows the local ledger also holds", async () => {
+    const start = Date.now() - 60_000;
+    const own = jsonl([{ key: "own", workflow: "ship", ts: start + 1, references: [FID] }]);
+    const { r, remote } = await flushOnto(
+      (rm) =>
+        indexBranch(
+          rm,
+          `ship-failed/${FID}`,
+          {},
+          {
+            [`${REL}/status.jsonl`]: startedThenFailed("ship", start),
+            "docs/decisions.jsonl": own,
+          },
+        ),
+      { "docs/decisions.jsonl": own },
+    );
+    expect(r.code, r.err).toBe(0);
+    expect(git(remote, "show", `ship-failed/${FID}:docs/decisions.jsonl`)).toContain('"own"');
+  });
+
+  it("--flush refused by dev does not merge a leftover tip with a log name outside the safe characters", async () => {
+    const bad = `${REL}/a\u001bb.md`;
+    const { r, tip, remote } = await flushOnto((rm) =>
+      indexBranch(rm, `ship-failed/${FID}`, {}, { ...earlier, [bad]: "# a\n" }),
+    );
+    expect(r.code).toBe(10);
+    expect(r.err).toContain(JSON.stringify(bad));
+    expect(r.err).not.toContain("\u001b");
+    expect(git(remote, "rev-parse", `ship-failed/${FID}`)).toBe(tip);
+  });
+
+  it("--flush refused by dev names a leftover tip's paths escaped", async () => {
+    const bad = "src/x\u001b.ts";
+    const { r, tip, remote } = await flushOnto((rm) =>
+      indexBranch(rm, `ship-failed/${FID}`, {}, { ...earlier, [bad]: "export {};\n" }),
+    );
+    expect(r.code).toBe(10);
+    expect(r.err).toContain(JSON.stringify(bad));
+    expect(r.err).not.toContain("\u001b");
+    expect(git(remote, "rev-parse", `ship-failed/${FID}`)).toBe(tip);
   });
 
   describe("route and message: every exit the handover reaches ends the run as a stop", () => {
@@ -3288,6 +3960,51 @@ describe("bkit workflows close --flush (ship)", () => {
       expect(calls().find((c) => c.startsWith("pr create"))).toContain(
         `--title docs(${FID}): ship DONE`,
       );
+    });
+
+    it("a second refused close for one FID reuses the open ship-close PR", async () => {
+      const { remote, wt, close, bin, calls } = refusedDev("dev");
+      leftBranch(remote, `ship-close/${FID}`, {
+        [`${REL}/ship-earlier.md`]: "# Earlier close\n",
+      });
+      const r = await withGh(bin, () => run(wt, close));
+      expect(r.code, r.err).toBe(0);
+      expect(r.json.landed).toMatchObject({ ref: `ship-close/${FID}` });
+      expect(calls().filter((c) => c.startsWith("pr create"))).toEqual([]);
+      const tip = git(remote, "rev-parse", `ship-close/${FID}`);
+      expect(calls().find((c) => c.startsWith("pr merge"))).toContain(`--match-head-commit ${tip}`);
+      expect(git(remote, "show", `ship-close/${FID}:${REL}/ship-earlier.md`)).toBe(
+        "# Earlier close",
+      );
+    });
+
+    it("a second refused close waits for the reused PR head to reach the pushed tip before merging", async () => {
+      const s = shipping(true);
+      fs.writeFileSync(path.join(s.remote, "hooks", "pre-receive"), DEV_ONLY_HOOK, {
+        mode: 0o755,
+      });
+      const branch = `ship-close/${FID}`;
+      const leftover = leftBranch(s.remote, branch, {
+        [`${REL}/ship-earlier.md`]: "# Earlier close\n",
+      });
+      // The first two reads (the reuse probe, then the merge's own re-read) still see the
+      // leftover tip, as GitHub does until it has moved the PR's head; later reads see the push.
+      const open = `{"number":9,"url":"https://github.com/o/r/pull/9","state":"OPEN","baseRefName":"dev","headRefName":"${branch}","headRefOid":"'"$oid"'","isCrossRepository":false}`;
+      const read = [
+        `n=$(cat "$0.reads" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "$0.reads"`,
+        `if [ $n -le 2 ]; then oid=${leftover}; else oid=$(git --git-dir="${s.remote}" rev-parse refs/heads/${branch}); : > "$0.seen"; fi`,
+      ].join("; ");
+      const gh = rawGh([
+        `  "pr list") ${read}; echo '[${open}]' ;;`,
+        `  "pr view") if [ -f "$0.merged" ]; then echo '{"number":9,"state":"MERGED","baseRefName":"dev","mergeCommit":{"oid":"abc"}}'; else ${read}; echo '${open}'; fi ;;`,
+        `  "pr merge") pushed=$(git --git-dir="${s.remote}" rev-parse refs/heads/${branch}); case "$*" in *"--match-head-commit $pushed"*) if [ -f "$0.seen" ]; then : > "$0.merged"; exit 0; fi ;; esac; echo "Head branch was modified" >&2; exit 1 ;;`,
+      ]);
+      const r = await withGhOnPath(gh.bin, () => run(s.wt, s.close));
+      expect(r.code, r.err).toBe(0);
+      expect(r.json.landed).toEqual({ ref: branch, via: "close-pr" });
+      const pushed = git(s.remote, "rev-parse", branch);
+      expect(pushed).not.toBe(leftover);
+      expect(gh.calls().filter((c) => c.includes(`--match-head-commit ${pushed}`))).toHaveLength(1);
     });
 
     it("closePr refuses when the PR base is unknown", async () => {

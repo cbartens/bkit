@@ -23,7 +23,7 @@ import { bkitVersionStatus } from "../../shared/bkit-latest.js";
 import { parseBkitVersion, serializeBkitVersion, } from "../../install/version-file.js";
 import { DEV_REFSPEC, fetchDev, landBackoffMs, landDir, pushToDev, sleep } from "../land.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
-import { activeRecord, bookPathspecs, checkOnlyBookkeeping, commitBookkeeping, markRecordPushed, recordOnBranch, } from "./ledgers.js";
+import { activeRecord, bookPathspecs, checkOnlyBookkeeping, commitBookkeeping, gitRaw, markRecordPushed, nulList, recordOnBranch, } from "./ledgers.js";
 import { releaseLock, resolveMonth, workflowLockPath } from "./locks.js";
 import { underTestsLock } from "./junit.js";
 import { EXIT_BASE_NOT_DEV, FORCE_BUILD, closeTransportRow, crossCheckRows, mergePr, openPrFor, probePr, } from "./prs.js";
@@ -2412,18 +2412,32 @@ function revLines(root, rev, p) {
  * Put back the `.jsonl` rows `branch` added that the squash dropped: `-X ours`
  * keeps dev's side of a conflicting hunk, and a ledger git does not union-merge
  * (a consumer's `.bkit/friction.jsonl`) loses the branch's rows there. Each
- * missing row is appended to the staged file.
+ * missing row is appended to the staged file. `branch` is any revision; it runs
+ * while a merge is open (`MERGE_HEAD` set), as the merge base with a merged tip
+ * is the tip itself once the merge commit exists.
  */
-function restoreBranchRows(dir, branch) {
+export function restoreBranchRows(dir, branch) {
     const base = git(dir, ["merge-base", "HEAD", branch]);
     if (base === null)
         return;
-    const changed = (git(dir, ["diff", "--name-only", "--no-renames", "--diff-filter=d", base, branch]) ?? "")
-        .split("\n")
-        .filter((p) => p.endsWith(".jsonl"));
+    const changed = nulList(gitRaw(dir, ["diff", "--name-only", "-z", "--no-renames", "--diff-filter=d", base, branch])
+        .stdout).filter((p) => p.endsWith(".jsonl"));
     for (const p of changed) {
         const before = new Set(revLines(dir, base, p));
         const file = path.join(dir, p);
+        // Never write through a symlink or outside `dir`.
+        const stat = fs.lstatSync(file, { throwIfNoEntry: false });
+        if (stat !== undefined && !stat.isFile())
+            continue;
+        if (stat === undefined) {
+            const parent = path.dirname(file);
+            if (!fs.existsSync(parent))
+                continue;
+            const realParent = fs.realpathSync(parent);
+            const realDir = fs.realpathSync(dir);
+            if (realParent !== realDir && !realParent.startsWith(realDir + path.sep))
+                continue;
+        }
         const wrote = withTargetLock(file, () => {
             const text = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
             const have = new Set(text.split("\n").map((l) => l.trim()));
