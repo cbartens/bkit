@@ -107,6 +107,39 @@ describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)",
     it("never writes NODE_OPTIONS to $GITHUB_ENV", () => {
       const offenders = content.split("\n").filter(writesNodeOptionsToGithubEnv);
       expect(offenders).toEqual([]);
+      // The manual-run marker step is a $GITHUB_ENV writer too: it must exist and never name NODE_OPTIONS.
+      const doc = parseYamlText(content) as {
+        jobs: Record<string, { steps?: { name?: string; run?: string }[] }>;
+      };
+      for (const id of ["bkit-tests-static", "bkit-tests-unit"]) {
+        const step = doc.jobs[id]!.steps!.find(
+          (s) => s.name === "Read Verbose Marker (Manual Run)",
+        );
+        expect(step, `${id}: no manual-run verbose marker step`).toBeDefined();
+        expect(step!.run).toContain("GITHUB_ENV");
+        expect(step!.run).not.toContain("NODE_OPTIONS");
+      }
+    });
+
+    it("no template comment says a marker is inert on workflow_dispatch", () => {
+      const offenders = content
+        .split("\n")
+        .filter((l) => /^\s*#.*inert on `?workflow_dispatch/i.test(l));
+      expect(offenders).toEqual([]);
+    });
+
+    it("no template doc says markers are inert on a dispatch", () => {
+      const docsDir = path.resolve(".bkit/templates/docs");
+      const offenders = listFilesRecursive(docsDir)
+        .filter((f) => f.endsWith(".md"))
+        .flatMap((f) =>
+          fs
+            .readFileSync(f, "utf-8")
+            .split("\n")
+            .filter((l) => /markers? (are|is) inert on (a )?(`?workflow_)?dispatch/i.test(l))
+            .map((l) => `${path.relative(docsDir, f)}: ${l.slice(0, 80)}`),
+        );
+      expect(offenders).toEqual([]);
     });
 
     it("every job declaring VERBOSE_CI also declares a marker-gated job-level NODE_OPTIONS", () => {

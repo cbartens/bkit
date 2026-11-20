@@ -1250,8 +1250,8 @@ bkit's `bkit-ci.yml` recognises the tags below. They are case-sensitive and use 
 
 - **Direct push to `dev` or the default branch** (no PR): put the tag in the commit message (`github.event.head_commit.message`).
 - **Feature branch with an open PR** (open, synchronize or edit): put the tag in the PR title (`github.event.pull_request.title`). The commit message is not read, because the workflow fires on `pull_request`, not `push`.
-- **Both surfaces** are checked by `contains()` in the env block, and a marker in either one wins for its event. Pick the right one: `[verbose ci]` in a feature-branch commit message has no effect, because only the PR title is read.
-- **`workflow_dispatch`**: neither field is filled, so every marker is inert. The planner sets `MSG=""` for events other than `push` and `pull_request`, and silently drops `[force full]`, `[force build]` and `[verbose ci]`. Steer a dispatch with inputs, never a marker. Inputs are mandatory when the dispatch default is expensive, for example when a dispatch forces the metered native build lanes past their reuse gate and spends build quota on every run. Gate the lookup behind an input that defaults to `false`.
+- **Both surfaces** are checked by `contains()` in the env block, and a marker in either one wins for its event. Pick the right one: `[verbose ci]` in a feature-branch commit message has no effect, because only the PR title is read. On a manual run the "Read Verbose Marker (Manual Run)" step reads the head commit for `[verbose ci]`.
+- **`workflow_dispatch`**: neither field is filled, so the template reads the head commit (`git log -1 --pretty=%B "$GITHUB_SHA"`) and every marker acts on a manual run, and keeps acting on every manual run until a new commit lands. `[verbose ci]` is read by the "Read Verbose Marker (Manual Run)" step of the static and unit jobs. `NODE_OPTIONS` stays off on a manual run, because `$GITHUB_ENV` cannot set it. Steer a dispatch with inputs when the marker would have to change on a commit that already exists. Inputs are mandatory when the dispatch default is expensive, for example when a dispatch forces the metered native build lanes past their reuse gate and spends build quota on every run. Gate the lookup behind an input that defaults to `false`.
 
 <!-- prettier-ignore -->
 | Tag | Effect | Scope |
@@ -1496,7 +1496,7 @@ Conventional Commits — `{type}({FID}): {summary}`.
 
 ### CI / Vercel commit tags
 
-Precedence: `bkit [force build]` wins. bkit's own `bkit-ci.yml` reads markers from the PR title on `pull_request` events and from the head commit on pushes; the consumer template reads the PR title on `pull_request`, else the head commit (`workflow_dispatch` included).
+Precedence: `bkit [force build]` wins. bkit's own `bkit-ci.yml` reads markers from the PR title on `pull_request` events and from the head commit on pushes, and its "Read Verbose Marker (Manual Run)" step also reads `[verbose ci]` from the head commit on a manual run; the consumer template reads the PR title on `pull_request`, else the head commit (`workflow_dispatch` included).
 
 <!-- prettier-ignore -->
 | Tag | Effect |

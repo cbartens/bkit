@@ -81,6 +81,28 @@ describe("template bkit-ci.yml, filled in", () => {
     const file = filledTemplate();
     const r = spawnSync("actionlint", ["-no-color", file], { encoding: "utf-8" });
     expect(r.status, `${r.stdout}${r.stderr}`).toBe(0);
+    // The manual-run marker step is part of what actionlint just checked.
+    expect(fs.readFileSync(file, "utf-8")).toContain("Read Verbose Marker (Manual Run)");
+  });
+
+  it("static and unit jobs each run a manual-run verbose marker step before Configure Verbose CI", () => {
+    const doc = parseYaml(filledTemplate());
+    const jobs = doc.jobs as Record<
+      string,
+      { steps?: { name?: string; if?: string; run?: string }[] }
+    >;
+    for (const id of ["bkit-tests-static", "bkit-tests-unit"]) {
+      const steps = jobs[id]!.steps!;
+      const marker = steps.findIndex((s) => s.name === "Read Verbose Marker (Manual Run)");
+      const configure = steps.findIndex((s) => s.name === "Configure Verbose CI");
+      expect(marker, `${id}: no manual-run verbose marker step`).toBeGreaterThanOrEqual(0);
+      expect(configure, `${id}: no Configure Verbose CI step`).toBeGreaterThanOrEqual(0);
+      expect(marker, `${id}: marker step must come before Configure Verbose CI`).toBeLessThan(
+        configure,
+      );
+      expect(steps[marker]!.if).toBe("github.event_name == 'workflow_dispatch'");
+      expect(steps[marker]!.run).toContain("git log -1 --pretty=%B");
+    }
   });
 });
 

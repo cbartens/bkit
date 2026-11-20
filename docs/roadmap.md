@@ -23,6 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
+_(refreshed 2026-11-20T05:24:03Z)_
 _(refreshed 2026-11-20T00:53:47Z)_
 
 ### Design
@@ -63,6 +64,7 @@ _(refreshed 2026-11-20T00:53:47Z)_
 | 1028-gate-fails-workflow | 1028-gate-fails-workflow | 1794967440896 |
 | 1030-later-scope-passing | 1030-later-scope-passing | 1794972956727 |
 | 1031-pre-push-refuses | 1031-pre-push-refuses | 1795085318006 |
+| 1032-verbose-ci-head | 1032-verbose-ci-head | 1795152243724 |
 | 1035-ledger-commit-outbox | 1035-ledger-commit-outbox | 1795003365889 |
 | 1039-ledger-query-status | 1039-ledger-query-status | 1794984068525 |
 | 1048-pre-push-dist | 1048-pre-push-dist | 1795072108927 |

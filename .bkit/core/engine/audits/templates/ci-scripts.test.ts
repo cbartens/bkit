@@ -335,3 +335,111 @@ describe("bkit-check-capstone", () => {
     });
   });
 });
+
+describe("template verbose marker step (manual run)", () => {
+  const STEP_NAME = "Read Verbose Marker (Manual Run)";
+  const JOBS = ["bkit-tests-static", "bkit-tests-unit"];
+
+  /** The `run:` script of the manual-run marker step in one job of the template. */
+  function markerScript(job: string): string {
+    const doc = parseYamlText(fs.readFileSync(WORKFLOWS.template, "utf-8")) as {
+      jobs: Record<string, { steps: Step[] }>;
+    };
+    const step = doc.jobs[job]?.steps.find((s) => s.name === STEP_NAME);
+    expect(step, `${job}: no "${STEP_NAME}" step`).toBeDefined();
+    return step!.run!;
+  }
+
+  /** Run the step against a fixture repo whose head commit has `message`; return the GITHUB_ENV text. */
+  function runStep(
+    script: string,
+    message: string,
+    globalGitConfig?: string,
+  ): { status: number | null; env: string } {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "verbose-marker-"));
+    tmpDirs.push(dir);
+    const repo = path.join(dir, "repo");
+    fs.mkdirSync(repo);
+    const git = (...args: string[]) => {
+      const res = spawnSync("git", args, {
+        cwd: repo,
+        encoding: "utf-8",
+        env: {
+          ...process.env,
+          ...(globalGitConfig ? { GIT_CONFIG_GLOBAL: globalGitConfig, HOME: dir } : {}),
+          GIT_AUTHOR_NAME: "t",
+          GIT_AUTHOR_EMAIL: "t@example.com",
+          GIT_COMMITTER_NAME: "t",
+          GIT_COMMITTER_EMAIL: "t@example.com",
+        },
+      });
+      expect(res.status, `git ${args.join(" ")}: ${res.stderr}`).toBe(0);
+      return res;
+    };
+    git("init", "-q");
+    git("-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", message);
+    const sha = git("rev-parse", "HEAD").stdout.trim();
+    const envFile = path.join(dir, "github_env");
+    fs.writeFileSync(envFile, "");
+    const res = spawnSync("bash", ["-e", "-c", script], {
+      cwd: repo,
+      env: { PATH: process.env.PATH ?? "", GITHUB_SHA: sha, GITHUB_ENV: envFile },
+      encoding: "utf-8",
+    });
+    return { status: res.status, env: fs.readFileSync(envFile, "utf-8") };
+  }
+
+  /** The `&& '<value>' ||` on-value of TURBO_LOG_LEVEL in a job's `env:` expression. */
+  function jobEnvTurboOnValue(job: string): string | undefined {
+    const doc = parseYamlText(fs.readFileSync(WORKFLOWS.template, "utf-8")) as {
+      jobs: Record<string, { env?: Record<string, string> }>;
+    };
+    const expr = String(doc.jobs[job]?.env?.TURBO_LOG_LEVEL ?? "");
+    return expr.match(/&&\s*'([^']*)'\s*\|\|/)?.[1];
+  }
+
+  it("verbose marker step writes VERBOSE_CI, TURBO_LOG_LEVEL and DEBUG to GITHUB_ENV for a [verbose ci] head commit", () => {
+    for (const job of JOBS) {
+      const r = runStep(markerScript(job), "fix: something [verbose ci]\n\nbody");
+      expect(r.status, job).toBe(0);
+      const lines = r.env.split("\n").filter(Boolean);
+      expect(lines, job).toContain("VERBOSE_CI=1");
+      expect(lines, job).toContain("TURBO_LOG_LEVEL=full");
+      expect(lines, job).toContain("DEBUG=vercel:*,supabase:*");
+      expect(
+        lines.some((l) => l.startsWith("NODE_OPTIONS")),
+        job,
+      ).toBe(false);
+    }
+  });
+
+  it("verbose marker step writes nothing to GITHUB_ENV for a head commit without the marker", () => {
+    for (const job of JOBS) {
+      const r = runStep(markerScript(job), "fix: something verbose ci without brackets");
+      expect(r.status, job).toBe(0);
+      expect(r.env, job).toBe("");
+    }
+  });
+
+  it("verbose marker step writes the TURBO_LOG_LEVEL value the job-level env sets on a marked push", () => {
+    for (const job of JOBS) {
+      const onValue = jobEnvTurboOnValue(job);
+      expect(onValue, `${job}: no on-value in job env TURBO_LOG_LEVEL`).toBeDefined();
+      const r = runStep(markerScript(job), "fix: something [verbose ci]");
+      expect(r.status, job).toBe(0);
+      expect(r.env.split("\n"), job).toContain(`TURBO_LOG_LEVEL=${onValue}`);
+    }
+  });
+
+  it("verbose marker step fixture commits under a global git config that signs commits", () => {
+    const cfgDir = fs.mkdtempSync(path.join(os.tmpdir(), "verbose-marker-cfg-"));
+    tmpDirs.push(cfgDir);
+    const cfg = path.join(cfgDir, "gitconfig");
+    fs.writeFileSync(cfg, "[commit]\n\tgpgsign = true\n[gpg]\n\tprogram = false\n");
+    for (const job of JOBS) {
+      const r = runStep(markerScript(job), "fix: something [verbose ci]", cfg);
+      expect(r.status, job).toBe(0);
+      expect(r.env.split("\n"), job).toContain("VERBOSE_CI=1");
+    }
+  });
+});

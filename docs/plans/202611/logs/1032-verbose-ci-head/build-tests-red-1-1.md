@@ -1,0 +1,1565 @@
+Enforced: true
+Red: 7
+Accepted: 0
+Updated: 0
+Gaps: 0
+
+<!-- verdict:end -->
+
+# Tests Red — group 1, attempt 1
+
+Plan: `docs/plans/202611/1032-verbose-ci-head-plan.md`
+
+<!-- prettier-ignore -->
+| Task | Test | State | Detail |
+| --- | --- | --- | --- |
+| 1 | `.bkit/core/engine/audits/templates/template-ci-yml.test.ts` "static and unit jobs each run a manual-run verbose marker step before Configure Verbose CI" | red | failure: bkit-tests-static: no manual-run verbose marker step: expected -1 to be greater than or equal to 0 |
+| 1 | `.bkit/core/engine/audits/templates/template-ci-yml.test.ts` "passes actionlint" | red | failure: expected '# Example. Copy into the repo and own…' to contain 'Read Verbose Marker (Manual Run)' |
+| 1 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts` "verbose marker step writes VERBOSE_CI, TURBO_LOG_LEVEL and DEBUG to GITHUB_ENV for a [verbose ci] head commit" | red | failure: bkit-tests-static: no "Read Verbose Marker (Manual Run)" step: expected undefined to be defined |
+| 1 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts` "verbose marker step writes nothing to GITHUB_ENV for a head commit without the marker" | red | failure: bkit-tests-static: no "Read Verbose Marker (Manual Run)" step: expected undefined to be defined |
+| 1 | `.bkit/core/engine/audits/repo/dogfood-templates.test.ts` ".github/workflows/bkit-ci.yml" | red | failure: expected +0 to be 2 // Object.is equality |
+| 2 | `.bkit/core/engine/audits/templates/templates-content.test.ts` "no template comment says a marker is inert on workflow_dispatch" | red | failure: expected [ Array(1) ] to deeply equal [] |
+| 2 | `.bkit/core/engine/audits/templates/templates-content.test.ts` "never writes NODE_OPTIONS to $GITHUB_ENV" | red | failure: bkit-tests-static: no manual-run verbose marker step: expected undefined to be defined |
+
+## Gaps
+
+None.
+
+## Lint output — `.bkit/core/engine/audits/templates/template-ci-yml.test.ts`
+
+```
+
+> @cbartens/bkit@6.2.0 bkit:lint:file /Users/christian/Documents/GitHub/bkit/.worktrees/1032-verbose-ci-head
+> oxlint -c .oxlintrc.json --type-aware --tsconfig tsconfig.test.json --deny-warnings --no-error-on-unmatched-pattern .bkit/core/engine/audits/templates/template-ci-yml.test.ts
+
+```
+
+## Runner output — `.bkit/core/engine/audits/templates/template-ci-yml.test.ts`
+
+```
+
+> @cbartens/bkit@6.2.0 bkit:test:file /Users/christian/Documents/GitHub/bkit/.worktrees/1032-verbose-ci-head
+> node scripts/ci/bkit-test-awake.mjs node scripts/ci/bkit-test-file.mjs .bkit/core/engine/audits/templates/template-ci-yml.test.ts
+
+
+ RUN  v5.1.0 /Users/christian/Documents/GitHub/bkit/.worktrees/1032-verbose-ci-head
+
+ ❯ .bkit/core/engine/audits/templates/template-ci-yml.test.ts (17 tests | 2 failed) 1141ms
+   ❯ template bkit-ci.yml, filled in (3)
+     ✓ parses as YAML, with the capstone needing every other job 26ms
+     × passes actionlint 347ms
+     × static and unit jobs each run a manual-run verbose marker step before Configure Verbose CI 20ms
+   ✓ template bkit-tests-static job matches the bkit:gate:static local gate (3)
+     ✓ reads the gate as a chain of pnpm scripts 0ms
+     ✓ runs every part of the local static gate as a step, bar the named exceptions 16ms
+     ✓ lists only exceptions that are still parts of the gate 0ms
+   ✓ ship gate against the template's job names (2)
+     ✓ finds the capstone among the template's jobs and passes when it is green 329ms
+     ✓ refuses when the template's capstone job fails 312ms
+   ✓ BAR-164 — canonical CI template has no cross-org private `uses:` references (3)
+     ✓ scanForeignBkitUses flags `uses: cbartens/bkit/...@<ref>` lines 0ms
+     ✓ scanForeignBkitUses returns empty for the env-var pattern (no foreign uses) 0ms
+     ✓ canonical CI template has zero foreign `cbartens/bkit/...` uses 1ms
+   ✓ bkit-ci.yml template registry-auth assertion (Task 6.1 — BAR-138) (3)
+     ✓ bkit-ci.yml template exists 0ms
+     ✓ bkit-ci.yml template does NOT contain a git auth-shim (BAR-138) 0ms
+     ✓ bkit-ci.yml template no longer carries the GitHub Packages auth ceremony 1ms
+   ✓ the capability-register step runs on pull_request (3)
+     ✓ capability register runs on pull_request in both workflows 15ms
+     ✓ flags an event filter on the capability-register step 18ms
+     ✓ flags an event filter on the job, a missing pull_request trigger and a renamed step 40ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .bkit/core/engine/audits/templates/template-ci-yml.test.ts > template bkit-ci.yml, filled in > passes actionlint
+AssertionError: expected '# Example. Copy into the repo and own…' to contain 'Read Verbose Marker (Manual Run)'
+
+- Expected
++ Received
+
+- Read Verbose Marker (Manual Run)
++ # Example. Copy into the repo and own it.
++ # bkit install does not write this file and does not overwrite a copy.
++ # The job-level `env:` of bkit-tests-static is where the `[verbose ci]` commit marker is
++ # read; keep it if you want verbose-CI support.
++ name: bkit-ci
++
++ on:
++   workflow_dispatch:
++   push:
++     branches: [main, dev]
++   pull_request:
++     branches: [main, dev]
++
++ permissions:
++   actions: read
++   contents: read
++
++ # One run per branch or pull request. A newer run cancels the older one on every event
++ # except the default branch, which QUEUES: that run promotes the deployment, and cancelling
++ # it mid-promote could leave production split across two releases. A pull request
++ # keys on its number; a push or dispatch keys on the ref, so a PR and a push to dev still
++ # overlap. A shared resource those two runs both touch is serialised by the tenant lease
++ # (bkit-tests-reset), not by this group. A workflow_run observer sees the latest run on that
++ # ref only. A push plans against the last green run on the branch, not github.event.before,
++ # so a cancelled run's changes stay in scope.
++ # See docs/deployments.md § "One run per branch or pull request".
++ concurrency:
++   group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
++   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
++
++ jobs:
++   # ── bkit-tests-static ────────────────────────────────────────────────────
++   # Static-analysis lane: typecheck, lint, format, prose lint, slop, actionlint,
++   # bkit check. Runs on a CLEAN tree (no test artifacts). Parallel sibling of
++   # bkit-tests-unit — wall-clock = MAX(lane).
++   bkit-tests-static:
++     runs-on: ubuntu-latest
++     # [verbose ci] marker — escalates CI log detail for one run. Composes freely with
++     # [force build] / [force full] / [force cache] / [skip ci] (independent contains() per marker).
++     # Markers are bare substrings — bkit-emitted commits prepend `bkit ` for attribution
++     # (e.g. `bkit [verbose ci]`); substring match honours both forms.
++     # See .bkit/workflows.md § "Test and release mechanics" (Commit-message force tags) for where to put the marker
++     # (PR title for feature-branch pushes vs commit message for direct dev/main pushes)
++     # and docs/testing.md § "CI verbosity" for the full knob list.
++     #
++     # NODE_OPTIONS is set HERE, in static YAML, and must NEVER be written to $GITHUB_ENV.
++     # The runner blocklists NODE_OPTIONS for the $GITHUB_ENV / set-env workflow command:
++     # the write is REJECTED with
++     #   ##[error]Can't store NODE_OPTIONS output parameter using '$GITHUB_ENV' command.
++     # while the step's conclusion stays `success`. The marker test is spelled out, not
++     # `env.VERBOSE_CI`: the `env` context is NOT available to a job-level `env:` value. A
++     # step with its own `env:` block REPLACES this value rather than merging, so such a
++     # step must restate the flags. See docs/testing.md § "CI verbosity".
++     env:
++       TURBO_LOG_LEVEL: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
++       VERBOSE_CI: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
++       NODE_OPTIONS: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '--trace-warnings --trace-deprecation' || '' }}
++     steps:
++       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
++         with:
++           # Full history so bkit:slop:delta can materialise the PR base ref as a worktree.
++           fetch-depth: 0
++
++       # Node/TS toolchain region. On a non-Node repo, replace these steps with your
++       # stack's setup / install commands (and the typecheck / lint / test steps below with
++       # its own). Replace `22` with your Node major (`.bkit/templates.md`).
++       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
++         with:
++           node-version: 22
++
++       # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
++       # Do NOT add `with: version:` here — pnpm/action-setup errors when both are set.
++       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
++
++       # Under [verbose ci]: propagate DEBUG to all subsequent steps via $GITHUB_ENV. Note
++       # that steps with their own `env:` block override $GITHUB_ENV — those steps must
++       # inline it in their env: declaration to stay verbose-aware. NODE_OPTIONS is NOT
++       # set here; the runner rejects that write while reporting success.
++       # See the job-level `env:` block above.
++       - name: Configure Verbose CI
++         if: env.VERBOSE_CI == '1'
++         run: |
++           echo "🔊 [verbose ci] marker active — escalating log detail"
++           echo "DEBUG=vercel:*,supabase:*" >> "$GITHUB_ENV"
++
++       - name: Detect Direct Push
++         id: detect
++         env:
++           GH_TOKEN: ${{ github.token }}
++           # User-controlled text (PR title) arrives via env: (runtime expansion,
++           # injection-safe) — never inlined into the run: body.
++           PR_TITLE: ${{ github.event.pull_request.title }}
++           EVENT_NAME: ${{ github.event_name }}
++           REF: ${{ github.ref }}
++         run: |
++           if [ "$EVENT_NAME" = "pull_request" ]; then
++             MSG="$PR_TITLE"
++           else
++             MSG=$(git log -1 --pretty=%B "$GITHUB_SHA" 2>/dev/null || echo "")
++           fi
++           case "$MSG" in *"[force cache]"*) echo "turbo_force=1" >> "$GITHUB_OUTPUT" ;; esac
++           case "$MSG" in *"[force build]"*) echo "should_force_build=true" >> "$GITHUB_OUTPUT" ;; esac
++           case "$MSG" in *"[force full]"*) echo "should_run_full=true" >> "$GITHUB_OUTPUT" ;; esac
++           if [ "$EVENT_NAME" = "push" ] && [ "$REF" = "refs/heads/dev" ]; then
++             PR_NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --search "$GITHUB_SHA" --state merged --json number --jq '.[0].number // ""' 2>/dev/null || echo "")
++             if [ -z "$PR_NUMBER" ]; then
++               echo "turbo_force=1" >> "$GITHUB_OUTPUT"
++             fi
++           fi
++
++       # Promotion-lag reminder (non-blocking). Renovate reads its config
++       # ONLY from the default branch, and scheduled / default-branch-triggered Actions run the
++       # default branch's copy of each workflow — so a renovate.json5 or .github/workflows/ edit
++       # that lands on dev but is never promoted runs STALE for everyone until a dev -> default
++       # branch PR lands. CI on dev validates the code; nothing otherwise checks it reached the
++       # default branch. Warns (never fails) on dev pushes when those consumed-from-default-branch
++       # surfaces differ — keyed ONLY on those surfaces, so ordinary app-code dev pushes stay
++       # quiet. The default branch is read at runtime, so this step is identical for every repo.
++       # Safe to keep in any repo: it only runs on dev pushes and self-skips when the default
++       # branch is dev/unset, so it never fires where the dev -> default-branch flow does not apply.
++       # See docs/deployments.md § "Promotion-lag warning".
++       - name: Check Default Branch Lags Dev
++         if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
++         env:
++           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
++         run: |
++           if [ -z "$DEFAULT_BRANCH" ] || [ "$DEFAULT_BRANCH" = "dev" ]; then
++             echo "::notice::promotion-lag check skipped (default branch is '$DEFAULT_BRANCH')"
++             exit 0
++           fi
++           if ! git fetch --no-tags --quiet origin "+refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH" 2>/dev/null; then
++             echo "::notice::promotion-lag check skipped — could not fetch $DEFAULT_BRANCH"
++             exit 0
++           fi
++           SURFACES=(.github/renovate.json5 .github/renovate.json .github/workflows)
++           STALE=$(git diff --name-only "origin/$DEFAULT_BRANCH" HEAD -- "${SURFACES[@]}" 2>/dev/null || true)
++           if [ -z "$STALE" ]; then
++             echo "consumed-from-$DEFAULT_BRANCH surfaces match $DEFAULT_BRANCH — nothing stale to promote."
++             exit 0
++           fi
++           BEHIND=$(git rev-list --count "origin/$DEFAULT_BRANCH..HEAD" 2>/dev/null || echo "?")
++           {
++             echo "### WARNING: $DEFAULT_BRANCH is serving stale consumed surfaces"
++             echo ""
++             echo "\`$DEFAULT_BRANCH\` is **$BEHIND commit(s)** behind \`dev\`, and these files — which Renovate and scheduled / default-branch Actions read LIVE from \`$DEFAULT_BRANCH\` — differ from \`dev\`:"
++             echo ""
++             printf '%s\n' "$STALE" | sed 's/^/- /'
++             echo ""
++             echo "They run the **$DEFAULT_BRANCH** version until promoted. Open a \`dev\` -> \`$DEFAULT_BRANCH\` PR to apply them."
++           } >> "$GITHUB_STEP_SUMMARY"
++           echo "::warning::$DEFAULT_BRANCH is $BEHIND commit(s) behind dev and consumed-from-$DEFAULT_BRANCH surfaces (Renovate config / workflows) differ — they run STALE until you promote dev -> $DEFAULT_BRANCH. See the run summary."
++
++       # bkit-stub:migrations-immutable — Block edits to an already-merged migration. The if: below is the
++       # pre-planner shape (pull_request only). Once bkit-tests-scope exists, run this on every event
++       # against the planner base. deployments.md § One run. To enable: uncomment and delete this header.
++       # - name: Assert Migrations Immutable
++       #   if: github.event_name == 'pull_request'
++       #   run: |
++       #     git fetch origin "${{ github.base_ref }}" --depth=50 2>/dev/null || true
++       #     CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}..HEAD" -- supabase/migrations/ 2>/dev/null || true)
++       #     EXIT=0
++       #     for f in $CHANGED; do
++       #       if git rev-parse "origin/${{ github.base_ref }}:$f" >/dev/null 2>&1; then
++       #         echo "::error file=$f::Migration already exists on ${{ github.base_ref }} — migrations are immutable after merge"
++       #         EXIT=1
++       #       fi
++       #     done
++       #     exit $EXIT
++
++       - name: Install Dependencies
++         run: pnpm install --frozen-lockfile
++
++       # Static checks first — they read the source tree and must scan it CLEAN.
++       # Vitest/build run AFTER (below): they write coverage, dist/, and other
++       # artifacts that would otherwise pollute the Slop Scan and bkit check inputs.
++       # Keep this group (typecheck → lint → prettier → vale → slop → bkit check) ahead of
++       # the test/build group if you reorder.
++       - name: Run Typecheck
++         env:
++           TURBO_FORCE: ${{ steps.detect.outputs.turbo_force }}
++         run: pnpm typecheck
++
++       - name: Run Lint
++         env:
++           TURBO_FORCE: ${{ steps.detect.outputs.turbo_force }}
++         run: pnpm lint
++
++       - name: Run Prettier
++         env:
++           TURBO_FORCE: ${{ steps.detect.outputs.turbo_force }}
++         run: pnpm format:check
++
++       # vale is not on the runner and .vale/styles/ is gitignored, so without this step
++       # `pnpm bkit:lint:prose` guard-skips (write-good missing) and the prose gate is silently
++       # dead. Pinned tarball + `vale sync` (else E100: write-good missing).
++       - name: Install Vale
++         env:
++           # renovate: datasource=github-releases depName=errata-ai/vale
++           VALE_VERSION: "3.26.0"
++           # sha256 of vale_${VALE_VERSION}_Linux_64-bit.tar.gz (from the release's checksums.txt).
++           # Bump alongside VALE_VERSION; verified before extract so a tampered/CDN-swapped tarball fails closed.
++           VALE_SHA256: "22aa69a556558e4a9dfc63c17030777383d8d3c48dcdfad655fa98e839d666ed"
++         run: |
++           curl -fsSL --retry 3 --retry-all-errors "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz" -o "$RUNNER_TEMP/vale.tar.gz"
++           echo "${VALE_SHA256}  $RUNNER_TEMP/vale.tar.gz" | sha256sum -c -
++           tar -xzf "$RUNNER_TEMP/vale.tar.gz" -C "$RUNNER_TEMP" vale
++           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
++           # vale sync pulls styles (write-good) from GitHub — retry to survive a transient CDN/network blip.
++           for i in 1 2 3; do
++             "$RUNNER_TEMP/vale" sync && break
++             [ "$i" = 3 ] && { echo "::error::vale sync failed after 3 attempts"; exit 1; }
++             echo "::warning::vale sync attempt $i failed — retrying in 5s"; sleep 5
++           done
++
++       - name: Run Vale Prose Lint
++         run: pnpm bkit:lint:prose
++
++       - name: Run Slop Scan
++         run: pnpm lint:slop
++
++       # The ENFORCING slop gate (lint:slop above is an advisory full-scan that never fails).
++       # PR-only: materialises the PR base as a worktree and fails on findings this PR ADDS or
++       # WORSENS vs base. Needs fetch-depth: 0 (set on checkout) so the base SHA is present.
++       - name: Run Slop Delta
++         if: github.event_name == 'pull_request'
++         env:
++           BASE_SHA: ${{ github.event.pull_request.base.sha }}
++         run: pnpm bkit:slop:delta "$BASE_SHA"
++
++       # actionlint validates .github/workflows/* with GitHub-Actions-aware rules
++       # (${{ }} expression syntax, shellcheck on run: blocks). A YAML linter accepts
++       # workflows that are valid YAML but invalid GHA; actionlint catches that class.
++       - name: Run actionlint
++         run: |
++           # Script pinned to the v1.7.12 commit SHA (the git tag is mutable/forgeable); the binary version
++           # is pinned separately via the 1.7.12 arg passed to the script below.
++           curl -sSfL --retry 3 --retry-all-errors https://raw.githubusercontent.com/rhysd/actionlint/914e7df21a07ef503a81201c76d2b11c789d3fca/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"
++           # download-actionlint.bash fetches the binary from GitHub releases — retry to survive a transient CDN/network blip.
++           for i in 1 2 3; do
++             # renovate: datasource=github-releases depName=rhysd/actionlint
++             bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 "$RUNNER_TEMP" && break
++             [ "$i" = 3 ] && { echo "::error::actionlint download failed after 3 attempts"; exit 1; }
++             echo "::warning::actionlint download attempt $i failed — retrying in 5s"; sleep 5
++           done
++           "$RUNNER_TEMP/actionlint" -color
++
++       - name: Run bkit Check
++         run: pnpm bkit check
++
++       # Version + sha256 pins: Renovate bumps a *_VERSION and leaves its *_SHA256, so the
++       # break shows only when the image is rebuilt. This downloads each pinned tool and fails
++       # the PR naming the tool whose hash differs. deployments.md § Dependency updaters.
++       # Self-skips when the repo has no .cursor/Dockerfile.
++       - name: Check Pinned Checksums
++         if: hashFiles('.cursor/Dockerfile') != ''
++         run: pnpm bkit ci pins --file=.cursor/Dockerfile
++
++       # Dependency-audit gate: fails on a high or critical advisory in the lockfile that
++       # scripts/ci/bkit-accepted-advisories.json does not accept with a reason and an in-date expiry.
++       # Self-skips when the guard is absent — a repo that did not adopt
++       # scripts/ci/bkit-check-dependency-audit.mjs is a no-op. deployments.md § Dependency updaters.
++       - name: Check Dependency Audit
++         if: hashFiles('scripts/ci/bkit-check-dependency-audit.mjs') != ''
++         run: node scripts/ci/bkit-check-dependency-audit.mjs
++
++       # Capability-register freshness gate: rebuild the graph with graphify and fail when
++       # docs/capabilities.md is not what this tree produces, so the register cannot drift
++       # silently. Self-skips when the graphify wrapper is absent — a repo that did not adopt
++       # scripts/graphify/ is a no-op. graphify is pinned because its output must match the
++       # committed register to the byte: bump GRAPHIFY_SPEC (bkit-graphify.sh) and refresh the register together.
++       # Every event, PRs included, judging the tree that lands. A pull_request checkout is
++       # GitHub's test merge of the PR into its base: the tree a squash merge puts on the base,
++       # so its verdict is the post-merge push run's verdict. A PR behind its base can red here
++       # with a clean head, when two branches' registers merge line by line into a file no
++       # rebuild produces; merging the base into the branch, `pnpm bkit:graph:refresh` and a commit
++       # clear it. `check-at HEAD` rebuilds in a throwaway worktree of the checked-out commit —
++       # the same primitive the pre-push gate runs — so the release installed, the script run
++       # and the register judged all come from that one tree.
++       - name: Setup uv
++         if: hashFiles('scripts/graphify/bkit-graphify.sh') != ''
++         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
++         with:
++           version: "0.13.7"
++
++       - name: Check Capability Register
++         if: hashFiles('scripts/graphify/bkit-graphify.sh') != ''
++         # graphify release pinned once: GRAPHIFY_SPEC in bkit-graphify.sh. Same release here,
++         # in the pre-push gate and by hand.
++         run: |
++           uv tool install "$(bash scripts/graphify/bkit-graphify.sh spec)"
++           # `uv tool install` drops the shim in ~/.local/bin, not on this step's PATH.
++           export PATH="$HOME/.local/bin:$PATH"
++           if ! bash scripts/graphify/bkit-graphify.sh check-at HEAD; then
++             if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
++               echo "::error title=Capability register::Checked this PR merged into $GITHUB_BASE_REF. If the branch is behind $GITHUB_BASE_REF, merge $GITHUB_BASE_REF into it first, then pnpm bkit:graph:refresh, commit and push."
++             fi
++             exit 1
++           fi
++
++   # ── bkit-tests-unit ───────────────────────────────────────────────────────
++   # Unit lane. Parallel sibling of bkit-tests-static. Integration, E2E, deploy-await,
++   # and remote db push move out of this job when you adopt the scaffold below.
++   bkit-tests-unit:
++     runs-on: ubuntu-latest
++     # bkit-tests-check reads tests_ran (the executed-test count the Run Unit Tests step writes).
++     outputs:
++       tests_ran: ${{ steps.unit.outputs.ran }}
++     # Env vars duplicated from bkit-tests-static's job-level `env:`.
++     # See the comment above that `env:` in bkit-tests-static — NODE_OPTIONS is a
++     # static YAML key here and never a $GITHUB_ENV write.
++     env:
++       TURBO_LOG_LEVEL: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
++       VERBOSE_CI: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
++       NODE_OPTIONS: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '--trace-warnings --trace-deprecation' || '' }}
++     steps:
++       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
++         with:
++           # Full history needed for E2E / supabase stubs when enabled.
++           fetch-depth: 0
++
++       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
++         with:
++           node-version: 22
++
++       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
++
++       # NODE_OPTIONS is a job-level `env:` key above, never a $GITHUB_ENV write — the runner
++       # rejects that write and still reports success. See bkit-tests-static's block comment.
++       - name: Configure Verbose CI
++         if: env.VERBOSE_CI == '1'
++         run: |
++           echo "🔊 [verbose ci] marker active — escalating log detail"
++           echo "DEBUG=vercel:*,supabase:*" >> "$GITHUB_ENV"
++
++       - name: Detect Direct Push
++         id: detect
++         env:
++           GH_TOKEN: ${{ github.token }}
++           # User-controlled text (PR title) arrives via env: (runtime expansion,
++           # injection-safe) — never inlined into the run: body.
++           PR_TITLE: ${{ github.event.pull_request.title }}
++           EVENT_NAME: ${{ github.event_name }}
++           REF: ${{ github.ref }}
++         run: |
++           if [ "$EVENT_NAME" = "pull_request" ]; then
++             MSG="$PR_TITLE"
++           else
++             MSG=$(git log -1 --pretty=%B "$GITHUB_SHA" 2>/dev/null || echo "")
++           fi
++           case "$MSG" in *"[force cache]"*) echo "turbo_force=1" >> "$GITHUB_OUTPUT" ;; esac
++           case "$MSG" in *"[force build]"*) echo "should_force_build=true" >> "$GITHUB_OUTPUT" ;; esac
++           case "$MSG" in *"[force full]"*) echo "should_run_full=true" >> "$GITHUB_OUTPUT" ;; esac
++           if [ "$EVENT_NAME" = "push" ] && [ "$REF" = "refs/heads/dev" ]; then
++             PR_NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --search "$GITHUB_SHA" --state merged --json number --jq '.[0].number // ""' 2>/dev/null || echo "")
++             if [ -z "$PR_NUMBER" ]; then
++               echo "turbo_force=1" >> "$GITHUB_OUTPUT"
++             fi
++           fi
++
++       # bkit-stub:auto-force-e2e — Auto-trigger the full lane (E2E etc.) for PRs touching sensitive paths. Orthogonal to the [force full] marker (sets needs_e2e, OR'd with should_run_full at the e2e gate). To enable: uncomment the step below and delete this stub header.
++       # - name: Auto Force E2E for Sensitive Paths
++       #   if: github.event_name == 'pull_request'
++       #   id: e2e-paths
++       #   run: |
++       #     git fetch origin "${{ github.base_ref }}" --depth=1 2>/dev/null || true
++       #     CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}..HEAD" 2>/dev/null || echo "")
++       #     PATTERNS=('auth/' 'migrations/' 'supabase/migrations/' 'payment/' 'api/' 'server/')
++       #     for f in $CHANGED; do
++       #       for p in "${PATTERNS[@]}"; do
++       #         case "$f" in *"$p"*) echo "needs_e2e=true" >> "$GITHUB_OUTPUT"; exit 0 ;; esac
++       #       done
++       #     done
++
++       - name: Install Dependencies
++         run: pnpm install --frozen-lockfile
++
++       # bkit-stub:supabase-migrate — REMOTE `db push` belongs in `bkit-tests-migration`, NOT here
++       # and NOT in `bkit-tests-e2e-web`. Prefer the migration-lane stub below
++       # (always-on; replay plan-/path-gated; push on every push to dev/main; e2e/live `needs:` it).
++       # Leaving the push inside e2e while live runs parallel to e2e is the PGRST202 race: @live can
++       # hit a shared remote whose new RPCs/schema the push has not applied yet. To enable the
++       # legacy single-job shape only (no migration lane yet): uncomment below, set SUPABASE_*
++       # secrets, delete this stub header — then migrate the step into bkit-tests-migration ASAP.
++       # - name: Apply Supabase Migrations to Dev
++       #   if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
++       #   env:
++       #     SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
++       #     SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DEV_DB_PASSWORD }}
++       #     SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_DEV_PROJECT_REF }}
++       #   run: |
++       #     pnpm dlx supabase link --project-ref "$SUPABASE_PROJECT_REF"
++       #     pnpm dlx supabase db push --linked --include-all
++       #
++       # BUILD-vs-MIGRATION RACE (latent until your first build-time DB read): if your host auto-deploys
++       # on this same push, its build runs UNORDERED vs this migrate step and a build-time DB read can
++       # ERROR the first deploy (PG 42P01/42703/42704/3F000; a redeploy of the SAME sha self-heals).
++       # Fix: serialise migrate -> deploy. Full mechanism + fix options: docs/deployments.md § Build-vs-migration race.
++
++       # bkit-stub:test-db — Assert schema-invariant DB checks (e.g. "every public table has RLS enabled, no hardcoded list") so they aren't app-defined. Two co-equal routes — pick by DEPLOY TOPOLOGY, not by whether you can run pgTAP locally:
++       #   * pgTAP (this step) — fast, hermetic, offline; runs supabase/tests/*.sql against a CI-LOCAL fixture built from supabase/migrations. Caveat: that fixture can differ from prod — a migration that doesn't reproduce the live schema leaves this GREEN while prod RLS is broken. Best when there is NO deploy/@live tier, or for pure-logic DB unit tests.
++       #   * @live catalog-RPC (JOB 3) — validates the REAL deployed schema in bkit-tests-live-web. Recommended default once you have a deploy + @live tier (RLS/tenancy especially: a passing fixture check is not evidence prod is locked down).
++       # To enable pgTAP: uncomment, add pgTAP files under supabase/tests/, delete this stub header.
++       # - name: Run DB Tests (pgTAP)
++       #   run: pnpm dlx supabase db test   # spins up the local DB and runs supabase/tests/*.sql via pg_prove
++       # @live route: a SECURITY DEFINER, service_role-only catalog RPC (e.g. public.rls_coverage_gaps()) called over
++       # REST — direct port-5432 from CI runners is IPv4-flaky. Home: bkit-tests-live-web. docs/testing.md § Schema-invariant DB checks.
++
++       # bkit-stub:test-presence — Warn on packages with a test script but zero *.test.ts files. To enable: uncomment the step below and delete this stub header.
++       # - name: Check Test Presence
++       #   run: |
++       #     for pkg in $(jq -r '.workspaces // [] | .[]' package.json 2>/dev/null) $(ls -d packages/*/ apps/*/ 2>/dev/null); do
++       #       [ -f "$pkg/package.json" ] || continue
++       #       if jq -e '.scripts.test' "$pkg/package.json" >/dev/null 2>&1; then
++       #         COUNT=$(find "$pkg" -path '*/node_modules' -prune -o \( -name '*.test.ts' -o -name '*.test.tsx' -o -name '*.spec.ts' -o -name '*.spec.tsx' \) -print 2>/dev/null | wc -l)
++       #         [ "$COUNT" -eq 0 ] && echo "::warning::$pkg declares a test script but has zero *.test.ts files"
++       #       fi
++       #     done
++
++       - name: Run Unit Tests
++         id: unit
++         env:
++           TURBO_FORCE: ${{ steps.detect.outputs.turbo_force }}
++         # Write the executed-test count as the step output `ran` so bkit-tests-check can
++         # prove tests ran. vitest: run with `--reporter=default --reporter=json
++         # --outputFile="$RUNNER_TEMP/unit.json"`, then
++         # `echo "ran=$(jq '[.numPassedTests, .numFailedTests] | add' "$RUNNER_TEMP/unit.json")" >> "$GITHUB_OUTPUT"`.
++         run: pnpm test
++
++       - name: Run Integration Tests
++         env:
++           TURBO_FORCE: ${{ steps.detect.outputs.turbo_force }}
++         run: |
++           if jq -e '.scripts["test:integration"]' package.json >/dev/null 2>&1; then
++             pnpm turbo run test:integration --continue
++           else
++             echo "::warning::test:integration script not found in package.json — skipping integration tests"
++           fi
++
++       # bkit-stub:coverage — Report vitest coverage on PRs and in every run's job summary via davelosert/vitest-coverage-report-action (free, runs entirely inside Actions with GITHUB_TOKEN — no third-party service, safe for private repos). Report-only by default: nothing fails the build until YOU set a threshold. PER-TIER: unit and integration are measured and commented SEPARATELY (a single merged number lets integration mask a hollow unit suite). To enable: make the edits below, uncomment the two steps, and delete this stub header.
++       #   1. devDep + config. Add `@vitest/coverage-v8` (pin to your vitest major) and a coverage block in vitest.config:
++       #        coverage: {
++       #          provider: 'v8',
++       #          reporter: ['text', 'json-summary', 'json'],   # json-summary + json are REQUIRED — the action reads
++       #          reportOnFailure: true,                         # coverage/coverage-summary.json AND coverage-final.json
++       #        }
++       #   2. TWO coverage runs into SEPARATE dirs (one merged run cannot produce two honest numbers — coverage is a union,
++       #      so a line covered only by integration reads as covered and hides a missing unit test):
++       #        unit:        vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts'
++       #        integration: vitest run --coverage --coverage.reportsDirectory=coverage/integration <your integration selection>
++       #      Wire these into the "Run Unit Tests" step(s) above (or your test / test:integration scripts). Separate dirs
++       #      also avoid the clobber a second same-dir --coverage run would cause (last-writer-wins, not a merge).
++       #   3. Thresholds (opt-in) live PER TIER, never merged:
++       #        UNIT = the gate. Put coverage.thresholds.branches in a vitest.unit.config.ts that ONLY your unit run loads
++       #               (`vitest run -c vitest.unit.config.ts --coverage …`); branches is the meaningful floor (line/statement
++       #               % overstates confidence). Set it to your CURRENT coverage and ratchet up:
++       #                 import { defineConfig, mergeConfig } from 'vitest/config'
++       #                 import base from './vitest.config'
++       #                 export default mergeConfig(base, defineConfig({ test: { coverage: { thresholds: {
++       #                   branches: 70,
++       #                 } } } }))
++       #               vitest coverage is per-RUN (root config), NOT per-project — `projects` does NOT scope it, and a
++       #               `thresholds` block in vitest.config reds BOTH runs. One file feeds both readers: vitest gates on it,
++       #               and the Report Unit Coverage step's vite-config-path shows it as the 🎯 target. The action reads
++       #               that file as raw TEXT and regex-matches `<metric>: <number>`: keep the floor on one unquoted line
++       #               and write no other metric name + colon + number in the file, or the target silently goes wrong.
++       #               A --coverage.thresholds.branches=<n> CLI flag also gates, but the report cannot read it.
++       #        INTEGRATION = REPORT-ONLY, no threshold. Gate integration on EXECUTION (the capstone's integration_ran > 0),
++       #               not a %: a whole-repo integration % is denominator-noise (it covers boundaries/flows, not pure logic,
++       #               and rarely drives every branch). For a real integration %, add --coverage.include='src/server/**'
++       #               (a CLI flag on the integration run, same idiom as --exclude above) to scope it to the integration
++       #               surface THEN set a floor, or ratchet from current — never a picked number. See docs/testing.md § Coverage on PRs.
++       #   4. JOB-LEVEL permissions on bkit-tests-unit. Job-level REPLACES the workflow-level block (not additive), so
++       #      re-include contents: read or the checkout breaks:
++       #        permissions:
++       #          contents: read
++       #          pull-requests: write     # required to post/update the sticky PR coverage comments
++       #   SEPARATE LANES: this stub wires both reports into bkit-tests-unit (the combined starter). If you run
++       #   integration as its OWN lane (bkit-tests-integration — the shape bkit's own CI + consumer repos run; see the
++       #   FULL CI SCAFFOLD REFERENCE below), move the integration coverage run + its Report step + a pull-requests: write
++       #   permissions block into THAT lane instead. Each lane posts its own comment; the distinct name: keeps them apart.
++       #   Fork PRs: GITHUB_TOKEN is read-only for PRs from a fork, so commenting fails — the unit step sets comment-on: none
++       #   there (its job summary still lands) and the integration step's head.repo == repo guard skips it (or adopt the
++       #   action's workflow_run two-workflow pattern to comment on forks).
++       #   Monorepo: set working-directory so the action finds the right report. Base-branch delta (up/down vs the default
++       #   branch) needs the base's coverage-summary.json — see the action's json-summary-compare-path input (optional).
++       #   The action is SHA-pinned to a commit (# vX.Y.Z comment) per best practice; your updater (Renovate/Dependabot,
++       #   github-actions ecosystem) keeps the pin current — refresh the SHA if you enable this on a newer release.
++       #   A distinct name: keys each sticky comment so the two do not collide.
++       # - name: Report Unit Coverage
++       #   # Every event, including a red unit run (reportOnFailure keeps the summary): writes the coverage table, with
++       #   # the floor as its target, to the job summary; comments on same-repo PRs only. No floor yet → drop
++       #   # vite-config-path (a missing file only warns, on every run).
++       #   if: ${{ !cancelled() && hashFiles('coverage/unit/coverage-summary.json') != '' }}
++       #   uses: davelosert/vitest-coverage-report-action@74c2d9210b4fc44c84d8213f61d7ec99837b7aa0 # v2.13.2
++       #   with:
++       #     name: unit
++       #     json-summary-path: coverage/unit/coverage-summary.json
++       #     json-final-path: coverage/unit/coverage-final.json
++       #     vite-config-path: vitest.unit.config.ts   # the file the floor lives in
++       #     file-coverage-mode: changes          # per-file table limited to files changed in the PR
++       #     comment-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) && 'pr' || 'none' }}
++       #     github-token: ${{ secrets.GITHUB_TOKEN }}
++       # - name: Report Integration Coverage on PR
++       #   # hashFiles guard: skip cleanly when the repo has no integration tier (no coverage/integration report produced).
++       #   if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/integration/coverage-summary.json') != ''
++       #   uses: davelosert/vitest-coverage-report-action@74c2d9210b4fc44c84d8213f61d7ec99837b7aa0 # v2.13.2
++       #   with:
++       #     name: integration
++       #     json-summary-path: coverage/integration/coverage-summary.json
++       #     json-final-path: coverage/integration/coverage-final.json
++       #     file-coverage-mode: changes
++       #     github-token: ${{ secrets.GITHUB_TOKEN }}
++
++       # bkit-stub:vercel-await — Pre-split only: the host already built a preview and this step looks it up by SHA.
++       # Once bkit-tests-build-web publishes deployment_url, E2E reads TEST_URL from that output and this stub stays off.
++       # To enable the pre-split shape: uncomment, set the host secrets, delete this header.
++       # - name: Await Vercel Preview
++       #   if: github.event_name == 'pull_request'
++       #   id: vercel
++       #   env:
++       #     VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
++       #     VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
++       #     VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
++       #   run: |
++       #     for i in $(seq 1 60); do
++       #       URL=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
++       #         "https://api.vercel.com/v6/deployments?projectId=$VERCEL_PROJECT_ID&teamId=$VERCEL_TEAM_ID&meta-githubCommitSha=$GITHUB_SHA&state=READY&limit=1" \
++       #         | jq -r '.deployments[0].url // empty')
++       #       if [ -n "$URL" ]; then
++       #         echo "target_url=https://$URL" >> "$GITHUB_OUTPUT"
++       #         exit 0
++       #       fi
++       #       sleep 10
++       #     done
++       #     echo "::error::Vercel preview did not reach READY within 10 minutes"
++       #     exit 1
++       #
++       # MIGRATION-COUPLED PRs: a preview deploy hits the SHARED dev DB, blind to a PR's unmerged migration,
++       # so a PR that adds+uses a column in one PR 500s pre-merge ([force full] won't help). Run feature->dev
++       # PR E2E against a LOCAL DB carrying this PR's migrations; keep preview E2E for pushes. Gate on head
++       # ref, not a flag. Full write-up: docs/testing.md § "E2E on PRs".
++
++       # bkit-stub:e2e — Run E2E gated on should_run_full ([force full] commit-tag/PR-title) or needs_e2e (auto-force-e2e). To enable: uncomment the step below and delete this stub header.
++       # Under bkit [verbose ci]: your test:e2e script reads VERBOSE_CI (in the job env) and
++       # appends --trace=on to its own `playwright test` call, so Playwright writes per-test
++       # trace.zip (snapshots + network + console + source) — the canonical e2e debug artifact.
++       # Recommended test:e2e form (package.json):
++       #   TRACE=; [ "$VERBOSE_CI" = "1" ] && TRACE=--trace=on; playwright test $TRACE
++       # Do NOT pass --trace=on via a turbo / pnpm `-- --trace=on` passthrough: both append
++       # passthrough args to the script STRING, breaking any test:e2e that ends in a bash
++       # construct (fi / done / esac). Call test:e2e plainly and let it read VERBOSE_CI.
++       # `--video` and `--screenshot` are NOT Playwright CLI flags — they're `use:` keys in
++       # playwright.config.ts. Enabling standalone video / screenshot files requires editing
++       # the config (out of scope for this stub). Trace's snapshot timeline covers the
++       # dominant diagnose use case. Never pass --reporter=line — let playwright.config.ts's
++       # reporter chain run unmodified, otherwise verbose traces are written but no reporter
++       # surfaces them.
++       # - name: Run E2E Tests
++       #   id: e2e
++       #   if: (steps.detect.outputs.should_run_full == 'true' || steps.e2e-paths.outputs.needs_e2e == 'true')
++       #   env:
++       #     TARGET_URL: ${{ steps.vercel.outputs.target_url || 'http://localhost:3000' }}
++       #   run: |
++       #     pnpm test:e2e
++       #
++       # E2E PARITY: the full e2e suite runs on both pull_request and push — the PR runs the same spec
++       # set as the push. Scale a slow suite by sharding (parallel lanes). PR and push differ only by DB
++       # target (migration-coupled PRs) and push-only tiers (@live). See docs/testing.md § "E2E on PRs".
++
++       # bkit-stub:e2e-coverage — Report Playwright E2E code-coverage on PRs, free and entirely inside Actions (no third-party service, private-repo safe), consistent with bkit-stub:coverage above. Report-only by default. Unlike vitest there is NO --coverage flag: Playwright is black-box and does not instrument your source, so you wire a 3-part pipeline (collect -> report -> comment). To enable: build the pipeline below, uncomment the report step, delete this stub header.
++       #   1. COLLECT coverage during the E2E run — pick ONE route:
++       #      a. Istanbul instrumented build (cross-browser): add `vite-plugin-istanbul` so the app under test exposes
++       #         window.__coverage__, then scrape it in a Playwright fixture (afterEach/teardown) and pass it to Monocart.
++       #         Works on all browsers. Ref: mxschmitt/playwright-test-coverage.
++       #      b. V8 API (Chromium-only): page.coverage.startJSCoverage()/stopJSCoverage() in a fixture; needs source maps
++       #         to map back to source. Ref: @bgotink/playwright-coverage.
++       #   2. REPORT with Monocart (`monocart-coverage-reports`, wired via the `monocart-reporter` Playwright custom
++       #      reporter or the library directly). It ingests EITHER V8 or Istanbul input (auto-converts V8 -> Istanbul) and
++       #      emits the SAME two Istanbul-format files the davelosert action reads, so no new commenter is needed:
++       #        outputDir: 'coverage/e2e'
++       #        reports: ['json-summary', 'json', 'lcov']   # json-summary is load-bearing; json enables file-coverage-mode: changes
++       #   3. COMMENT by reusing davelosert/vitest-coverage-report-action@v2 (same action as bkit-stub:coverage) pointed at
++       #      coverage/e2e, with a DISTINCT name: e2e so its sticky comment does not collide with the unit/integration ones.
++       #      If Monocart's coverage-final.json is not accepted for file-coverage-mode: changes, drop to file-coverage-mode:
++       #      all, or comment via a cobertura commenter (irongut/CodeCoverageSummary on Monocart's `cobertura` report).
++       #   REPORT-ONLY — ship NO threshold. A whole-app E2E % is denominator-noise (E2E exercises user flows, not every
++       #   branch), so gate the tier on the E2E step succeeding, NOT on a number. For a real E2E %, scope Monocart's
++       #   entryFilter/sourceFilter to the surface E2E is meant to cover, THEN ratchet from current — never a picked number.
++       #   See docs/testing.md § E2E coverage on PRs.
++       #   Permissions/forks/pin: this step runs in the SAME bkit-tests-unit job as bkit-stub:coverage, so it REUSES that
++       #   stub's job-level permissions block (pull-requests: write + contents: read) — if you enable
++       #   e2e-coverage WITHOUT the unit/integration coverage, add that same job-level block or the comment cannot post.
++       #   The head.repo == repo guard skips fork PRs (read-only GITHUB_TOKEN); the action is SHA-pinned to a commit
++       #   (# vX.Y.Z comment) per best practice, kept current by your updater (Renovate/Dependabot).
++       # - name: Report E2E Coverage on PR
++       #   # Same gate as Run E2E Tests (coverage exists only if E2E ran); hashFiles skips repos that produced no E2E report.
++       #   if: (steps.detect.outputs.should_run_full == 'true' || steps.e2e-paths.outputs.needs_e2e == 'true') && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/e2e/coverage-summary.json') != ''
++       #   uses: davelosert/vitest-coverage-report-action@74c2d9210b4fc44c84d8213f61d7ec99837b7aa0 # v2.13.2
++       #   with:
++       #     name: e2e
++       #     json-summary-path: coverage/e2e/coverage-summary.json
++       #     json-final-path: coverage/e2e/coverage-final.json
++       #     file-coverage-mode: changes
++       #     github-token: ${{ secrets.GITHUB_TOKEN }}
++
++       # bkit-stub:e2e-artifacts — Upload Playwright report + per-test traces after E2E runs so /bkit-debug can fetch them. To enable: uncomment the step below and delete this stub header.
++       # `if: always()` captures both failure AND job-timeout cancel: Playwright's HTML reporter
++       # only finalises `playwright-report/index.html` at suite onEnd, but per-test trace.zip files
++       # in `test-results/` write incrementally and survive mid-suite SIGTERM. Without `always()`,
++       # cancelled runs lose all per-test traces. Under bkit [verbose ci]: per-test trace.zip lands in
++       # test-results/; sharded runs additionally write blob-report/ intermediate.
++       # - name: Upload Playwright Artifacts
++       #   if: always()
++       #   uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
++       #   with:
++       #     name: playwright-report
++       #     path: |
++       #       playwright-report/
++       #       test-results/
++       #       blob-report/
++       #     retention-days: 14
++       #     if-no-files-found: ignore
++
++   # ── bkit-tests-check ──────────────────────────────────────────────────────
++   # Capstone and sole branch-protection required check. `bkit runs gate` (/bkit-ship) merges
++   # only when this job is present and green at the head; `bkit setup protect-main` requires
++   # it. Its name is `package.json` `bkit.testing.ciCapstone` (default bkit-tests-check).
++   # needs: every lane — a lane missing here cannot red the capstone. if: !cancelled(), never
++   # always(): a concurrency cancel must not stamp a failure. Each lane must succeed; a failed,
++   # skipped or cancelled lane reds it. A lane that writes an executed-test count must have run
++   # more than 0 tests. Each lane you adopt from the reference below joins needs: and the assert.
++   # The assert is scripts/ci/bkit-check-capstone.mjs, required with this file (copy it from
++   # .bkit/templates/scripts/ci/); the step reds when the script is missing.
++   bkit-tests-check:
++     needs: [bkit-tests-static, bkit-tests-unit]
++     if: ${{ !cancelled() }}
++     runs-on: ubuntu-latest
++     timeout-minutes: 2
++     steps:
++       # Ungated checkout, never continue-on-error: it fetches the script below. A checkout
++       # gated on a plan value leaves some runs with no script, and the required check then
++       # exits on "cannot find module" instead of judging the lanes.
++       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
++
++       - name: Assert Lanes Passed
++         # The verdict is scripts/ci/bkit-check-capstone.mjs (copy it with this file from
++         # .bkit/templates/scripts/ci/; bkit-check-capstone.test.mjs tests it). Every lane in LANES
++         # must succeed; a lane with a *_RAN variable must have run more than 0 tests.
++         # EMPTY_COUNT=warn: a lane that writes no count yet warns instead of failing; delete it
++         # once every counted lane writes one. Add each lane you adopt to LANES and to its
++         # *_RESULT / *_RAN variables.
++         env:
++           LANES: static,unit
++           EMPTY_COUNT: warn
++           STATIC_RESULT: ${{ needs.bkit-tests-static.result }}
++           UNIT_RESULT: ${{ needs.bkit-tests-unit.result }}
++           UNIT_RAN: ${{ needs.bkit-tests-unit.outputs.tests_ran }}
++         run: |
++           if [ ! -f scripts/ci/bkit-check-capstone.mjs ]; then
++             echo "::error::scripts/ci/bkit-check-capstone.mjs is missing. Copy it from .bkit/templates/scripts/ci/ into scripts/ci/; without it bkit-tests-check cannot tell a green lane from a lane that ran no tests."
++             exit 1
++           fi
++           node scripts/ci/bkit-check-capstone.mjs
++
++ # =============================================================================
++ # FULL CI SCAFFOLD REFERENCE — job graph, needs, if, step names. This is the target.
++ # The jobs above are the any-repo starter. A starter stub still inside bkit-tests-unit
++ # (e2e, vercel-await, supabase-migrate, immutability pull_request-only) is the pre-split
++ # shape — follow this reference when you add the lane. Adopt order: docs/testing.md
++ # § CI test tiers. Concurrency, push base, run levels, promotion, markers: docs/deployments.md.
++ # Order: static checks before env pull; build-web publishes the URL before E2E; capstone last.
++ # Tags: [U] in the starter above; [M]onorepo [D]eploy [E]2E [DB] opt-in.
++ # Tool names (turbo, Vercel, Supabase, Playwright) are examples.
++ #
++ # green == validated. testing.md § Validated means executed.
++ # Expression cap: a comment inside `run: |` counts toward 21,000 chars; a # comment does not.
++ # Long logic → a script. deployments.md § Workflow-file limits.
++ #
++ # ORDER + gating (needs: + result guards). Each TIER is its own parallel LANE (job) — the proven
++ # shape bkit's own bkit-ci.yml (bkit-tests-static/unit/integration) and consumer repos run;
++ # NOT steps in one monolithic tests job. Bring a lane to life only if that tier applies to your repo.
++ #
++ # The graph is FLAT AND WIDE for static/unit/build/integration: scope fans out, capstone joins.
++ # ONE deliberate exception: when the migration lane owns the shared-remote
++ # `db push`, `bkit-tests-e2e-web` and `bkit-tests-live-web` `needs:` that lane so they cannot hit a schema
++ # the push has not applied yet (and a from-empty replay failure cannot reach remote). Do NOT add
++ # edges from live/e2e back onto static/unit/build — those remain the expensive wall-clock trap.
++ #
++ #   bkit-tests-scope ─┬─ bkit-tests-static
++ #     always-on,       ├─ bkit-tests-unit
++ #     never skips      ├─ bkit-tests-build-web ───────────────────┐
++ #     (~15s)           ├─ bkit-tests-integration                  │
++ #                      ├─ bkit-tests-build-ios                    │
++ #                      ├─ bkit-tests-build-android                │
++ #                      └─ bkit-tests-migration ─┬─→ bkit-tests-deploy (push to main only; promotes)
++ #                           always-on           │        │           (own concurrency group; not required)
++ #                           (replay plan-/path- │        ▼
++ #                            gated; remote push └─→ bkit-tests-reset ──┬─→ bkit-tests-e2e-web
++ #                            on every push to               (lease +    ├─→ bkit-tests-live-web
++ #                            dev/main; on the               known state)├─→ bkit-tests-e2e-ios
++ #                            default branch waits                        └─→ bkit-tests-e2e-android
++ #                            for the basic lanes)
++ #                                          │
++ #                                          ▼
++ #                               bkit-tests-cleanup (always(); releases the lease)
++ #                                          │
++ #                                          ▼
++ #                               bkit-tests-check  (needs: scope + ALL lanes, deploy included; if: !cancelled())
++ #
++ #   Suffix rule: a lane takes a platform suffix when that tier exists for more than one
++ #   platform. static / unit / integration / migration stay bare. build and e2e are
++ #   -web / -ios / -android. @live is -web — device flows are the e2e lanes, not a second live lane.
++ #   Adopt only the lanes this repo has. A missing optional lane is not a gap.
++ #
++ #   static/unit/integration/build-*: needs:[bkit-tests-scope]; if: run_level != 'none'
++ #   bkit-tests-migration:            needs:[bkit-tests-scope]; NO job-level if: (always-on)
++ #   bkit-tests-deploy:               needs:[bkit-tests-migration, bkit-tests-build-web];
++ #                                    push to main only; own `concurrency:` group
++ #   bkit-tests-reset:                needs:[scope, migration]; if: tenant_target != ''
++ #   e2e-web / live-web / e2e-ios / e2e-android:
++ #                                    needs:[scope, migration, deploy, reset, <build lane>];
++ #                                    if: !cancelled() && scope==success && <own gate>
++ #                                    && migration != 'failure' && deploy != 'failure'
++ #                                    && reset != 'failure'
++ #                                    (!= 'failure' — not == 'success' — so a cancelled/skipped
++ #                                    migration, deploy or reset does not cascade-skip the lane)
++ #
++ # Do not gate bkit-tests-live-web behind static/unit/integration/e2e. Measure the pole first.
++ # deployments.md § Parallel test lanes.
++ #
++ # `bkit install` / `bkit check` raises an advisory per `# bkit-stub:` below. Delete the header to dismiss.
++ #
++ # === JOB 1 — planner (always-on) ===
++ # bkit-stub:bkit-tests-scope — emits the bkit-test-plan JSON. WHEN: CI has >1 run-type (PR/
++ # dev-push/release) or any skippable tier. Single-package repo: drop the [M] steps; the
++ # plan comes from markers and the event alone.
++ #   bkit-tests-scope:  runs-on: ubuntu-latest; timeout-minutes: 2; outputs: { plan: ${{ steps.scope.outputs.plan }} }
++ #     steps:
++ #       - name: Checkout Repository          # [M] fetch-depth: 0 (turbo diffs need the base commit)
++ #       - name: Install Turbo                # [M] bare global install, ~10-15s; no pnpm install. Version READ from
++ #       #     package.json, which pins turbo EXACTLY — never typed here, or this lane drifts from every
++ #       #     install-bearing lane: npm i -g "turbo@$(node -p "require('./package.json').devDependencies.turbo")"
++ #       - name: Resolve Base Ref             # [M] push base = the branch's last green run; shipped:
++ #       #     scripts/ci/lanes/bkit-resolve-push-base.mjs (falls back to github.event.before). deployments.md
++ #       #     § One run per branch or pull request.
++ # bkit-stub:affected-graph — [M] turbo changed-packages. Stdout ≠ stderr. deployments.md § turbo `//`.
++ #       - name: Detect Affected Packages     # [M] sets web_affected / global_dep_changed
++ #       - name: Read Markers                 # [U] one parse; lanes read plan.markers_present. .bkit/workflows.md § Test and release mechanics (Commit-message force tags).
++ #       - name: Decide Run                   # [U] Layer 1 (whether): [skip ci] or affected-empty -> run_level=none
++ #       - name: Decide Run Level             # [U] force-build / PR / dispatch / push to default -> full.
++ #       #     push to dev from a merged PR -> partial. Direct dev push (no PR) -> full. api-error/403 -> full.
++ #       #     deployments.md § Run-level decision matrix. Needs pull-requests: read.
++ #       - name: Decide Run Live & E2E        # [D/E] web_affected_eff = web_affected || [force full] (emit as plan.web_affected — drives integration/e2e/@live + the capstone uniformly).
++ #       #     run_e2e = run_level==full && web_affected_eff. run_live = push dev/main && web_affected_eff (@live stays PUSH-ONLY — real LLM/email side effects; a docs-only/empty [force full] push reaches it via web_affected_eff, NOT off a PR/dispatch).
++ #       #     run_migration: true when migration/seed/seed-generator paths changed (or workflow_dispatch / no-usable-base → run-to-be-safe). Orthogonal to run_level — a run_level=none run can still need replay. Emits into the plan so migration-lane heavy steps gate per-step (job stays always-on).
++ #       - name: Decide Release Mirror        # [U] OPTIONAL — one CI run per dev commit. mirror_push_run = pull_request
++ #       #     && head.repo.full_name == github.repository && base_ref == the default branch && head_ref is a
++ #       #     promotion branch — 'dev', or 'release/*' when the repo promotes via a release branch (bkit's own
++ #       #     does: main only moves via a release/* → main PR). head_ref via env:, injection-safe. The capstone's
++ #       #     bkit runs mirror resolves the push run BY SHA, so a release/* head with no green dev push run fails
++ #       #     red (exit 3), never silently passes. True → LAST word in the plan: run_level=none, run_e2e/run_live/
++ #       #     run_migration/web_affected=false, so every lane skips (migration lane included — it is always-on, so
++ #       #     its replay steps must read run_migration) and the capstone copies the dev push run's verdict (JOB 4).
++ #       #     The release PR head IS the dev tip that push run is testing; re-testing it doubles the slowest run.
++ #       #     PRECONDITIONS — mirroring copies whatever the push run validated, so adopt only when:
++ #       #       (1) a dev push resolves run_level=full — drop the merged-PR → partial arm above (a partial push run
++ #       #           has no E2E, and the release PR would inherit that);
++ #       #       (2) a push run's diff base is the head of the LAST GREEN push run on the branch, not
++ #       #           github.event.before — else a red run followed by an unrelated commit plans a green run that
++ #       #           never re-tests what the red one broke, and the mirror copies that green;
++ #       #       (3) promotion hangs off the push to the default branch (bkit-tests-deploy, JOB 5), never off
++ #       #           the PR check — the mirror is a merge gate, the default-branch push run is the release gate.
++ #       #     Fork PRs and every other head/base pair keep the normal plan. Field is REQUIRED in the plan (false
++ #       #     when off) so the capstone can read it. See docs/deployments.md § "One CI run per dev commit".
++ #       - name: Generate Test Plan           # [U] id: scope. jq has()/!=null, never `//`. deployments.md § One run.
++ #       - name: Upload Test Plan             # [U] plan-table -> $GITHUB_STEP_SUMMARY (if: !cancelled())
++ #       - name: Write Cancellation Notice    # [U] if: cancelled() — note instead of a blank summary
++ #
++ # === JOB 2: one job per tier. Distribute the steps below. Each lane: own checkout + setup + install. ===
++ #   static/unit/integration/build-*: needs:[bkit-tests-scope]; if: run_level != 'none'; timeout-minutes: 20
++ #   Emit <tier>_ran from the runner summary. Capstone asserts >0. testing.md § Validated means executed.
++ #   deployments.md § Parallel test lanes.
++ #   env: [D] scope TURBO_TOKEN/VERCEL_*/SUPABASE_* here (least-privilege); KEEP the verbose-CI job-level `env:` from the starter's bkit-tests-static.
++ #     steps:
++ #       - name: Checkout Repository          # [U] fetch-depth: 0 only if running slop-scan delta
++ #       - name: Fetch Base Branch            # [M/PR] if: pull_request — base for --filter/diffs
++ #       - name: Assert Migrations Immutable # [DB] EVERY event, against the planner's base (PR base, or a
++ #       #     push's last green run). Fail if an already-merged migration was edited (write a new one).
++ #       - name: Materialise Base Worktree    # same base, for slop-delta; loud-fail if it resolves to HEAD
++ #       - name: Setup pnpm                    # [U]
++ #       - name: Setup Node                    # [U] node-version: 22, cache: pnpm
++ #       - name: Configure Verbose CI         # [U] NODE_OPTIONS is job-level env, never $GITHUB_ENV. testing.md § CI verbosity.
++ #       - name: Install Dependencies         # [U] pnpm install --frozen-lockfile
++ #       - name: Install Vale                  # [U] pinned tarball + `vale sync` (else E100: write-good missing)
++ #       - name: Run Lint                      # [U] static checks FAIL-FAST before env pull; PRs scope --filter=...[origin/<base>]
++ #       - name: Run Typecheck                 # [U]
++ #       - name: Run Prettier     # [U] CI-side format gate (hook-bypass net)
++ #       - name: Run Vale Prose Lint           # [U] same root bkit:lint:prose pre-push runs (local==CI)
++ #       - name: Run Slop Scan (full)          # [U] advisory baseline
++ #       - name: Run Slop Scan (delta)         # every event, against the planner base. deployments.md § One run.
++ #       - name: Tear Down Base Worktree       # if: always()
++ #       - name: Run bkit Check                # [U] drift gate (same as pre-push); catches --no-verify/web-edit/cloud drift
++ #       - name: Check Accepted Divergences    # [U] node scripts/ci/bkit-check-accepted-divergences.mjs — every event-keyed step is registered; stale rows fail too. testing.md § Accepted divergences.
++ #       - name: Check Dependency Audit        # [U] node scripts/ci/bkit-check-dependency-audit.mjs — high/critical advisories fail unless accepted with a reason + expiry. deployments.md § Dependency updaters.
++ #       - name: Pull Vercel Env Vars          # [D] preview vs prod env by branch; set CI_ENV_FILE; FAIL-FAST if critical secrets empty
++ #       - name: Assert Environment Shape          # [D] env-shape checker (e.g. env-check.sh)
++ #       # Resolve URL and remote db push are NOT steps in this catalogue.
++ #       # URL: bkit-tests-build-web publishes deployment_url. db push: bkit-tests-migration.
++ #       # Race if the host still auto-deploys: deployments.md § Build-vs-migration race.
++ # bkit-stub:test-db — [DB] schema invariants ("every public table has RLS" etc., not app-defined). Two co-equal
++ #       # routes by deploy topology: pgTAP (`supabase db test` over supabase/tests/*.sql) against a CI-LOCAL fixture
++ #       # — fast/offline but can pass while prod drifts; OR a service_role-only catalog RPC from the @live tier
++ #       # against the REAL deployed schema in bkit-tests-live-web — the stronger check once you have a deploy.
++ #       # docs/testing.md § Schema-invariant DB checks.
++ #       - name: Run DB Tests (pgTAP)          # [DB] if: schema invariants matter; runs supabase/tests/*.sql
++ #       - name: Run Unit Tests         # [U] the one tier every repo has (source CI_ENV_FILE if needed)
++ #       - name: Report Coverage # [U/PR] bkit-stub:coverage — davelosert/vitest-coverage-report-action posts a per-tier coverage comment (distinct name: unit|integration|e2e); the unit report also writes its table, with the floor as target, to the job summary on every event. With SEPARATE lanes each posts from its OWN lane: unit-cov here (gated on branches), integration-cov in bkit-tests-integration (report-only, gate-on-execution), e2e-cov in bkit-tests-e2e-web (bkit-stub:e2e-coverage, Monocart). Each lane needs job-level pull-requests: write + the json-summary/json reporters.
++ #       - name: Build All Packages            # moves to bkit-tests-build-web. Not this catalogue.
++ #       - name: Run Integration Tests         # moves to bkit-tests-integration. Not this catalogue.
++ #       - name: Check Stale Test Data         # [DB] continue-on-error. Lives in the lane that touches the shared resource.
++ #       # E2E, await, and upload move to bkit-tests-e2e-web. testing.md § E2E on PRs.
++ #
++ # Design is not a lane. testing.md § Design assertions. docs/design.md § Machine-checked reference.
++ #
++ # === JOB 2a — integration lane (distribute JOB 2's integration steps into their OWN job) ===
++ # bkit-stub:bkit-tests-integration — [D] the integration tier as its OWN parallel lane (job), not a
++ # step in bkit-tests-unit. WHEN: you have *.integration.test.ts (multi-module wiring / real infra
++ # boundaries). Mirrors bkit's own bkit-tests-integration lane + consumer repos. Self-contained
++ # (own checkout/setup/install); gate heavy steps on web_affected; emit integration_ran; the
++ # bkit-stub:coverage integration report (report-only, name: integration) posts from HERE, not bkit-tests-unit.
++ #   bkit-tests-integration:  needs:[bkit-tests-scope]; if: run_level != 'none'; timeout-minutes: 20
++ #   #   own job-level permissions: { contents: read, pull-requests: write } for the coverage comment.
++ #     steps: Checkout / Setup pnpm+Node / Install → Build (if needed) → Run Integration Tests
++ #       (id: vitest; --continue so one failure doesn't mask the rest; --reporter=json → integration_ran) →
++ #       Report Integration Coverage on PR (davelosert, name: integration). Step detail: JOB 2 catalogue above.
++ #
++ # === JOB 2d — web build lane ===
++ # bkit-stub:bkit-tests-build-web — [D] the web build as its OWN lane. WHEN: a later lane tests this
++ # commit's deployment, or a compile break should report on its own. The suffix is required once
++ # ios / android build lanes exist; use it even if you only have web, so the name does not move later.
++ # Two shapes, pick one:
++ #   (a) Compile. Checkout / setup / install → build the workspace. TIME-TO-SIGNAL: a compile break
++ #       reds here instead of inside a longer lane. Emits no *_ran count.
++ #   (b) Host deployment gate (e.g. Vercel). Do not compile. Create this SHA's deployment, poll it
++ #       to ready, publish deployment_url + deployment_id. On the default branch the deployment stays
++ #       UN-promoted until bkit-tests-deploy (JOB 5). A guard fails if the production alias already
++ #       serves this run's new deployment id.
++ #   bkit-tests-build-web:  needs:[bkit-tests-scope]; if: run_level != 'none'; timeout-minutes: 20
++ #   Fold into bkit-tests-check's needs:.
++ #
++ # === JOB 2c — web E2E lane ===
++ # bkit-stub:bkit-tests-e2e-web — [E] browser E2E as its OWN lane. WHEN: you have a browser suite and
++ # a deploy or a local stack to hit. e.g. Playwright. Self-contained. Gate on run_e2e && web_affected.
++ # Emit e2e_ran. Coverage comment (bkit-stub:e2e-coverage) posts from HERE.
++ # Do NOT put remote db push in this lane — that lives in bkit-tests-migration.
++ # A feature → dev PR runs against a local stack with this PR's migrations. Every other event tests
++ # the deployment bkit-tests-build-web published. Same outcome rules on every machine: retries, traces,
++ # flake handling. A pass on retry is a failure. The target comes from TEST_URL alone. No spec is
++ # filtered by tag.
++ #   bkit-tests-e2e-web:
++ #     needs: [bkit-tests-scope, bkit-tests-migration, bkit-tests-reset, bkit-tests-build-web]
++ #     if: >-
++ #       ${{ !cancelled()
++ #       && needs.bkit-tests-scope.result == 'success'
++ #       && fromJSON(needs.bkit-tests-scope.outputs.plan).run_e2e
++ #       && needs.bkit-tests-migration.result != 'failure'
++ #       && needs.bkit-tests-reset.result != 'failure'
++ #       && needs.bkit-tests-build-web.result != 'failure' }}
++ #     timeout-minutes: 30
++ #   #   own job-level permissions block (same three) for the coverage comment.
++ #     steps: Checkout / Setup / Install → Run E2E Tests (TEST_URL from bkit-tests-build-web;
++ #       do not also run bkit-stub:vercel-await) → Report E2E Coverage → Upload report (if: always()).
++ #   Fan-out: testing.md § Concurrent invocations. Shared identity and per-request cost: deployments.md § Parallel test lanes.
++ #
++ # === JOB 2e — shared resource: reset first, clean up last ===
++ # bkit-stub:bkit-tests-reset — [D/DB] WHEN: 2+ lanes use ONE long-lived resource (demo tenant, seeded
++ # account, fixture bucket). Prefer provisioning a fresh resource per run (testing.md § Provision
++ # backing services fresh) and DROP both jobs below. When the resource is shared:
++ #   bkit-tests-reset runs AFTER scope + migration, BEFORE any lane that uses the resource. It takes
++ #   a lease, then puts the resource in its known state. Every such lane needs: it and does not start
++ #   if it failed. The planner names at most one target ("" | preview | production). Two targets is a
++ #   planner failure, not a matrix. Production is legal only on the default branch. An empty target
++ #   skips both jobs. The lease is what makes an overlapping PR and dev push safe: a run uses the
++ #   resource only between its reset and its cleanup. The laptop runner calls the same commands.
++ #   bkit-tests-reset:
++ #     needs: [bkit-tests-scope, bkit-tests-migration]
++ #     if: !cancelled() && scope==success && migration != 'failure' && plan.tenant_target != ''
++ #     timeout-minutes: 160   # covers the lease wait
++ # bkit-stub:bkit-tests-cleanup — the other half. Runs LAST, if: always(), after every lane that used
++ # the resource. Puts it back and releases the lease, including when a lane failed or this run was
++ # cancelled. Does not touch a resource another run holds. When this run's reset never took the lease,
++ # finish quietly — the reset job is already red.
++ #   bkit-tests-cleanup:
++ #     needs: [bkit-tests-scope, bkit-tests-reset, <every tenant lane>]
++ #     if: always() && scope==success && reset != 'skipped' && plan.tenant_target != ''
++ #     timeout-minutes: 15
++ # Capstone reds when a planned reset skipped, or when reset or cleanup failed. Neither job emits a
++ # *_ran count. Exempt both BY NAME from any guard that treats every bkit-tests-* job as a counting lane.
++ # Job names do not grow a matrix suffix.
++ #
++ # === JOB 2b — migration lane (always-on ordering + provisioning) ===
++ # bkit-stub:bkit-tests-migration — [DB] always-on. No job-level if:. Replay + remote push.
++ #   testing.md § Provision backing services fresh. Capstone asserts success whenever scope succeeded.
++ #   bkit-tests-migration:  needs:[bkit-tests-scope]; timeout-minutes: 15
++ #   # NO job-level if:. Optional env: RUN_MIGRATION: ${{ fromJSON(...plan).run_migration }}
++ #     steps:
++ #       - name: Checkout Repository           # fetch-depth: 0 when using in-job Detect
++ #       - name: Detect Migration/Seed Changes # OPTIONAL if planner emits run_migration; else id: detect
++ #       #     relevant=true/false. dispatch + no-usable-base => run-to-be-safe; PR => vs origin/<base>;
++ #       #     push => vs the planner's base (last green run), over migrations/ + seed + seed-generator paths.
++ #       - name: Install Supabase CLI          # [DB] if: RUN_MIGRATION || push-to-dev/main — needed by BOTH paths
++ #       - name: Provision Ephemeral DB        # [DB] if: RUN_MIGRATION / relevant — e.g. supabase start --exclude …
++ #       - name: Replay Migrations From Empty  # [DB] if: RUN_MIGRATION / relevant — e.g. supabase db reset --local
++ #       - name: Assert Seed Fixture Loaded    # [DB] if: RUN_MIGRATION / relevant — known seed row must exist
++ #       - name: Apply Remote Migrations       # [DB] if: push to dev/main — UN-gated by run_migration
++ #       #     (self-heals a remote left behind by an earlier failed run). AFTER replay steps so a
++ #       #     from-empty failure never reaches shared remote. e.g. link + db push --linked --include-all
++ #       #     (resolve project ref via vercel env pull or SUPABASE_* secrets — same pattern as drift checks).
++ #       - name: Tear Down                     # if: always() && (RUN_MIGRATION / relevant) — push-only runs never started Docker
++ #
++ # === JOB 2f — device build + device E2E (optional; drop the platforms you do not ship) ===
++ # Same rule on a PR, a dev push, a default-branch push, and a dispatch. These are NOT post-merge
++ # canaries: a change that affects the device app, a native dependency change, or a platform marker
++ # runs the build and the device flows, and a red lane reds bkit-tests-check. @live stays push-only.
++ # e.g. EAS for the build, Maestro for the flows. A dispatch input (default false) is how a human
++ # forces a fresh native build; a marker cannot, because markers are inert on workflow_dispatch.
++ # bkit-stub:bkit-tests-build-ios — needs:[bkit-tests-scope]; if: plan.run_native_ios
++ # bkit-stub:bkit-tests-build-android — needs:[bkit-tests-scope]; if: plan.run_native_android
++ # bkit-stub:bkit-tests-e2e-ios — needs: [bkit-tests-scope, bkit-tests-migration, bkit-tests-reset, bkit-tests-build-ios, bkit-tests-build-web].
++ #   if: !cancelled() && scope==success && build-ios==success && migration != 'failure'
++ #   && reset != 'failure' && build-web != 'failure' && plan.run_native_ios
++ # bkit-stub:bkit-tests-e2e-android — same shape, android tokens.
++ #   `!cancelled()` switches off GitHub's default skip-on-failed-needs, so name each needs.result
++ #   in the if:. A build lane that succeeds without a build id (quota exhausted, reuse) still lets
++ #   the e2e job start; the flow steps inside gate on the id. Emit native_e2e_ran (flows that reached
++ #   a verdict). Fold all four into bkit-tests-check's needs:.
++ #
++ # === JOB 2g — logging probe (a step, not a lane) ===
++ # bkit-stub:logging-probe — WHEN: a runtime can emit a log and an API can read it back. Inside each
++ # such lane (bkit-tests-e2e-web, bkit-tests-live-web, bkit-tests-e2e-ios, bkit-tests-e2e-android),
++ # one step emits a single marked event and a later step asks the tracker whether that marker arrived.
++ # e.g. Sentry. Skip the check when this run did not execute the probe. A missing marker reds the lane.
++ # DROP if you have no error tracker.
++ #
++ # === JOB 3 — @live canary (web) ===
++ # bkit-stub:bkit-tests-live-web — push-only @live vs the DEPLOYED url. WHEN: you have a deploy.
++ # DROP if no deploy (bkit does). The -web suffix matches the build/e2e suffix rule.
++ # /bkit-ship still filters a job named bkit-tests-live. This lane's name does not match that filter,
++ # so a planned @live failure is fatal through the capstone, not an advisory.
++ #   bkit-tests-live-web:
++ #     needs: [bkit-tests-scope, bkit-tests-migration, bkit-tests-reset, bkit-tests-build-web]
++ #     if: >-
++ #       ${{ !cancelled()
++ #       && needs.bkit-tests-scope.result == 'success'
++ #       && fromJSON(needs.bkit-tests-scope.outputs.plan).run_live
++ #       && needs.bkit-tests-migration.result != 'failure'
++ #       && needs.bkit-tests-reset.result != 'failure'
++ #       && needs.bkit-tests-build-web.result != 'failure' }}
++ #     timeout-minutes: 15
++ #   # needs: scope + migration + reset + build-web. Not static/unit/integration/e2e.
++ #   # deployments.md § Parallel test lanes.
++ #     steps:
++ #       - name: Checkout Repository / Setup pnpm / Setup Node / Configure Verbose CI / Install Dependencies   # [U] same setup chain as bkit-tests
++ #       - name: Pull Vercel Env Vars         # [D] same branch-conditional env pull
++ #       - name: Run Live Tests               # emit live_ran. testing.md § Validated means executed, § Schema-invariant DB checks.
++ #
++ # === JOB 4 — capstone (makes green == validated) ===
++ # The starter bkit-tests-check above grows into this as lanes land. THE sole branch-protection
++ # required check. ~seconds; needs no checkout UNTIL you extract the gate (below).
++ #   bkit-tests-check:  needs:[bkit-tests-scope,bkit-tests-static,bkit-tests-unit,bkit-tests-build-web,bkit-tests-integration,bkit-tests-e2e-web,bkit-tests-migration,bkit-tests-live-web,bkit-tests-build-ios,bkit-tests-e2e-ios,bkit-tests-build-android,bkit-tests-e2e-android,bkit-tests-reset,bkit-tests-cleanup]; if: ${{ !cancelled() }}; timeout-minutes: 2 (mirror mode: see Mirror Push Run)
++ #   # needs: EVERY lane you actually have — a lane missing from needs: is a lane whose failure
++ #   # cannot red the capstone, which is the hollow-green this job exists to prevent.
++ #   # !cancelled() not always(): a concurrency cancel must not stamp a failure.
++ #     steps:
++ #       - name: Mirror Push Run              # OPTIONAL (Decide Release Mirror in JOB 1). if: plan.mirror_push_run. Runs BEFORE
++ #       #   the assert below; NEITHER continue-on-error. Needs a checkout and installed dependencies (it runs bkit) — ungated.
++ #       #   run: pnpm bkit runs mirror --head="$PR_HEAD_SHA" --branch=dev --max-minutes=170
++ #       #   (PR_HEAD_SHA: github.event.pull_request.head.sha via env:; GH_TOKEN: github.token — needs actions: read.)
++ #       #   Waits for the dev push run at the PR head and passes only when that run's capstone passed; reds when it
++ #       #   failed, was cancelled, its capstone is absent/skipped, or no push run appears within 10 min (a [skip ci]
++ #       #   tip dispatches none). Every lane is skipped in this mode, so the assert below accepts the plan and this
++ #       #   step IS the verdict — never `run_level=none` alone: a skipped required check can read as passed on the PR.
++ #       #   Raise the job timeout ONLY in this mode, null-safe for a planner that failed before emitting a plan:
++ #       #     timeout-minutes: ${{ needs.bkit-tests-scope.outputs.plan && fromJSON(needs.bkit-tests-scope.outputs.plan).mirror_push_run && 180 || 5 }}
++ #       #   (180 > the command's --max-minutes 170 > your slowest push run, so a timeout names its cause.)
++ #       #   A red push run re-run to green does NOT update the PR: re-run this job afterwards.
++ #       - name: Assert Test Plan Followed    # script, not a heredoc. testing.md § Validated means executed.
++ #       #   scope==success always. run_level!=none => static+unit+build-web success.
++ #       #   web_affected => integration success. run_e2e && web_affected => e2e-web success.
++ #       #   run_live => live-web success. plan.run_native_<platform> => that build + e2e success.
++ #       #   planned reset skipped, or reset/cleanup failed => red. A skipped or failed deploy on a
++ #       #   default-branch push => red. run_level==none ([skip ci]; release mirror) asserts nothing —
++ #       #   in mirror mode Mirror Push Run above owns the verdict.
++ #       #   migration==success whenever scope succeeded.
++ #       #   Declared + planned tier: <tier>_ran > 0. No entrypoint: assert nothing. Cache hit is not zero.
++ #       #   Protect bkit-tests-check, not bkit-tests-scope.
++ #
++ # === JOB 5 — promote the release, then the tenant lanes test it ===
++ # bkit-stub:bkit-tests-deploy — WHEN: the host can create a deployment without promoting it (e.g. Vercel).
++ # needs: [bkit-tests-migration, bkit-tests-build-web]. Push to main only. NOT a required check.
++ # Own `concurrency:` group (`cancel-in-progress: false`), so two releases never overlap; the workflow-level
++ # block queues on main too. Runs BEFORE the E2E / @live lanes: each of those needs: it and
++ # refuses unless production serves this run's build (by deployment id). Promotes the EXACT deployment_id
++ # bkit-tests-build-web published. Does not look the deployment up again by SHA. A 409 is success only when
++ # the body says this id is already current production. Before promoting it refuses, moving nothing, when
++ # the id equals repo variable ROLLED_BACK_DEPLOYMENT_ID (set by the rollback) or when this commit is neither
++ # production's commit nor a descendant of it (e.g. GitHub compare API status not ahead / identical), so a
++ # re-run of an old run never moves production back. A red job means the release did not happen; the
++ # previous deployment stays live. On a default-branch push the capstone needs: it, so a skipped or failed
++ # deploy reds bkit-tests-check.
++ # The host must not auto-build the default branch, and any "hold promotion until a check passes"
++ # setting (e.g. Vercel Deployment Checks) stays empty — this job is the promotion.
++ #
++ # === JOB 6 — health (separate workflow) ===
++ # bkit-stub:health — copy .bkit/templates/.github/workflows/bkit-health.yml to
++ # .github/workflows/bkit-health.yml. WHEN: bkit-tests-deploy promotes and you have a live health URL.
++ # Runs after every finished CI run on main, green or red, and probes only when production
++ # serves that run's commit. Not a required check. DROP if you have no deployed health URL.
++ #
++ # COMPOSES WITH bkit-cloud.yml: it routes on workflow_run.conclusion (success->ship, failure->debug);
++ # a red bkit-tests-check turns the whole run red, so the router reads the capstone for free. See .bkit/cloud.md.
++ #
++ # THE RULE (even with no CI): green != ran != validated. Confirm a FULL run of the touched tiers before
++ # trusting green — direct dev pushes auto-escalate to full, but a green capstone on a LIGHT run is not full validation.
++ # =============================================================================
++
+
+ ❯ .bkit/core/engine/audits/templates/template-ci-yml.test.ts:85:44
+     83|     expect(r.status, `${r.stdout}${r.stderr}`).toBe(0);
+     84|     // The manual-run marker step is part of what actionlint just chec…
+     85|     expect(fs.readFileSync(file, "utf-8")).toContain("Read Verbose Mar…
+       |                                            ^
+     86|   });
+     87|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  .bkit/core/engine/audits/templates/template-ci-yml.test.ts > template bkit-ci.yml, filled in > static and unit jobs each run a manual-run verbose marker step before Configure Verbose CI
+AssertionError: bkit-tests-static: no manual-run verbose marker step: expected -1 to be greater than or equal to 0
+ ❯ .bkit/core/engine/audits/templates/template-ci-yml.test.ts:98:66
+     96|       const marker = steps.findIndex((s) => s.name === "Read Verbose M…
+     97|       const configure = steps.findIndex((s) => s.name === "Configure V…
+     98|       expect(marker, `${id}: no manual-run verbose marker step`).toBeG…
+       |                                                                  ^
+     99|       expect(configure, `${id}: no Configure Verbose CI step`).toBeGre…
+    100|       expect(marker, `${id}: marker step must come before Configure Ve…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 15 passed (17)
+   Start at  10:32:21
+   Duration  1.96s (tests 64%, transform 17%, import 16%, setup 2%)
+
+JUNIT report written to /var/folders/td/lj74ml2d0jz3thjqszy13trh0000gn/T/bkit-test-report-Wbwjhe/junit.xml
+ ELIFECYCLE  Command failed with exit code 1.
+```
+
+## Lint output — `.bkit/core/engine/audits/templates/ci-scripts.test.ts`
+
+```
+
+> @cbartens/bkit@6.2.0 bkit:lint:file /Users/christian/Documents/GitHub/bkit/.worktrees/1032-verbose-ci-head
+> oxlint -c .oxlintrc.json --type-aware --tsconfig tsconfig.test.json --deny-warnings --no-error-on-unmatched-pattern .bkit/core/engine/audits/templates/ci-scripts.test.ts
+
+```
+
+## Runner output — `.bkit/core/engine/audits/templates/ci-scripts.test.ts`
+
+```
+
+> @cbartens/bkit@6.2.0 bkit:test:file /Users/christian/Documents/GitHub/bkit/.worktrees/1032-verbose-ci-head
+> node scripts/ci/bkit-test-awake.mjs node scripts/ci/bkit-test-file.mjs .bkit/core/engine/audits/templates/ci-scripts.test.ts
+
+
+ RUN  v5.1.0 /Users/christian/Documents/GitHub/bkit/.worktrees/1032-verbose-ci-head
+
+(node:52573) Warning: Keys with collection values will be stringified due to JS Object restrictions: "{ DEFAULT_BRANCH }". Set mapAsMap: true to use object keys.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:52573) Warning: Keys with collection values will be stringified due to JS Object restrictions: "{ DEFAULT_BRANCH }". Set mapAsMap: true to use object keys.
+(node:52573) Warning: Keys with collection values will be stringified due to JS Object restrictions: "{ DEFAULT_BRANCH }". Set mapAsMap: true to use object keys.
+(node:52573) Warning: Keys with collection values will be stringified due to JS Object restrictions: "{ DEFAULT_BRANCH }". Set mapAsMap: true to use object keys.
+(node:52573) Warning: Keys with collection values will be stringified due to JS Object restrictions: "{ DEFAULT_BRANCH }". Set mapAsMap: true to use object keys.
+(node:52573) Warning: Keys with collection values will be stringified due to JS Object restrictions: "{ DEFAULT_BRANCH }". Set mapAsMap: true to use object keys.
+(node:52573) Warning: Keys with collection values will be stringified due to JS Object restrictions: "{ DEFAULT_BRANCH }". Set mapAsMap: true to use object keys.
+(node:52573) Warning: Keys with collection values will be stringified due to JS Object restrictions: "{ DEFAULT_BRANCH }". Set mapAsMap: true to use object keys.
+(node:52573) Warning: Keys with collection values will be stringified due to JS Object restrictions: "{ DEFAULT_BRANCH }". Set mapAsMap: true to use object keys.
+ ❯ .bkit/core/engine/audits/templates/ci-scripts.test.ts (26 tests | 2 failed) 22988ms
+   ✓ bkit-check-dependency-audit (5)
+     ✓ blocks high and critical by default, not moderate 3ms
+     ✓ reports an unaccepted advisory as missing and an accepted one as clean 1ms
+     ✓ flags an expired, over-long or stale acceptance 1ms
+     ✓ exits 1 on a missing acceptance, 0 when clean, and 1 on a report with no advisories 219ms
+     ✓ rejects an --unreachable value that is neither fail nor warn 72ms
+   ✓ shipped copy-and-own test files (6)
+     ✓ finds the shipped .test.mjs files 0ms
+     ✓ ci/bkit-check-accepted-divergences.test.mjs passes when run on its own 71ms
+     ✓ ci/bkit-check-capstone.test.mjs passes when run on its own 382ms
+     ✓ ci/bkit-check-dependency-audit.test.mjs passes when run on its own 61ms
+     ✓ ci/bkit-test-awake.test.mjs passes when run on its own 14652ms
+     ✓ ci/lanes/bkit-resolve-push-base.test.mjs passes when run on its own 6791ms
+   ✓ capstone env wiring checks (3)
+     ✓ flag a lane whose result is not wired to its job 2ms
+     ✓ flag a wrongly wired optional lane variable but accept an absent one 0ms
+     ✓ require PLAN and SCOPE_RESULT only when the capstone needs the scope job 1ms
+   ✓ bkit-check-capstone (10)
+     ✓ passes its own copy-and-own test file (bkit's own copy) 336ms
+     ✓ the template capstone calls the script, with every lane it needs wired in 52ms
+     ✓ the repo capstone calls the script, with every lane it needs wired in 15ms
+     ✓ the template capstone fetches the script with an ungated checkout before it runs 10ms
+     ✓ the repo capstone fetches the script with an ungated checkout before it runs 8ms
+     ✓ the template's step (5)
+       ✓ sets exactly the variables this test supplies 8ms
+       ✓ reds with a copy-the-script message when scripts/ci/bkit-check-capstone.mjs is missing 21ms
+       ✓ never skips itself: a missing script reds even when every lane is green 22ms
+       ✓ passes with the script present and the lanes green 111ms
+       ✓ reds with the script present when the unit lane ran 0 tests 117ms
+   ❯ template verbose marker step (manual run) (2)
+     × verbose marker step writes VERBOSE_CI, TURBO_LOG_LEVEL and DEBUG to GITHUB_ENV for a [verbose ci] head commit 19ms
+     × verbose marker step writes nothing to GITHUB_ENV for a head commit without the marker 9ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .bkit/core/engine/audits/templates/ci-scripts.test.ts > template verbose marker step (manual run) > verbose marker step writes VERBOSE_CI, TURBO_LOG_LEVEL and DEBUG to GITHUB_ENV for a [verbose ci] head commit
+AssertionError: bkit-tests-static: no "Read Verbose Marker (Manual Run)" step: expected undefined to be defined
+ ❯ markerScript .bkit/core/engine/audits/templates/ci-scripts.test.ts:349:52
+    347|     };
+    348|     const step = doc.jobs[job]?.steps.find((s) => s.name === STEP_NAME…
+    349|     expect(step, `${job}: no "${STEP_NAME}" step`).toBeDefined();
+       |                                                    ^
+    350|     return step!.run!;
+    351|   }
+ ❯ .bkit/core/engine/audits/templates/ci-scripts.test.ts:386:25
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  .bkit/core/engine/audits/templates/ci-scripts.test.ts > template verbose marker step (manual run) > verbose marker step writes nothing to GITHUB_ENV for a head commit without the marker
+AssertionError: bkit-tests-static: no "Read Verbose Marker (Manual Run)" step: expected undefined to be defined
+ ❯ markerScript .bkit/core/engine/audits/templates/ci-scripts.test.ts:349:52
+    347|     };
+    348|     const step = doc.jobs[job]?.steps.find((s) => s.name === STEP_NAME…
+    349|     expect(step, `${job}: no "${STEP_NAME}" step`).toBeDefined();
+       |                                                    ^
+    350|     return step!.run!;
+    351|   }
+ ❯ .bkit/core/engine/audits/templates/ci-scripts.test.ts:401:25
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 24 passed (26)
+   Start at  10:32:25
+   Duration  23.28s (tests 100%)
+
+JUNIT report written to /var/folders/td/lj74ml2d0jz3thjqszy13trh0000gn/T/bkit-test-report-peUiOG/junit.xml
+ ELIFECYCLE  Command failed with exit code 1.
+```
+
+## Lint output — `.bkit/core/engine/audits/repo/dogfood-templates.test.ts`
+
+```
+
+> @cbartens/bkit@6.2.0 bkit:lint:file /Users/christian/Documents/GitHub/bkit/.worktrees/1032-verbose-ci-head
+> oxlint -c .oxlintrc.json --type-aware --tsconfig tsconfig.test.json --deny-warnings --no-error-on-unmatched-pattern .bkit/core/engine/audits/repo/dogfood-templates.test.ts
+
+```
+
+## Runner output — `.bkit/core/engine/audits/repo/dogfood-templates.test.ts`
+
+```
+
+> @cbartens/bkit@6.2.0 bkit:test:file /Users/christian/Documents/GitHub/bkit/.worktrees/1032-verbose-ci-head
+> node scripts/ci/bkit-test-awake.mjs node scripts/ci/bkit-test-file.mjs .bkit/core/engine/audits/repo/dogfood-templates.test.ts
+
+
+ RUN  v5.1.0 /Users/christian/Documents/GitHub/bkit/.worktrees/1032-verbose-ci-head
+
+ ❯ .bkit/core/engine/audits/repo/dogfood-templates.test.ts (79 tests | 1 failed) 130ms
+   ❯ this repo adopts its own templates (79)
+     ✓ every template has an entry, and every entry is a template 7ms
+     ✓ .github/workflows/bkit-health.yml 1ms
+     ✓ .github/dependabot.yml 0ms
+     ✓ scripts/ci/bkit-check-accepted-divergences.mjs 0ms
+     ✓ scripts/ci/bkit-check-accepted-divergences.test.mjs 0ms
+     ✓ scripts/ci/bkit-accepted-divergences.json 0ms
+     ✓ scripts/cleanup/bkit-disk-prune.machine.mjs 0ms
+     ✓ scripts/launchd/bkit-launchd.plist 0ms
+     ✓ scripts/launchd/bkit-launchd.env.example 0ms
+     ✓ docs/capabilities.md 0ms
+     ✓ .claude/hooks/bkit-cloud-bootstrap.sh 1ms
+     × .github/workflows/bkit-ci.yml 14ms
+     ✓ .github/renovate.json5 1ms
+     ✓ .github/ISSUE_TEMPLATE/bkit-idea.yml 1ms
+     ✓ .github/ISSUE_TEMPLATE/bkit-change.yml 1ms
+     ✓ .github/ISSUE_TEMPLATE/bkit-bug.yml 1ms
+     ✓ .husky/pre-commit 1ms
+     ✓ .husky/pre-push 3ms
+     ✓ prettierignore.example 1ms
+     ✓ lintstagedrc.example.json 1ms
+     ✓ .oxlintrc.json 0ms
+     ✓ scripts/ci/lanes/bkit-resolve-push-base.mjs 0ms
+     ✓ scripts/ci/lanes/bkit-resolve-push-base.test.mjs 1ms
+     ✓ scripts/ci/bkit-machine-lock.sh 1ms
+     ✓ scripts/ci/bkit-test-awake.mjs 0ms
+     ✓ scripts/ci/bkit-test-awake.test.mjs 1ms
+     ✓ scripts/ci/bkit-check-capstone.mjs 0ms
+     ✓ scripts/ci/bkit-check-capstone.test.mjs 0ms
+     ✓ scripts/ci/bkit-check-dependency-audit.mjs 1ms
+     ✓ scripts/ci/bkit-check-dependency-audit.test.mjs 0ms
+     ✓ scripts/ci/bkit-accepted-advisories.json 0ms
+     ✓ .vale.ini 0ms
+     ✓ .vale/styles/Bkit/Filler.yml 0ms
+     ✓ .vale/styles/Bkit/Hedging.yml 0ms
+     ✓ .vale/styles/Bkit/LLMSlop.yml 0ms
+     ✓ .vale/styles/Bkit/Verbose.yml 0ms
+     ✓ slop-scan.config.json 0ms
+     ✓ .envrc 0ms
+     ✓ .cursor/settings.json 0ms
+     ✓ .cursor/environment.json 0ms
+     ✓ .cursor/Dockerfile 0ms
+     ✓ .graphifyignore 1ms
+     ✓ .serena/project.yml 1ms
+     ✓ docs/architecture.md 1ms
+     ✓ docs/technology.md 1ms
+     ✓ docs/security.md 1ms
+     ✓ docs/data-schema.md 1ms
+     ✓ docs/testing.md 3ms
+     ✓ docs/deployments.md 2ms
+     ✓ docs/observability.md 1ms
+     ✓ docs/design.md 1ms
+     ✓ docs/noise.md 1ms
+     ✓ docs/setup.md 1ms
+     ✓ docs/components.md 1ms
+     ✓ scripts/graphify/bkit-graph-drift-rules.json 1ms
+     ✓ scripts/graphify/bkit-graph-external-rules.json 1ms
+     ✓ scripts/graphify/bkit-graph-drift.py 1ms
+     ✓ scripts/graphify/bkit-graph-eager.py 0ms
+     ✓ scripts/graphify/bkit-graph-imports.py 0ms
+     ✓ scripts/graphify/bkit-graph-eager-rules.json 0ms
+     ✓ scripts/graphify/bkit-graph-embed.py 1ms
+     ✓ scripts/graphify/bkit-graph-pre-push.sh 0ms
+     ✓ scripts/graphify/bkit-graph-repair.py 0ms
+     ✓ scripts/graphify/bkit-graph-surface.py 1ms
+     ✓ scripts/graphify/bkit-graphify-graphml.py 1ms
+     ✓ scripts/cleanup/bkit-disk-prune.mjs 1ms
+     ✓ scripts/cleanup/bkit-tmp-prune.mjs 1ms
+     ✓ scripts/prettier/bkit-insert-ignore.mjs 0ms
+     ✓ scripts/secrets/bkit-secrets.mjs 1ms
+     ✓ scripts/secrets/bkit-secrets.config.mjs 1ms
+     ✓ scripts/slop/bkit-slop-type-suppression.mjs 1ms
+     ✓ scripts/serena/bkit-serena-mcp.sh 1ms
+     ✓ scripts/serena/bkit-serena.mcp.json 1ms
+     ✓ scripts/launchd/bkit-launchd-env.sh 1ms
+     ✓ scripts/graphify/bkit-graphify.sh 1ms
+     ✓ scripts/graphify/bkit-graphify-rollup.py 2ms
+     ✓ .github/workflows/bkit-cloud.yml 50ms
+     ✓ .github/workflows/bkit-renovate.yml 5ms
+     ✓ .github/workflows/bkit-trivy.yml 3ms
+(node:63137) Warning: Keys with collection values will be stringified due to JS Object restrictions: "{ CLOUD_RUNNER }". Set mapAsMap: true to use object keys.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:63137) Warning: Keys with collection values will be stringified due to JS Object restrictions: "{ DEFAULT_BRANCH }". Set mapAsMap: true to use object keys.
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .bkit/core/engine/audits/repo/dogfood-templates.test.ts > this repo adopts its own templates > .github/workflows/bkit-ci.yml
+AssertionError: expected +0 to be 2 // Object.is equality
+
+- Expected
++ Received
+
+- 2
++ 0
+
+ ❯ .bkit/core/engine/audits/repo/dogfood-templates.test.ts:1007:45
+    1005|       ".github/workflows/bkit-ci.yml": 2,
+    1006|     };
+    1007|     expect(template.split(step).length - 1).toBe(expected[rel]);
+       |                                             ^
+    1008|     expect(copy.split(step).length - 1).toBe(expected[rel]);
+    1009|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 78 passed (79)
+   Start at  10:32:52
+   Duration  440ms (tests 45%, import 24%, setup 16%, transform 14%, worker 1%)
+
+JUNIT report written to /var/folders/td/lj74ml2d0jz3thjqszy13trh0000gn/T/bkit-test-report-TjGUTs/junit.xml
+ ELIFECYCLE  Command failed with exit code 1.
+```
+
+## Lint output — `.bkit/core/engine/audits/templates/templates-content.test.ts`
+
+```
+
+> @cbartens/bkit@6.2.0 bkit:lint:file /Users/christian/Documents/GitHub/bkit/.worktrees/1032-verbose-ci-head
+> oxlint -c .oxlintrc.json --type-aware --tsconfig tsconfig.test.json --deny-warnings --no-error-on-unmatched-pattern .bkit/core/engine/audits/templates/templates-content.test.ts
+
+```
+
+## Runner output — `.bkit/core/engine/audits/templates/templates-content.test.ts`
+
+```
+
+> @cbartens/bkit@6.2.0 bkit:test:file /Users/christian/Documents/GitHub/bkit/.worktrees/1032-verbose-ci-head
+> node scripts/ci/bkit-test-awake.mjs node scripts/ci/bkit-test-file.mjs .bkit/core/engine/audits/templates/templates-content.test.ts
+
+
+ RUN  v5.1.0 /Users/christian/Documents/GitHub/bkit/.worktrees/1032-verbose-ci-head
+
+(node:64353) Warning: Keys with collection values will be stringified due to JS Object restrictions: "{ DEFAULT_BRANCH }". Set mapAsMap: true to use object keys.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ .bkit/core/engine/audits/templates/templates-content.test.ts (106 tests | 2 failed) 156ms
+   ❯ consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml) (22)
+     ✓ template file exists 2ms
+     ✓ does NOT contain Configure private-repo auth step 1ms
+     ✓ does NOT contain insteadOf git auth-shim 0ms
+     ✓ install step no longer carries a BKIT_GH_TOKEN_INSTALL env block (public npm) 0ms
+     ✓ install step runs a plain pnpm install --frozen-lockfile (no registry auth) 2ms
+     ✓ still contains token placeholders {{DEFAULT_BRANCH}} and {{NODE_VERSION}} 0ms
+     ❯ [verbose ci] NODE_OPTIONS knob (4)
+       × never writes NODE_OPTIONS to $GITHUB_ENV 38ms
+       × no template comment says a marker is inert on workflow_dispatch 19ms
+       ✓ every job declaring VERBOSE_CI also declares a marker-gated job-level NODE_OPTIONS 2ms
+       ✓ gates NODE_OPTIONS on the spelled-out contains() test, not env.VERBOSE_CI 1ms
+     ✓ Check Default Branch Lags Dev step (promotion-lag warning) (5)
+       ✓ ships the Check Default Branch Lags Dev step 1ms
+       ✓ fires only on dev pushes (not PRs, not other branches) 1ms
+       ✓ keys ONLY on consumed-from-default-branch surfaces (renovate config + workflows) 1ms
+       ✓ is token-free (default branch read at runtime, so the step is identical per repo) 0ms
+       ✓ is non-blocking — warns via ::warning:: and never exits non-zero 0ms
+     ✓ ships the bkit-stub:coverage block commented, per-tier (unit + integration reports) 0ms
+     ✓ ships the unit coverage report reading the floor file and running on every event 0ms
+     ✓ ships the bkit-stub:e2e-coverage block commented (Playwright E2E coverage report) 0ms
+     ✓ ships the reference lane-name stubs (web, device, reset, deploy, health) 1ms
+     ✓ never inlines a PR title into a run: body (GitHub Actions script injection) 0ms
+     ✓ parts of the workflow that guard something (2)
+       ✓ the capstone runs on !cancelled(), never always() 0ms
+       ✓ a pull request keys its run on its number and the default branch queues 0ms
+   ✓ consumer renovate template (.bkit/templates/.github/renovate.json5) (26)
+     ✓ template file exists 0ms
+     ✓ targets the dev branch (required for bkit branch-protection convention) 0ms
+     ✓ merges base-branch config so dev-side renovate.json5 edits take effect 0ms
+     ✓ ships chore(deps): commit-message prefix to match conventional-commit history 0ms
+     ✓ extends Renovate's config:best-practices baseline (digest pinning, abandonment flags, config migration) 0ms
+     ✓ restores the 7-day npm release-age gate that config:best-practices lowers to 3 days 0ms
+     ✓ never rebases a Renovate PR by itself (no CI re-run when another PR merges) 0ms
+     ✓ does not extend a renovate-local preset (the copy is the whole config) 0ms
+     ✓ enables osvVulnerabilityAlerts (CVE-driven PRs bypass schedule) 0ms
+     ✓ enables lockFileMaintenance 0ms
+     ✓ ships the pnpm-11 OOM mitigation: worker-cap env + Renovate minimumReleaseAge (#308) 0ms
+     ✓ does not fence bkit-renovate.yml (the consumer owns that runner) 0ms
+     ✓ does not fence bkit-cloud.yml (a template the consumer owns, so its pins refresh) 0ms
+     ✓ ignores the bkit-owned mirror trees so Renovate doesn't scan them (#132) 0ms
+     ✓ keeps archived plans, test directories and fixtures out of the scan, and repeats the preset's defaults 0ms
+     ✓ holds major bumps on the dependency dashboard until approved 0ms
+     ✓ tracks off-manifest pins through one regex custom manager (Dockerfile, bkit-cloud.md, workflows) 0ms
+     ✓ disables Renovate for the @cbartens/bkit package itself (#132) 0ms
+     ✓ uses pinDigests for the github-actions manager (KN-3 SHA-pinning) 0ms
+     ✓ collapses auto-mergeable non-major bumps into one shared group with automerge 0ms
+     ✓ scopes multi-package ecosystem groups to majors only (non-majors fold into the unified group) 0ms
+     ✓ renovate schedule covers the whole Monday 0ms
+     ✓ renovate lockfile maintenance covers the whole first day of the month 0ms
+     ✓ renovate groups custom.regex updates into one pinned-tools PR, pnpm into the non-major group 1ms
+     ✓ references the JSON schema for editor validation 0ms
+     ✓ no longer carries a GitHub Packages read-auth hostRules anchor 0ms
+   ✓ self-hosted renovate workflow template (.bkit/templates/.github/workflows/bkit-renovate.yml) (#325) (12)
+     ✓ template file exists 0ms
+     ✓ runs renovatebot/github-action SHA-pinned (KN-CORE-5) on the configurable runner (#362) 0ms
+     ✓ pins an exact Renovate release with a dated-lookup annotation the custom manager reads 0ms
+     ✓ wires RENOVATE_GIT_AUTHOR from a repo variable (portable commit author for org repos) 0ms
+     ✓ wakes on a schedule cron + workflow_dispatch (logLevel / dryRun inputs) 0ms
+     ✓ serialises runs (concurrency group, no cancel-in-progress) 0ms
+     ✓ authenticates with BKIT_GH_TOKEN, never the default GITHUB_TOKEN 1ms
+     ✓ no longer injects private-registry auth (bkit is on the public npm registry) 0ms
+     ✓ scopes to this repo only (no org-wide autodiscover) 0ms
+     ✓ allow-lists the PNPM_* env so renovate.json5's env block is not rejected (allowedEnv) 0ms
+     ✓ never INJECTS model/tracker secrets into the runner (security.md § token isolation) 0ms
+     ✓ uses least-privilege job permissions (contents: read) 0ms
+   ✓ trivy scan workflow template (.bkit/templates/.github/workflows/bkit-trivy.yml) (#547) (9)
+     ✓ runs the trivy image pinned by tag and digest, never the hijackable actions 0ms
+     ✓ never pins a release published by the March 2026 compromise (0.69.4 - 0.69.6) 0ms
+     ✓ scans dev dependencies, or a dev-tooling lockfile reads as zero packages 0ms
+     ✓ fails on HIGH and CRITICAL across lockfiles, config and secrets 0ms
+     ✓ skips the bkit-owned templates tree 0ms
+     ✓ leaves pnpm-lock.yaml to the dependency-audit gate once that gate is adopted 0ms
+     ✓ reads .trivyignore.yaml only when the repo has one 0ms
+     ✓ runs daily as well as on change, since advisories land without a code change 0ms
+     ✓ uses a read-only token and reads no secret 0ms
+   ✓ health check workflow template (.bkit/templates/.github/workflows/bkit-health.yml) (6)
+     ✓ runs after every finished bkit-ci run on the default branch, whatever its conclusion 1ms
+     ✓ probes only when production serves the CI run's commit 0ms
+     ✓ fails, rather than skips, when it cannot read what production serves 0ms
+     ✓ passes the CI run's commit through env:, never inlined into a run: body 0ms
+     ✓ names every job with the bkit- prefix 0ms
+     ✓ is the one health workflow the CI template points at 1ms
+   ✓ example dependabot template (.bkit/templates/.github/dependabot.yml) (3)
+     ✓ does not exclude bkit-cloud.yml (a template the consumer owns, so its pins refresh) 0ms
+     ✓ holds new releases behind a 7-day cooldown 0ms
+     ✓ never rebases a Dependabot PR by itself (no CI re-run when another PR merges) 0ms
+   ✓ .bkit/.env.example keys are BKIT_-prefixed (direnv isolation) (3)
+     ✓ assigns BKIT_GH_TOKEN (and no retired install token), not GH_BKIT_* 1ms
+     ✓ every assigned key starts with BKIT_ 0ms
+     ✓ vendor API keys are BKIT_-prefixed 1ms
+   ✓ consumer .prettierignore template (.bkit/templates/prettierignore.example) (7)
+     ✓ template file exists 1ms
+     ✓ carries no bkit:start / bkit:end block (bkit never writes a template) 0ms
+     ✓ prettier ignores the committed run log run-tests-1.md: true 7ms
+     ✓ prettier ignores the committed run log build-group-gate-1-1.md: true 1ms
+     ✓ prettier ignores the committed run log build-subplan-gate-1-1.md: true 2ms
+     ✓ prettier ignores the committed run log context-tests-local-1.md: true 1ms
+     ✓ prettier ignores the committed run log build-plan-verify-1-1.md: true 1ms
+   ✓ templates (4)
+     ✓ every template that can carry a comment says it is an example bkit install does not write 22ms
+     ✓ no template carries a bkit:start / bkit:end block (bkit never writes a template) 24ms
+     ✓ keeps capability rules as a starter, not a product register 1ms
+     ✓ generates capabilities.md and Mermaid from the wrapper 0ms
+   ✓ launchd GUI-env templates (.bkit/templates/scripts/launchd/) (9)
+     ✓ ships the loader, the LaunchAgent plist and the env example 0ms
+     ✓ bkit-launchd-env.sh (5)
+       ✓ is POSIX shell that fails on unset variables but not on one failing key 0ms
+       ✓ reads the env file from the positional arg or BKIT_LAUNCHD_ENV 0ms
+       ✓ checks key identifiers against [A-Za-z0-9_] 0ms
+       ✓ skips without launchctl on PATH (Linux CI) 0ms
+       ✓ hands the value to launchctl, but logs key names only 0ms
+     ✓ bkit-launchd.plist (2)
+       ✓ is a LaunchAgent that loads at login and re-runs on env-file writes 0ms
+       ✓ keeps {{SCRIPT_PATH}} / {{ENV_FILE}} raw for the consumer to fill 0ms
+     ✓ bkit-launchd.env.example (1)
+       ✓ ships example BKIT_ token keys with empty values 0ms
+   ✓ .bkit/templates.md gate tool scripts (consumers copy and run them) (5)
+     ✓ lists bkit:slop:delta as the bkit ci slop verb 0ms
+     ✓ lists the graphify scripts under bkit:graph names 0ms
+     ✓ lists a lint value that runs Oxlint type-aware with the shipped config and fails on any hit 0ms
+     ✓ ships the .oxlintrc.json the lint value names, with its five test rules at error 1ms
+     ✓ lists every script the default gates chain, except test and build 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .bkit/core/engine/audits/templates/templates-content.test.ts > consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml) > [verbose ci] NODE_OPTIONS knob > never writes NODE_OPTIONS to $GITHUB_ENV
+AssertionError: bkit-tests-static: no manual-run verbose marker step: expected undefined to be defined
+ ❯ .bkit/core/engine/audits/templates/templates-content.test.ts:118:66
+    116|           (s) => s.name === "Read Verbose Marker (Manual Run)",
+    117|         );
+    118|         expect(step, `${id}: no manual-run verbose marker step`).toBeD…
+       |                                                                  ^
+    119|         expect(step!.run).toContain("GITHUB_ENV");
+    120|         expect(step!.run).not.toContain("NODE_OPTIONS");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  .bkit/core/engine/audits/templates/templates-content.test.ts > consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml) > [verbose ci] NODE_OPTIONS knob > no template comment says a marker is inert on workflow_dispatch
+AssertionError: expected [ Array(1) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "# forces a fresh native build; a marker cannot, because markers are inert on workflow_dispatch.",
++ ]
+
+ ❯ .bkit/core/engine/audits/templates/templates-content.test.ts:128:25
+    126|         .split("\n")
+    127|         .filter((l) => /^\s*#.*inert on `?workflow_dispatch/i.test(l));
+    128|       expect(offenders).toEqual([]);
+       |                         ^
+    129|     });
+    130|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 104 passed (106)
+   Start at  10:32:55
+   Duration  1.05s (transform 30%, import 24%, tests 23%, setup 21%, worker 1%)
+
+JUNIT report written to /var/folders/td/lj74ml2d0jz3thjqszy13trh0000gn/T/bkit-test-report-FnwRYm/junit.xml
+ ELIFECYCLE  Command failed with exit code 1.
+```

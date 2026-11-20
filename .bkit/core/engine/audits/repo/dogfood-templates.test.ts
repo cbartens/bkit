@@ -996,8 +996,16 @@ describe("this repo adopts its own templates", () => {
 
   const OWN_TESTS = new Set([...GRAPHIFY_BRANDED, ...BRANDED_WORKFLOWS]);
   it.each(entriesWith("adopted").filter(([rel]) => !OWN_TESTS.has(rel)))("%s", (rel, entry) => {
-    const { copy } = expectCopyMatchesTemplate(rel, entry);
+    const { template, copy } = expectCopyMatchesTemplate(rel, entry);
     expect(copy.length).toBeGreaterThan(0);
+    // The static and unit jobs of bkit-ci.yml each carry the manual-run verbose marker step, in the template and the copy.
+    const step = "- name: Read Verbose Marker (Manual Run)";
+    const expected: Record<string, number> = {
+      ...Object.fromEntries(entriesWith("adopted").map(([r]) => [r, 0])),
+      ".github/workflows/bkit-ci.yml": 2,
+    };
+    expect(template.split(step).length - 1).toBe(expected[rel]);
+    expect(copy.split(step).length - 1).toBe(expected[rel]);
   });
 
   it("scripts/graphify/bkit-graphify.sh", () => {

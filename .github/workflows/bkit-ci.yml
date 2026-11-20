@@ -362,6 +362,24 @@ jobs:
       # Do NOT add `with: version:` here — pnpm/action-setup errors when both are set.
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
+      # Manual run: a workflow_dispatch event fills neither head_commit nor pull_request, so the
+      # job-level env cannot see the marker. Read the head commit here and turn verbose on. The
+      # message is compared to the fixed marker only, never expanded as code. NODE_OPTIONS is
+      # not written; the runner rejects that write while reporting success.
+      - name: Read Verbose Marker (Manual Run)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          msg="$(git log -1 --pretty=%B "$GITHUB_SHA")"
+          case "$msg" in
+            *"[verbose ci]"*)
+              {
+                echo "VERBOSE_CI=1"
+                echo "TURBO_LOG_LEVEL=full"
+                echo "DEBUG=vercel:*,supabase:*"
+              } >> "$GITHUB_ENV"
+              ;;
+          esac
+
       # Under [verbose ci]: propagate DEBUG to all subsequent steps via $GITHUB_ENV. Note
       # that steps with their own `env:` block override $GITHUB_ENV — those steps must
       # inline it in their env: declaration to stay verbose-aware. NODE_OPTIONS is NOT
@@ -586,6 +604,24 @@ jobs:
           node-version-file: .nvmrc
 
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      # Manual run: a workflow_dispatch event fills neither head_commit nor pull_request, so the
+      # job-level env cannot see the marker. Read the head commit here and turn verbose on. The
+      # message is compared to the fixed marker only, never expanded as code. NODE_OPTIONS is
+      # not written; the runner rejects that write while reporting success.
+      - name: Read Verbose Marker (Manual Run)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          msg="$(git log -1 --pretty=%B "$GITHUB_SHA")"
+          case "$msg" in
+            *"[verbose ci]"*)
+              {
+                echo "VERBOSE_CI=1"
+                echo "TURBO_LOG_LEVEL=full"
+                echo "DEBUG=vercel:*,supabase:*"
+              } >> "$GITHUB_ENV"
+              ;;
+          esac
 
       # NODE_OPTIONS is a job-level `env:` key above, never a $GITHUB_ENV write — the runner
       # rejects that write and still reports success. See bkit-tests-static's block comment.
