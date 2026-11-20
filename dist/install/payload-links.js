@@ -4,7 +4,7 @@
 // copying. Views, not copies — always the installed version, never hashed.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getCoreRoot, getPkgRoot, getSharedRoot } from "../shared/package-roots.js";
+import { getCoreRoot, getSharedRoot, isBkitOwnRepo } from "../shared/package-roots.js";
 // The two view links: a symlink at the consumer-relative `relPath` pointing at the
 // package payload dir `target()` resolves to. Relative targets, so the link keeps
 // working when the repo moves; both dangle on a fresh clone or in CI (no
@@ -49,7 +49,7 @@ export function syncPayloadLinks(cwd, opts) {
         skippedRealDir: [],
         failed: [],
     };
-    if (path.resolve(cwd) === getPkgRoot())
+    if (isBkitOwnRepo(cwd))
         return changes;
     for (const { relPath, target } of PAYLOAD_LINKS) {
         const linkAbs = path.join(cwd, relPath);

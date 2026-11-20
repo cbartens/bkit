@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import {
   NPM_STRIP_REMAP,
-  getPkgRoot,
+  isBkitOwnRepo,
   getTemplatesRoot,
   TEMPLATE_COPIES_DIR,
 } from "../shared/package-roots.js";
@@ -59,7 +59,7 @@ export function syncTemplateCopies(
   opts: { dryRun: boolean; ws: WriteSet },
 ): TemplateCopyChanges {
   const changes: TemplateCopyChanges = { changed: [], added: [], removed: [] };
-  if (path.resolve(cwd) === getPkgRoot()) return changes;
+  if (isBkitOwnRepo(cwd)) return changes;
   const srcRoot = getTemplatesRoot();
   const dstRoot = path.join(cwd, TEMPLATE_COPIES_DIR);
 
@@ -181,7 +181,7 @@ function formatGateRunsBareLintStaged(cwd: string): boolean {
 // fix after the calling command's `logPrefix`. Prints in a dry run too; writes nothing. Returns
 // true when it printed. No-op in dogfood.
 export function warnMissingLintStagedConfig(cwd: string, logPrefix: string): boolean {
-  if (path.resolve(cwd) === getPkgRoot()) return false;
+  if (isBkitOwnRepo(cwd)) return false;
   if (!formatGateRunsBareLintStaged(cwd)) return false;
   if (!readDependencyNames(cwd).includes("lint-staged")) return false;
   if (hasLintStagedConfig(cwd)) return false;

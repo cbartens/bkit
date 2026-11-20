@@ -4,10 +4,12 @@
 // The dist arm (context 1 + 3) is asserted here in addition to the tsx-from-source arm
 // (context 2).
 
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
-import { describe, expect, it } from "vitest";
-import { getPkgRoot, ENGINE_SUBPATH, getTemplatesRoot } from "./package-roots";
+import { afterEach, describe, expect, it } from "vitest";
+import { getPkgRoot, ENGINE_SUBPATH, getTemplatesRoot, isBkitOwnRepo } from "./package-roots";
 
 // ---------------------------------------------------------------------------
 // Context 1 — dist/ (compiled; what consumers run)
@@ -101,5 +103,110 @@ describe("getTemplatesRoot()", () => {
 
   it("is rooted at getPkgRoot()", () => {
     expect(getTemplatesRoot().startsWith(getPkgRoot())).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isBkitOwnRepo() — the package root, or the top level of a checkout whose git
+// common dir's parent is the package root. Fixtures are real git repos.
+// ---------------------------------------------------------------------------
+
+describe("isBkitOwnRepo()", () => {
+  const dirs: string[] = [];
+  const savedGitDir = process.env["GIT_DIR"];
+
+  afterEach(() => {
+    if (savedGitDir === undefined) delete process.env["GIT_DIR"];
+    else process.env["GIT_DIR"] = savedGitDir;
+    for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  const git = (cwd: string, ...args: string[]) => {
+    const res = spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], {
+      cwd,
+      encoding: "utf-8",
+    });
+    expect(res.status, res.stderr).toBe(0);
+  };
+
+  /** A temp folder; real path unless `real` is false. */
+  function tmp(real = true): string {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-own-repo-"));
+    dirs.push(d);
+    return real ? fs.realpathSync(d) : d;
+  }
+
+  /** A package root that is a git checkout with one commit. */
+  function pkgRepo(root: string = tmp()): string {
+    git(root, "init", "-q", "-b", "main");
+    fs.writeFileSync(path.join(root, "README.md"), "x\n");
+    git(root, "add", "README.md");
+    git(root, "commit", "-q", "-m", "init");
+    return root;
+  }
+
+  /** A linked worktree of `root`, outside it. */
+  function linkedWorktree(root: string): string {
+    const wt = path.join(tmp(), "wt");
+    git(root, "worktree", "add", "-q", "-b", "wt", wt);
+    return wt;
+  }
+
+  it("is true for the package root itself", () => {
+    const root = pkgRepo();
+    expect(isBkitOwnRepo(root, root)).toBe(true);
+  });
+
+  it("is true for a linked worktree's top level", () => {
+    const root = pkgRepo();
+    expect(isBkitOwnRepo(linkedWorktree(root), root)).toBe(true);
+  });
+
+  it("is true for a linked worktree when the package root is given through a symlinked path", () => {
+    const unresolved = tmp(false);
+    const root = pkgRepo(unresolved);
+    const wt = linkedWorktree(fs.realpathSync(root));
+    const link = path.join(tmp(), "pkg-link");
+    fs.symlinkSync(fs.realpathSync(root), link);
+    expect(isBkitOwnRepo(wt, link)).toBe(true);
+  });
+
+  it("is false for a folder inside the package root's checkout that is not its own repository", () => {
+    const root = pkgRepo();
+    const scratch = path.join(root, "tmp", "scratch");
+    fs.mkdirSync(scratch, { recursive: true });
+    expect(isBkitOwnRepo(scratch, root)).toBe(false);
+  });
+
+  it("is false for a subfolder of a linked worktree", () => {
+    const root = pkgRepo();
+    const sub = path.join(linkedWorktree(root), "sub");
+    fs.mkdirSync(sub);
+    expect(isBkitOwnRepo(sub, root)).toBe(false);
+  });
+
+  it("is false for a nested repository with its own .git inside the checkout", () => {
+    const root = pkgRepo();
+    const nested = path.join(root, "nested");
+    fs.mkdirSync(nested);
+    git(nested, "init", "-q");
+    expect(isBkitOwnRepo(nested, root)).toBe(false);
+  });
+
+  it("is false for a folder that is in no repository", () => {
+    const root = pkgRepo();
+    expect(isBkitOwnRepo(tmp(), root)).toBe(false);
+  });
+
+  it("is false for a path that does not exist", () => {
+    const root = pkgRepo();
+    expect(isBkitOwnRepo(path.join(tmp(), "missing"), root)).toBe(false);
+  });
+
+  it("is false for a folder outside the checkout when GIT_DIR points at the package root's .git", () => {
+    const root = pkgRepo();
+    const outside = tmp();
+    process.env["GIT_DIR"] = path.join(root, ".git");
+    expect(isBkitOwnRepo(outside, root)).toBe(false);
   });
 });

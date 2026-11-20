@@ -2,7 +2,7 @@
 // refreshes them, and the dotfile remap they share with the install/upgrade walk.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { NPM_STRIP_REMAP, getPkgRoot, getTemplatesRoot, TEMPLATE_COPIES_DIR, } from "../shared/package-roots.js";
+import { NPM_STRIP_REMAP, isBkitOwnRepo, getTemplatesRoot, TEMPLATE_COPIES_DIR, } from "../shared/package-roots.js";
 import { hasLintStagedConfig } from "../checks/tips/detect.js";
 import { readDependencyNames, readPackageJson } from "../shared/package-json.js";
 import { adoptedProjectDocPath, inspectRepoFile, PROJECT_DOC_TOPICS, } from "./project-docs.js";
@@ -38,7 +38,7 @@ export function remapTemplateDest(rel) {
 // flags a stale copy. No-op in dogfood: there the folder IS the package's template source.
 export function syncTemplateCopies(cwd, opts) {
     const changes = { changed: [], added: [], removed: [] };
-    if (path.resolve(cwd) === getPkgRoot())
+    if (isBkitOwnRepo(cwd))
         return changes;
     const srcRoot = getTemplatesRoot();
     const dstRoot = path.join(cwd, TEMPLATE_COPIES_DIR);
@@ -158,7 +158,7 @@ function formatGateRunsBareLintStaged(cwd) {
 // fix after the calling command's `logPrefix`. Prints in a dry run too; writes nothing. Returns
 // true when it printed. No-op in dogfood.
 export function warnMissingLintStagedConfig(cwd, logPrefix) {
-    if (path.resolve(cwd) === getPkgRoot())
+    if (isBkitOwnRepo(cwd))
         return false;
     if (!formatGateRunsBareLintStaged(cwd))
         return false;

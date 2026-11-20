@@ -29,7 +29,7 @@ import { getInstallManifest, ISSUE_TRACKERS, } from "../../install/manifest.js";
 import { OPENCODE_PROVIDERS } from "../../shared/egress.js";
 import { parseJson } from "../../shared/json.js";
 import { hashFile, isConsumerModified, mergeCanonicalHashes, readBkitVersion, writeBkitVersion, } from "../../install/version-file.js";
-import { getBkitDocsRoot, getPkgRoot, findTemplateSource, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
+import { getBkitDocsRoot, isBkitOwnRepo, findTemplateSource, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
 import { PAYLOAD_LINKS } from "../../install/payload-links.js";
 import { removeOpencodeProviderBlock, renderOpencodeAgentsCommands, renderOpencodeJson, } from "../../install/modules/opencode.js";
 import { applyModelOverrides, buildOpencodeModelLookup, parseEffortMap, } from "../../render/models.js";
@@ -787,7 +787,7 @@ export async function runUninstall(modules, ctx) {
     // elsewhere in the repo stay.
     if (moduleList.includes("core")) {
         const templatesDir = path.join(ctx.cwd, TEMPLATE_COPIES_DIR);
-        if (path.resolve(ctx.cwd) !== getPkgRoot() && fs.existsSync(templatesDir)) {
+        if (!isBkitOwnRepo(ctx.cwd) && fs.existsSync(templatesDir)) {
             result.deleted.push(TEMPLATE_COPIES_DIR);
             if (!ctx.dryRun) {
                 fs.rmSync(templatesDir, { recursive: true, force: true });
@@ -799,7 +799,7 @@ export async function runUninstall(modules, ctx) {
     // bkit-created symlinks into the package and go with it. Symlinks ONLY — a real
     // directory or file at that path is consumer content (install's no-clobber guard)
     // and stays. Never in dogfood, where `.bkit/core` is bkit's own source.
-    if (moduleList.includes("core") && path.resolve(ctx.cwd) !== getPkgRoot()) {
+    if (moduleList.includes("core") && !isBkitOwnRepo(ctx.cwd)) {
         for (const { relPath } of PAYLOAD_LINKS) {
             const linkAbs = path.join(ctx.cwd, relPath);
             let st = null;

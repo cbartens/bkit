@@ -617,6 +617,7 @@ Gate fails locally → fix + re-stage; do not `--no-verify` or amend over failed
 Source-repo only. Any `.bkit/core/engine/**/*.ts` change MUST include `pnpm build && git add dist/` in same commit.
 
 - `pnpm bkit:check:dist` runs `node scripts/gate/bkit-check-dist.mjs`. It compiles the staged tree (the index), or with `--ref=<commit>` that commit's tree, in a scratch folder under `tmp/`, compares each output's mode and content with the `dist/` of the same tree, and fails when they differ or when the compile writes no file under `dist/`. It leaves the working tree's `dist/` alone.
+- A build code step's `bkit steps finish` runs the repo's `bkit:generate` (which starts with `pnpm build`) before the commit, so the pre-commit `pnpm bkit:check:dist` finds `dist/` current; a hand `pnpm build && git add dist/` is for every other commit.
 - Hooks run `typecheck` + the unit and integration tiers, not `pnpm build`, and never commit a freshened `dist/`; run `pnpm build && git add dist/` by hand.
 - Source-repo pre-commit runs `pnpm bkit:check:dist` when the commit adds, changes, deletes or renames a non-test `.bkit/core/engine/**/*.ts` file. Source-repo pre-push runs it on every push except a min push, with `--ref` of the commit pushed to `dev`, else of the checked-out branch's pushed commit; with neither it reads the index.
 - CI `bkit-tests-static` "Assert Dist Freshness" runs `pnpm bkit:check:dist` — `.github/workflows/bkit-ci.yml` only.

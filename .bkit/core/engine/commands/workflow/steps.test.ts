@@ -5,6 +5,7 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { appendFrictionRow, frictionRow } from "../../ledgers/journal";
 import { DEFERRAL_WRITERS, KIND_WRITERS } from "../../ledgers/telemetry";
 import { parseText } from "../../shared/text";
 import { runCommand } from "../lib";
@@ -14,6 +15,7 @@ import {
   EXIT_SOURCE_TOUCHED,
   EXIT_TESTS_TOUCHED,
   ROW_FIELDS,
+  generateFailure,
   headerDeclaration,
   placeholderLines,
   promptHeader,
@@ -23,10 +25,24 @@ import {
 } from "./steps";
 import { blockHash, runPlanPath } from "./tests";
 
+/** A scratch root the engine's package-root lookup answers with, or null for the real one. */
+const pkgRootOverride = vi.hoisted(() => ({ dir: null as string | null }));
+vi.mock("node:url", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:url")>();
+  const fileURLToPath = (u: string | URL, o?: { windows?: boolean }) => {
+    const s = String(u);
+    if (pkgRootOverride.dir !== null && /\/shared\/package-roots\.(ts|js)$/.test(s))
+      return `${pkgRootOverride.dir}/.bkit/core/engine/shared/package-roots.ts`;
+    return actual.fileURLToPath(u, o);
+  };
+  return { ...actual, fileURLToPath, default: { ...actual, fileURLToPath } };
+});
+
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 
 const dirs: string[] = [];
 afterEach(() => {
+  pkgRootOverride.dir = null;
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
 
@@ -3448,5 +3464,501 @@ describe("bkit steps finish", () => {
     const r = await run(cwd, REVIEW);
     expect(r.code).toBe(0);
     expect(r.json.problem).toBeUndefined();
+  });
+});
+
+describe("generateFailure", () => {
+  it("an output buffer overflow is a failure that names the buffer limit, though the exit status is 0", () => {
+    const error = Object.assign(new Error("spawnSync pnpm ENOBUFS"), { code: "ENOBUFS" });
+    const text = generateFailure({ status: 0, signal: null, error });
+    expect(text).toContain("buffer limit");
+  });
+
+  it("a kill by a signal is a failure that names the signal", () => {
+    const text = generateFailure({ status: null, signal: "SIGKILL" });
+    expect(text).toContain("SIGKILL");
+    expect(text).not.toContain("undefined");
+  });
+
+  it("a non-zero exit is a failure that names the exit code", () => {
+    expect(generateFailure({ status: 3, signal: null })).toContain("3");
+  });
+
+  it("no exit code, no signal and no error is a failure whose text holds no null", () => {
+    const text = generateFailure({ status: null, signal: null });
+    expect(text).toBe("ended with no exit code");
+  });
+
+  it("exit 0 with no signal and no error is no failure", () => {
+    expect(generateFailure({ status: 0, signal: null })).toBeNull();
+  });
+});
+
+describe("bkit steps finish — a build code step makes the generated output current first", () => {
+  const STATUS = "logs/status.jsonl";
+  const STALE_HOOK =
+    '#!/bin/sh\nif [ "$(cat built.txt)" != "$(cat source.txt)" ]; then echo stale built output >&2; exit 1; fi\n';
+  const SEED = '{"type":"x","n":1}\n';
+  const OTHER_HOOK = "#!/bin/sh\necho unrelated refusal >&2\nexit 1\n";
+  const codeFinish = (step: string, agent: string, log: string, extra: string[] = []) => [
+    "steps",
+    "finish",
+    `--file=${STATUS}`,
+    "--workflow=build",
+    `--step=${step}`,
+    "--group=1",
+    `--attempt-of=${step}:next`,
+    `--agent=${agent}`,
+    `--artifact=${log}`,
+    `--message=chore(1-x): ${step} group 1`,
+    ...extra,
+  ];
+  const EXECUTE = codeFinish("build-plan-tasks", "bkit-build-plan-tasks", "logs/execute-1-log.md");
+  const REMEDIATE = codeFinish(
+    "build-plan-gaps-remediate",
+    "bkit-build-plan-gaps-remediate",
+    "logs/remediate-1-log.md",
+  );
+  const HOLISTIC = codeFinish(
+    "build-plan-gaps-remediate-holistic",
+    "bkit-build-plan-gaps-remediate",
+    "logs/remediate-1-log.md",
+  ).filter((a) => a !== "--group=1");
+  const SYNC = [
+    "steps",
+    "finish",
+    `--file=${STATUS}`,
+    "--workflow=build",
+    "--step=build-branch-sync",
+    "--artifact=logs/verify-1.md",
+    "--message=m",
+  ];
+
+  /** A repo whose committed built.txt equals source.txt, then source.txt is edited (the agent's last edit), leaving built.txt stale. */
+  function stale(generate: string | undefined, hook = STALE_HOOK) {
+    const cwd = repo();
+    const scripts: Record<string, string> = {};
+    if (generate !== undefined) scripts["bkit:generate"] = generate;
+    write(cwd, "package.json", `${JSON.stringify({ name: "x", scripts }, null, 2)}\n`);
+    write(cwd, "source.txt", "v1\n");
+    write(cwd, "built.txt", "v1\n");
+    write(cwd, STATUS, SEED);
+    git(cwd, "add", "-A");
+    git(cwd, "commit", "-q", "-m", "base");
+    write(
+      cwd,
+      "logs/execute-1-log.md",
+      "Verdict: PASS\n\n<!-- verdict:end -->\n\n# Build Plan\n\nDONE — TASK 1: added\n",
+    );
+    write(
+      cwd,
+      "logs/remediate-1-log.md",
+      "Verdict: PASS\nStrategy: STANDARD\nFixed: 1\n\n<!-- verdict:end -->\n\n# Plan Gaps\n",
+    );
+    write(cwd, "source.txt", "v2\n");
+    fs.mkdirSync(path.join(cwd, ".git/hooks"), { recursive: true });
+    write(cwd, ".git/hooks/pre-commit", hook);
+    fs.chmodSync(path.join(cwd, ".git/hooks/pre-commit"), 0o755);
+    return cwd;
+  }
+  const COPY = "cp source.txt built.txt && echo ran >> generate-ran.txt";
+
+  it("a code step finish builds the declared bkit:generate output first, so a stale-output hook lets the commit through", async () => {
+    const cwd = stale(COPY);
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(0);
+    expect(r.json.generate).toBe("ran");
+    expect(git(cwd, "show", "HEAD:built.txt")).toBe("v2");
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toContain("built.txt");
+  });
+
+  it("the gaps-remediate and holistic steps build the output too", async () => {
+    const cwd = stale(COPY);
+    const r = await run(cwd, REMEDIATE);
+    expect(r.code).toBe(0);
+    expect(r.json.generate).toBe("ran");
+    expect(git(cwd, "show", "HEAD:built.txt")).toBe("v2");
+    write(cwd, "source.txt", "v3\n");
+    const h = await run(cwd, HOLISTIC);
+    expect(h.code).toBe(0);
+    expect(h.json.generate).toBe("ran");
+    expect(git(cwd, "show", "HEAD:built.txt")).toBe("v3");
+  });
+
+  it("a repo with no bkit:generate script runs nothing and a stale-output hook still exits 8", async () => {
+    const cwd = stale(undefined);
+    const r = await run(cwd, EXECUTE);
+    expect(r.json.generate).toBe("undeclared");
+    expect(r.code).toBe(8);
+    expect(fs.readFileSync(path.join(cwd, "built.txt"), "utf-8")).toBe("v1\n");
+  });
+
+  it("an empty bkit:generate script counts as undeclared", async () => {
+    const cwd = stale("");
+    const r = await run(cwd, EXECUTE);
+    expect(r.json.generate).toBe("undeclared");
+    expect(r.code).toBe(8);
+    expect(fs.existsSync(path.join(cwd, "generate-ran.txt"))).toBe(false);
+  });
+
+  it("a step that is not a code step never runs bkit:generate", async () => {
+    const cwd = stale(COPY, "#!/bin/sh\nexit 0\n");
+    const r = await run(cwd, SYNC);
+    expect(r.code).toBe(0);
+    expect(r.json.generate).toBeNull();
+    expect(fs.existsSync(path.join(cwd, "generate-ran.txt"))).toBe(false);
+    expect(fs.readFileSync(path.join(cwd, "built.txt"), "utf-8")).toBe("v1\n");
+  });
+
+  const BOOM = "echo generate-boom >&2; exit 3";
+  const failedLog = (cwd: string, verdict: string) =>
+    write(
+      cwd,
+      "logs/execute-1-log.md",
+      `Verdict: ${verdict}\n\n<!-- verdict:end -->\n\n# Build Plan\n\nBLOCKED — bkit:generate: generate-boom\n`,
+    );
+  const frictionRows = (cwd: string) => {
+    const p = path.join(cwd, ".bkit/friction.jsonl");
+    return fs.existsSync(p)
+      ? fs
+          .readFileSync(p, "utf-8")
+          .trim()
+          .split("\n")
+          .filter((l) => l !== "")
+          .map((l) => JSON.parse(l) as Record<string, unknown>)
+      : [];
+  };
+  async function landsDespiteFailedGenerate(verdict: string) {
+    const cwd = stale(BOOM, "#!/bin/sh\nexit 0\n");
+    failedLog(cwd, verdict);
+    const head = git(cwd, "rev-parse", "HEAD");
+    vi.stubEnv("BKIT_ENGINE_JOURNAL", "on");
+    const r = await run(cwd, EXECUTE);
+    vi.unstubAllEnvs();
+    expect(r.code).toBe(0);
+    expect(r.err).toContain("generate-boom");
+    expect(r.json.generate).toBe("failed");
+    expect(git(cwd, "rev-parse", "HEAD")).not.toBe(head);
+    expect(fs.readFileSync(path.join(cwd, STATUS), "utf-8")).not.toBe(SEED);
+    expect(frictionRows(cwd)).toHaveLength(1);
+    return { cwd, r };
+  }
+
+  it("a FAIL code step whose bkit:generate fails still lands its row so the remediate loop runs", async () => {
+    const { r } = await landsDespiteFailedGenerate("FAIL");
+    expect(r.json.verdict).toBe("FAIL");
+  });
+
+  it("a HANDOVER code step whose bkit:generate fails still lands its row so the handover re-run happens", async () => {
+    const { r } = await landsDespiteFailedGenerate("HANDOVER");
+    expect(r.json.verdict).toBe("HANDOVER");
+  });
+
+  it("a PASS code step whose bkit:generate fails lands with generate failed, a friction row and the commit", async () => {
+    const { cwd, r } = await landsDespiteFailedGenerate("PASS");
+    expect(r.json.verdict).toBe("PASS");
+    expect(frictionRows(cwd)[0]).toEqual(
+      expect.objectContaining({
+        kind: "friction",
+        by: { workflow: "build", step: "build-plan-tasks" },
+      }),
+    );
+    expect(fs.readFileSync(path.join(cwd, STATUS), "utf-8")).toContain("build-plan-tasks");
+  });
+
+  it("a bkit:generate killed by a signal lands the step with generate failed, a friction row and a log line that names the signal", async () => {
+    const cwd = stale("true", "#!/bin/sh\nexit 0\n");
+    const head = git(cwd, "rev-parse", "HEAD");
+    // A pnpm stand-in that kills itself, so the generate call's own child ends by a signal.
+    const bin = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-steps-bin-")));
+    dirs.push(bin);
+    write(bin, "pnpm", "#!/bin/sh\nkill -KILL $$\n");
+    fs.chmodSync(path.join(bin, "pnpm"), 0o755);
+    vi.stubEnv("PATH", `${bin}${path.delimiter}${process.env["PATH"] ?? ""}`);
+    vi.stubEnv("BKIT_ENGINE_JOURNAL", "on");
+    let r: Awaited<ReturnType<typeof run>>;
+    try {
+      r = await run(cwd, EXECUTE);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(r.code).toBe(0);
+    expect(r.json.generate).toBe("failed");
+    expect(git(cwd, "rev-parse", "HEAD")).not.toBe(head);
+    expect(frictionRows(cwd)).toHaveLength(1);
+    expect(r.err).toContain("SIGKILL");
+    expect(r.err).not.toContain("undefined");
+  });
+
+  it("a failing bkit:generate exits 0, not 16, and lands the step row, the commit and one friction row", async () => {
+    const cwd = stale(BOOM, "#!/bin/sh\nexit 0\n");
+    const head = git(cwd, "rev-parse", "HEAD");
+    vi.stubEnv("BKIT_ENGINE_JOURNAL", "on");
+    const r = await run(cwd, EXECUTE);
+    vi.unstubAllEnvs();
+    expect(r.code).toBe(0);
+    expect(r.code).not.toBe(16);
+    expect(r.err).toContain("generate-boom");
+    expect(git(cwd, "rev-parse", "HEAD")).not.toBe(head);
+    expect(fs.readFileSync(path.join(cwd, STATUS), "utf-8")).not.toBe(SEED);
+    expect(frictionRows(cwd)).toHaveLength(1);
+  });
+
+  it("a hook refusal about something else stays exit 8 after bkit:generate ran", async () => {
+    const cwd = stale(COPY, OTHER_HOOK);
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, EXECUTE);
+    expect(r.json.generate).toBe("ran");
+    expect(r.code).toBe(8);
+    expect(r.err).toContain("unrelated refusal");
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("--commit=none does not run bkit:generate", async () => {
+    const cwd = stale(COPY);
+    const r = await run(cwd, [...EXECUTE, "--commit=none"]);
+    expect(r.code).toBe(0);
+    expect(r.json.generate).toBeNull();
+    expect(fs.existsSync(path.join(cwd, "generate-ran.txt"))).toBe(false);
+  });
+
+  const ADD_KEY =
+    'node -e \'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf-8"));p.bkit={workflows:{...(p.bkit&&p.bkit.workflows),seeded:true}};fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\\n")\'';
+  const SET_LIMIT =
+    'node -e \'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf-8"));p.bkit.workflows.limit=2;fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\\n")\'';
+  const OK_HOOK = "#!/bin/sh\nexit 0\n";
+  const stepRows = (cwd: string) =>
+    fs
+      .readFileSync(path.join(cwd, STATUS), "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .filter((r) => r.step === "build-plan-tasks");
+  /** Name the scratch repo as the engine's package root, with the prompts the engine reads from it. */
+  function asBkitRepo(cwd: string) {
+    fs.cpSync(path.join(REPO_ROOT, ".bkit/core/prompts"), path.join(cwd, ".bkit/core/prompts"), {
+      recursive: true,
+    });
+    pkgRootOverride.dir = cwd;
+  }
+  /** Commit a package.json carrying `bkit.workflows.limit` = 1 so the repo has an existing key. */
+  function withLimit(cwd: string, generate: string) {
+    write(
+      cwd,
+      "package.json",
+      `${JSON.stringify({ name: "x", scripts: { "bkit:generate": generate }, bkit: { workflows: { limit: 1 } } }, null, 2)}\n`,
+    );
+    git(cwd, "add", "-A");
+    git(cwd, "commit", "-q", "-m", "limit");
+  }
+
+  it("a generated bkit.workflows key in a repo that is not bkit's own exits 13, names bkit:generate and commits nothing", async () => {
+    const cwd = stale(ADD_KEY, OK_HOOK);
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(13);
+    expect(r.err).toContain("bkit:generate");
+    expect(r.err).toContain("seeded");
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+    expect(fs.readFileSync(path.join(cwd, STATUS), "utf-8")).toBe(SEED);
+  });
+
+  it("in bkit's own repo a generated added bkit.workflows key rides the step commit and is printed and on the row", async () => {
+    const cwd = stale(ADD_KEY, OK_HOOK);
+    asBkitRepo(cwd);
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(0);
+    expect(git(cwd, "rev-parse", "HEAD")).not.toBe(head);
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toContain("package.json");
+    expect(JSON.parse(git(cwd, "show", "HEAD:package.json")).bkit.workflows.seeded).toBe(true);
+    expect(JSON.stringify(r.json)).toContain("seeded");
+    const rows = stepRows(cwd);
+    expect(rows).toHaveLength(1);
+    expect(JSON.stringify(rows[0])).toContain("seeded");
+  });
+
+  it("in bkit's own repo the step's own bkit.workflows edit made before bkit:generate exits 13 as the step's edit", async () => {
+    const cwd = stale(COPY, OK_HOOK);
+    withLimit(cwd, COPY);
+    asBkitRepo(cwd);
+    const head = git(cwd, "rev-parse", "HEAD");
+    write(
+      cwd,
+      "package.json",
+      `${JSON.stringify({ name: "x", scripts: { "bkit:generate": COPY }, bkit: { workflows: { limit: 9 } } }, null, 2)}\n`,
+    );
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(13);
+    expect(r.err).toContain("limit");
+    expect(r.err).toContain("own edit");
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+    expect(fs.readFileSync(path.join(cwd, STATUS), "utf-8")).toBe(SEED);
+  });
+
+  it("in bkit's own repo a bkit:generate that changes an existing bkit.workflows value exits 13 and names bkit:generate", async () => {
+    const cwd = stale(SET_LIMIT, OK_HOOK);
+    withLimit(cwd, SET_LIMIT);
+    asBkitRepo(cwd);
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(13);
+    expect(r.err).toContain("bkit:generate");
+    expect(r.err).toContain("limit");
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+    expect(fs.readFileSync(path.join(cwd, STATUS), "utf-8")).toBe(SEED);
+  });
+
+  /** Rewrite the working package.json so `bkit.workflows` carries `workflows`, and return the exact text written. */
+  function writeWorkflows(cwd: string, workflows: Record<string, unknown>) {
+    const p = path.join(cwd, "package.json");
+    const pkg = JSON.parse(fs.readFileSync(p, "utf-8")) as Record<string, unknown>;
+    pkg["bkit"] = { workflows };
+    fs.writeFileSync(p, `${JSON.stringify(pkg, null, 2)}\n`);
+    return fs.readFileSync(p, "utf-8");
+  }
+  const pkgText = (cwd: string) => fs.readFileSync(path.join(cwd, "package.json"), "utf-8");
+
+  it("in bkit's own repo a key the code agent's own bkit:generate run added rides the step commit", async () => {
+    const cwd = stale(ADD_KEY, OK_HOOK);
+    asBkitRepo(cwd);
+    const own = spawnSync("sh", ["-c", ADD_KEY], { cwd, encoding: "utf-8" });
+    expect(own.status).toBe(0);
+    expect(JSON.parse(pkgText(cwd)).bkit.workflows.seeded).toBe(true);
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, EXECUTE);
+    expect(r.err).not.toContain("own edit");
+    expect(r.code).toBe(0);
+    expect(git(cwd, "rev-parse", "HEAD")).not.toBe(head);
+    expect(JSON.parse(git(cwd, "show", "HEAD:package.json")).bkit.workflows.seeded).toBe(true);
+    const rows = stepRows(cwd);
+    expect(rows).toHaveLength(1);
+    expect(JSON.stringify(rows[0])).toContain("seeded");
+  });
+
+  it("in bkit's own repo a generated added key left by a finish the hook refused rides the re-run", async () => {
+    const cwd = stale(
+      ADD_KEY,
+      "#!/bin/sh\nif [ ! -f .git/hook-once ]; then touch .git/hook-once; echo first refusal >&2; exit 1; fi\nexit 0\n",
+    );
+    asBkitRepo(cwd);
+    const first = await run(cwd, EXECUTE);
+    expect(first.code).toBe(8);
+    const second = await run(cwd, EXECUTE);
+    expect(second.err).not.toContain("own edit");
+    expect(second.code).toBe(0);
+    expect(JSON.parse(git(cwd, "show", "HEAD:package.json")).bkit.workflows.seeded).toBe(true);
+    const rows = stepRows(cwd);
+    expect(rows).toHaveLength(1);
+    expect(JSON.stringify(rows[0])).toContain("seeded");
+  });
+
+  it("in bkit's own repo a hand-added bkit.workflows key that bkit:generate does not produce exits 13 and leaves package.json as the step wrote it", async () => {
+    const cwd = stale(ADD_KEY, OK_HOOK);
+    asBkitRepo(cwd);
+    const head = git(cwd, "rev-parse", "HEAD");
+    const written = writeWorkflows(cwd, { hand: true });
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(13);
+    expect(r.err).toContain("hand");
+    expect(r.err).toContain("own edit");
+    expect(pkgText(cwd)).toBe(written);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("in bkit's own repo a seeded bkit.workflows key with a hand-changed value exits 13 and keeps the hand value", async () => {
+    const cwd = stale(ADD_KEY, OK_HOOK);
+    asBkitRepo(cwd);
+    const head = git(cwd, "rev-parse", "HEAD");
+    writeWorkflows(cwd, { seeded: false });
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(13);
+    expect(r.err).toContain("seeded");
+    expect(r.err).toContain("own edit");
+    expect(JSON.parse(pkgText(cwd)).bkit.workflows.seeded).toBe(false);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("outside bkit's own repo a bkit.workflows difference before bkit:generate exits 13 and finish never rewrites package.json", async () => {
+    const cwd = stale("cp package.json generate-saw.json", OK_HOOK);
+    const head = git(cwd, "rev-parse", "HEAD");
+    const written = writeWorkflows(cwd, { hand: true });
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(13);
+    expect(fs.readFileSync(path.join(cwd, "generate-saw.json"), "utf-8")).toContain("hand");
+    expect(pkgText(cwd)).toBe(written);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("in bkit's own repo a bkit:generate that fails after a bkit.workflows difference restores the step's package.json and exits 13", async () => {
+    const cwd = stale(`${ADD_KEY}; exit 3`, OK_HOOK);
+    asBkitRepo(cwd);
+    const head = git(cwd, "rev-parse", "HEAD");
+    const written = writeWorkflows(cwd, { hand: true });
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(13);
+    expect(r.err).toContain("own edit");
+    expect(pkgText(cwd)).toBe(written);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("in bkit's own repo a bkit:generate that leaves package.json unparseable gets the step's original package.json back and exits 13", async () => {
+    const cwd = stale('echo "{broken" > package.json; exit 3', OK_HOOK);
+    asBkitRepo(cwd);
+    const written = writeWorkflows(cwd, { hand: true });
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(13);
+    expect(r.err).toContain("original package.json");
+    expect(pkgText(cwd)).toBe(written);
+  });
+
+  it("in bkit's own repo a finish that cannot write package.json back says it was not restored and names the write error", async () => {
+    const cwd = stale("rm package.json && mkdir package.json; exit 3", OK_HOOK);
+    asBkitRepo(cwd);
+    const head = git(cwd, "rev-parse", "HEAD");
+    writeWorkflows(cwd, { hand: true });
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(13);
+    expect(r.err).toContain("not restored");
+    expect(r.err).toContain("EISDIR");
+    expect(r.err).not.toContain("is restored");
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("in bkit's own repo a read-only package.json at finish names the write error in the not-restored message", async () => {
+    const cwd = stale("chmod 444 package.json; exit 3", OK_HOOK);
+    asBkitRepo(cwd);
+    writeWorkflows(cwd, { hand: true });
+    const r = await run(cwd, EXECUTE);
+    fs.chmodSync(path.join(cwd, "package.json"), 0o644);
+    expect(r.code).toBe(13);
+    expect(r.err).toContain("not restored");
+    expect(r.err).toContain("EACCES");
+    expect(r.err).toContain("structured write");
+  });
+
+  it("a failed bkit:generate friction row is not folded into an earlier test-lock row of the same step", async () => {
+    const cwd = stale(BOOM, OK_HOOK);
+    vi.stubEnv("BKIT_ENGINE_JOURNAL", "on");
+    const seed = frictionRow({
+      workflow: "build",
+      step: "build-plan-tasks",
+      noun: "steps",
+      verb: "finish",
+      code: 11,
+      bookRoot: cwd,
+    });
+    seed["category"] = "agent-rework";
+    seed["severity"] = "LOW";
+    seed["summary"] = "a code step edited a planned test case";
+    seed["description"] = "refused build-plan-tasks with exit 11: a test changed";
+    expect(appendFrictionRow(cwd, seed).ok).toBe(true);
+    const r = await run(cwd, EXECUTE);
+    vi.unstubAllEnvs();
+    expect(r.code).toBe(0);
+    const rows = frictionRows(cwd);
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    expect(rows[rows.length - 1]?.["summary"]).toBe("bkit:generate failed at a code step's finish");
+    expect(rows[0]?.["summary"]).toBe("a code step edited a planned test case");
   });
 });

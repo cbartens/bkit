@@ -1,4 +1,5 @@
 // commands/install/uninstall.test.ts — P2.T3, P2.T5, P2.T7, P2.T8 — uninstall unit tests.
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -18,9 +19,29 @@ import {
   sha256,
   type BkitVersion,
 } from "../../install/version-file";
-import { findTemplateSource, getSharedRoot } from "../../shared/package-roots";
+import {
+  findTemplateSource,
+  getCoreRoot,
+  getSharedRoot,
+  getTemplatesRoot,
+  TEMPLATE_COPIES_DIR,
+} from "../../shared/package-roots";
 import { renderOpencodeJson } from "../../install/modules/opencode";
+import { syncTemplateCopies } from "../../install/template-copies";
 import type { WriteSet } from "../../install/write";
+
+/** A scratch root the engine's package-root lookup answers with, or null for the real one. */
+const pkgRootOverride = vi.hoisted(() => ({ dir: null as string | null }));
+vi.mock("node:url", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:url")>();
+  const fileURLToPath = (u: string | URL, o?: { windows?: boolean }) => {
+    const s = String(u);
+    if (pkgRootOverride.dir !== null && /\/shared\/package-roots\.(ts|js)$/.test(s))
+      return `${pkgRootOverride.dir}/.bkit/core/engine/shared/package-roots.ts`;
+    return actual.fileURLToPath(u, o);
+  };
+  return { ...actual, fileURLToPath, default: { ...actual, fileURLToPath } };
+});
 
 let tmpDir: string;
 
@@ -1237,3 +1258,95 @@ describe.each(["claude", "cursor", "codex"] as const)(
     });
   },
 );
+
+// ---------------------------------------------------------------------------
+// runUninstall — bkit's own repository keeps `.bkit/templates/` and the payload
+// links. The package root is a scratch git checkout; the engine's package-root
+// lookup answers with it.
+// ---------------------------------------------------------------------------
+
+describe("runUninstall — bkit's own repository", () => {
+  const roots = { core: getCoreRoot(), shared: getSharedRoot(), templates: getTemplatesRoot() };
+  const dirs: string[] = [];
+  const links = [path.join(".bkit", "core"), path.join(".bkit", "shared")];
+
+  afterEach(() => {
+    pkgRootOverride.dir = null;
+    for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  const git = (cwd: string, ...args: string[]) => {
+    const res = spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], {
+      cwd,
+      encoding: "utf-8",
+    });
+    expect(res.status, res.stderr).toBe(0);
+  };
+
+  function tmp(): string {
+    const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-uninstall-own-")));
+    dirs.push(d);
+    return d;
+  }
+
+  /** A package root checkout whose payload folders link to the real ones; the lookup answers with it. */
+  function fixturePkgRoot(): string {
+    const root = tmp();
+    git(root, "init", "-q", "-b", "main");
+    fs.writeFileSync(path.join(root, "README.md"), "x\n");
+    git(root, "add", "README.md");
+    git(root, "commit", "-q", "-m", "init");
+    fs.mkdirSync(path.join(root, ".bkit"));
+    fs.symlinkSync(roots.core, path.join(root, ".bkit", "core"));
+    fs.symlinkSync(roots.shared, path.join(root, ".bkit", "shared"));
+    fs.symlinkSync(roots.templates, path.join(root, TEMPLATE_COPIES_DIR));
+    pkgRootOverride.dir = root;
+    return root;
+  }
+
+  /** `.bkit/templates/` with one copy, and the two payload links. */
+  function seedInstall(dir: string): void {
+    fs.mkdirSync(path.join(dir, TEMPLATE_COPIES_DIR), { recursive: true });
+    fs.writeFileSync(path.join(dir, TEMPLATE_COPIES_DIR, "a.md"), "a\n");
+    fs.symlinkSync(roots.core, path.join(dir, ".bkit", "core"));
+    fs.symlinkSync(roots.shared, path.join(dir, ".bkit", "shared"));
+  }
+
+  function linkedWorktree(root: string): string {
+    const wt = path.join(tmp(), "wt");
+    git(root, "worktree", "add", "-q", "-b", "wt", wt);
+    return wt;
+  }
+
+  it("leaves .bkit/templates/ and the payload links in a linked worktree of the package root", async () => {
+    const wt = linkedWorktree(fixturePkgRoot());
+    seedInstall(wt);
+    const result = await runUninstall(["core"], makeCtx({ cwd: wt }));
+    expect(result.deleted).not.toContain(TEMPLATE_COPIES_DIR);
+    expect(fs.existsSync(path.join(wt, TEMPLATE_COPIES_DIR, "a.md"))).toBe(true);
+    for (const rel of links) expect(fs.lstatSync(path.join(wt, rel)).isSymbolicLink()).toBe(true);
+  });
+
+  it("still deletes .bkit/templates/ and the payload links in an ordinary consumer folder", async () => {
+    fixturePkgRoot();
+    const consumer = tmp();
+    seedInstall(consumer);
+    const result = await runUninstall(["core"], makeCtx({ cwd: consumer }));
+    expect(result.deleted).toContain(TEMPLATE_COPIES_DIR);
+    expect(fs.existsSync(path.join(consumer, TEMPLATE_COPIES_DIR))).toBe(false);
+    for (const rel of links) expect(fs.existsSync(path.join(consumer, rel))).toBe(false);
+  });
+
+  it("install and uninstall agree on a linked worktree: neither changes .bkit/templates/", async () => {
+    const wt = linkedWorktree(fixturePkgRoot());
+    seedInstall(wt);
+    const ws: WriteSet = { writes: [] };
+    expect(syncTemplateCopies(wt, { dryRun: true, ws })).toEqual({
+      changed: [],
+      added: [],
+      removed: [],
+    });
+    const result = await runUninstall(["core"], makeCtx({ cwd: wt, dryRun: true }));
+    expect(result.deleted.filter((p) => p.startsWith(TEMPLATE_COPIES_DIR))).toEqual([]);
+  });
+});

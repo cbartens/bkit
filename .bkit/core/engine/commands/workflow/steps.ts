@@ -10,6 +10,7 @@
 // headers, derive the attempt, check what the gate checks, write the row, commit,
 // and print the step's tracker comment.
 
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -27,7 +28,8 @@ import {
 import { clampLogPath, readRecords } from "../../ledgers/clamp-log.js";
 import { appendFrictionRow, frictionRow, journalEnabled } from "../../ledgers/journal.js";
 import { resolveRepoSlug } from "../../ledgers/telemetry.js";
-import { getPromptsRoot } from "../../shared/package-roots.js";
+import { scriptCommand } from "../../shared/package-manager.js";
+import { getPromptsRoot, isBkitOwnRepo } from "../../shared/package-roots.js";
 import { readTextFile } from "../../shared/json.js";
 import {
   CommandError,
@@ -87,6 +89,7 @@ import {
   blockedTests,
   PLAN_TASKS_STEP,
   readTestFirst,
+  resolveGate,
   runPlanPath,
   sameTestName,
   touchedTests,
@@ -119,6 +122,55 @@ function recordTestLockFriction(top: string, step: string, named: string): void 
   appendFrictionRow(top, row);
 }
 
+/** The output buffer of the `bkit:generate` call at a code step's finish: 64 MiB. */
+const GENERATE_MAX_BUFFER = 1 << 26;
+
+/**
+ * What went wrong with a `bkit:generate` run, as the text after "pnpm bkit:generate", or null
+ * when it ran: a spawn error (an output past the buffer limit is cut off, even with exit status
+ * 0), a signal, a non-zero exit code, or no exit code at all.
+ */
+export function generateFailure(res: {
+  status: number | null;
+  signal?: NodeJS.Signals | null;
+  error?: Error;
+}): string | null {
+  if (res.error !== undefined) {
+    const code = (res.error as NodeJS.ErrnoException).code;
+    if (code === "ENOBUFS")
+      return `wrote output past the ${GENERATE_MAX_BUFFER / (1 << 20)} MiB buffer limit, which was cut off`;
+    return `failed: ${res.error.message}`;
+  }
+  if (res.signal !== undefined && res.signal !== null) return `was killed by ${res.signal}`;
+  if (res.status === null) return "ended with no exit code";
+  if (res.status !== 0) return `exited ${res.status}`;
+  return null;
+}
+
+/**
+ * An `agent-rework` friction row for a failed `bkit:generate` at a code step's finish: the
+ * step still lands, so `bkit stats` counts it. Best effort.
+ */
+function recordGenerateFriction(top: string, step: string, status: string): void {
+  if (!journalEnabled()) return;
+  const row = frictionRow({
+    workflow: "build",
+    step,
+    noun: "steps",
+    verb: "finish",
+    code: null,
+    bookRoot: top,
+    parentSha: git(top, ["rev-parse", "HEAD"]) ?? undefined,
+  });
+  row["key"] = `steps-finish-generate/${step}`;
+  row["category"] = "agent-rework";
+  row["severity"] = "LOW";
+  row["summary"] = "bkit:generate failed at a code step's finish";
+  row["description"] =
+    `\`bkit steps finish\` ran the repo's \`bkit:generate\` for ${step} and it ${status}; the step landed and the generated output may be stale.`;
+  appendFrictionRow(top, row);
+}
+
 const VERDICT_END = "<!-- verdict:end -->";
 const DEFAULT_VERDICTS = ["PASS", "CONCERNS", "FAIL"];
 const STRATEGIES = ["STANDARD", "PIVOT", "FINAL"];
@@ -146,6 +198,13 @@ export const PLAN_TESTS_STEP = "build-plan-tests";
 export const PLAN_REMEDIATE_STEP = "build-plan-gaps-remediate";
 /** The step whose subagent closes the whole-feature verification gaps, across every group. */
 export const PLAN_REMEDIATE_HOLISTIC_STEP = "build-plan-gaps-remediate-holistic";
+
+/** The build code steps: each edits sources and its commit carries the repo's generated output. */
+const CODE_STEPS: ReadonlySet<string> = new Set([
+  PLAN_TASKS_STEP,
+  PLAN_REMEDIATE_STEP,
+  PLAN_REMEDIATE_HOLISTIC_STEP,
+]);
 
 /** Where `finish` puts the derived attempt in `--artifact` / `--message` / `--clamp-log`. */
 export const ATTEMPT_TOKEN = "<attempt>";
@@ -1065,29 +1124,103 @@ export function changedKeys(a: unknown, b: unknown, at = ""): string[] {
   return JSON.stringify(a) === JSON.stringify(b) ? [] : [at === "" ? "bkit.workflows" : at];
 }
 
-/**
- * The `bkit.workflows` keys the working tree's package.json changes from HEAD's (`git add -A`
- * commits the working tree). Empty when either side cannot be read as JSON.
- */
 /** True when the active shared-checkout record for `fid` holds `rel` as dirty before the run. */
 function recordedPath(cwd: string, fid: string | undefined, rel: string): boolean {
   const rec = fid === undefined ? null : activeRecord(cwd, fid);
   return rec !== null && rec.paths.some((p) => p.path === rel);
 }
 
-function workflowsChange(cwd: string): string[] {
-  const top = git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd;
+/** HEAD's or the working tree's package.json parsed; `null` when it cannot be read as JSON. */
+function readPackage(top: string, side: "head" | "work"): unknown {
   const file = path.join(top, "package.json");
-  const head = runGit(top, ["cat-file", "-e", "HEAD:package.json"]).ok
-    ? parseJson(runGit(top, ["show", "HEAD:package.json"]).stdout)
-    : { ok: true as const, value: {} };
-  const work = fs.existsSync(file)
-    ? parseJson(fs.readFileSync(file, "utf-8"))
-    : { ok: true as const, value: {} };
-  if (!head.ok || !work.ok) return [];
-  const workflows = (pkg: unknown) =>
-    (isRecord(pkg) && isRecord(pkg.bkit) ? pkg.bkit.workflows : undefined) ?? {};
-  return changedKeys(workflows(head.value), workflows(work.value));
+  const parsed =
+    side === "head"
+      ? runGit(top, ["cat-file", "-e", "HEAD:package.json"]).ok
+        ? parseJson(runGit(top, ["show", "HEAD:package.json"]).stdout)
+        : { ok: true as const, value: {} }
+      : fs.existsSync(file)
+        ? parseJson(fs.readFileSync(file, "utf-8"))
+        : { ok: true as const, value: {} };
+  return parsed.ok ? parsed.value : null;
+}
+
+/** The raw `bkit.workflows` of a side's package.json: `undefined` when absent. */
+function rawWorkflows(top: string, side: "head" | "work"): unknown {
+  const pkg = readPackage(top, side);
+  return isRecord(pkg) && isRecord(pkg.bkit) ? pkg.bkit.workflows : undefined;
+}
+
+/** The `bkit.workflows` object of HEAD's or the working tree's package.json; `{}` when unreadable. */
+function readWorkflows(top: string, side: "head" | "work"): unknown {
+  return rawWorkflows(top, side) ?? {};
+}
+
+/**
+ * Write `workflows` into the working package.json's `bkit.workflows` and leave the rest of the
+ * file as parsed (`undefined` removes the key). `skipped` when the file cannot be read as an
+ * object; `failed` carries the write error.
+ */
+type WriteResult = { kind: "written" } | { kind: "skipped" } | { kind: "failed"; error: string };
+
+const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+function writeWorkflows(top: string, workflows: unknown): WriteResult {
+  const file = path.join(top, "package.json");
+  const pkg = readPackage(top, "work");
+  if (!isRecord(pkg) || !fs.existsSync(file)) return { kind: "skipped" };
+  const bkit = isRecord(pkg.bkit) ? { ...pkg.bkit } : {};
+  if (workflows === undefined) delete bkit.workflows;
+  else bkit.workflows = workflows;
+  if (Object.keys(bkit).length > 0 || isRecord(pkg.bkit)) pkg.bkit = bkit;
+  try {
+    fs.writeFileSync(file, `${JSON.stringify(pkg, null, 2)}\n`);
+    return { kind: "written" };
+  } catch (err) {
+    return { kind: "failed", error: errorText(err) };
+  }
+}
+
+/**
+ * Write the set-aside `bkit.workflows` reading back; when the structured write fails (the file is
+ * unreadable after generate) the step's original package.json bytes go back instead. The outcome
+ * names which write landed, or the error when neither did.
+ */
+type RestoreOutcome =
+  | { kind: "structured" }
+  | { kind: "bytes"; structuredError?: string }
+  | { kind: "none"; error: string };
+
+function restoreKept(top: string, kept: { value: unknown; bytes: string }): RestoreOutcome {
+  let structuredError: string | undefined;
+  try {
+    const wrote = writeWorkflows(top, kept.value);
+    if (wrote.kind === "written") return { kind: "structured" };
+    if (wrote.kind === "failed") structuredError = wrote.error;
+  } catch (err) {
+    // an unreadable package.json (a directory, say): the byte write below decides
+    structuredError = errorText(err);
+  }
+  try {
+    fs.writeFileSync(path.join(top, "package.json"), kept.bytes);
+  } catch (err) {
+    const error = errorText(err);
+    return {
+      kind: "none",
+      error:
+        structuredError === undefined ? error : `${error}; structured write: ${structuredError}`,
+    };
+  }
+  return structuredError === undefined ? { kind: "bytes" } : { kind: "bytes", structuredError };
+}
+
+/** True when the dotted key path exists in `obj`. */
+function hasKeyPath(obj: unknown, dotted: string): boolean {
+  let at: unknown = obj;
+  for (const k of dotted.split(".")) {
+    if (!isRecord(at) || !(k in at)) return false;
+    at = at[k];
+  }
+  return true;
 }
 
 /** `soakAttempt` → `Soak Attempt`, for a comment header. */
@@ -1408,12 +1541,90 @@ async function finish(ctx: RunContext): Promise<number> {
   // A code step never edits a planned test case: each one's own lines must still be the
   // lines the group's tests step recorded at its red. Every other edit to the file is
   // ordinary code-step work the verifier reads in the diff. The holistic fix spans every group.
-  if (
-    workflow === "build" &&
-    (step === PLAN_TASKS_STEP ||
-      step === PLAN_REMEDIATE_STEP ||
-      step === PLAN_REMEDIATE_HOLISTIC_STEP)
-  ) {
+  // A code step's commit carries the repo's generated output: run the declared `bkit:generate`
+  // first, so the lock, the workflows check and the commit all judge the committed tree.
+  let generate: "ran" | "undeclared" | "failed" | null = null;
+  let workflowsBefore: unknown;
+  /** Keys of a `bkit.workflows` difference that `bkit:generate` cannot account for (bkit's own repo only). */
+  let ownWorkflowKeys: string[] = [];
+  let addedWorkflowKeys: string[] = [];
+  /** The kept reading could not be written back: the step's own bytes are restored and finish refuses. */
+  const refuseWriteBack = (outcome: RestoreOutcome): number => {
+    const state =
+      outcome.kind === "none"
+        ? `the step's package.json was not restored (${outcome.error})`
+        : `its original package.json is restored${
+            outcome.kind === "bytes" && outcome.structuredError !== undefined
+              ? ` (the structured write failed: ${outcome.structuredError})`
+              : ""
+          }`;
+    ctx.log(
+      `the step's own bkit.workflows reading could not be written back after bkit:generate; ${state}: fix package.json, then finish again (nothing written)`,
+    );
+    ctx.emit({ pass: false, changed: [] });
+    return EXIT_WORKFLOWS_CHANGED;
+  };
+  if (workflow === "build" && CODE_STEPS.has(step) && commit === "auto") {
+    const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
+    if (resolveGate(top, ["bkit:generate"]) === null) generate = "undeclared";
+    else {
+      const argv = scriptCommand("bkit:generate");
+      workflowsBefore = readWorkflows(top, "work");
+      // In bkit's own repo a generated `bkit.workflows` change is what `bkit:generate` makes of
+      // HEAD's values: a working difference is set aside, generate runs from HEAD's values, and
+      // the working reading comes back unless generate produced exactly it.
+      let kept: { value: unknown; bytes: string } | undefined;
+      if (
+        isBkitOwnRepo(top) &&
+        !recordedPath(ctx.cwd, fidOfStatusFile(file), "package.json") &&
+        changedKeys(readWorkflows(top, "head"), workflowsBefore).length > 0
+      ) {
+        const keptValue = rawWorkflows(top, "work");
+        const keptBytes = fs.readFileSync(path.join(top, "package.json"), "utf-8");
+        const set = writeWorkflows(top, rawWorkflows(top, "head"));
+        if (set.kind === "written") {
+          kept = { value: keptValue, bytes: keptBytes };
+          workflowsBefore = readWorkflows(top, "head");
+        } else if (set.kind === "failed") {
+          ctx.log(`could not set aside the step's bkit.workflows reading: ${set.error}`);
+        }
+      }
+      const res = spawnSync(argv[0]!, argv.slice(1), {
+        cwd: top,
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "pipe"],
+        maxBuffer: GENERATE_MAX_BUFFER,
+      });
+      const status = generateFailure(res);
+      if (status !== null) {
+        ctx.log(`${argv.join(" ")} ${status}: the step lands anyway`);
+        const out = `${res.stdout ?? ""}${res.stderr ?? ""}`.trim();
+        if (out !== "") for (const line of out.split("\n").slice(-20)) ctx.log(`  ${line}`);
+        recordGenerateFriction(top, step, status);
+        ctx.log("generate: failed");
+        generate = "failed";
+        if (kept !== undefined) {
+          const back = restoreKept(top, kept);
+          if (back.kind !== "structured") return refuseWriteBack(back);
+          ownWorkflowKeys = changedKeys(readWorkflows(top, "head"), readWorkflows(top, "work"));
+        }
+      } else {
+        generate = "ran";
+        if (kept !== undefined) {
+          const generated = readWorkflows(top, "work");
+          const kept0 = kept.value ?? {};
+          const diff = changedKeys(kept0, generated);
+          if (diff.length > 0) {
+            const back = restoreKept(top, kept);
+            if (back.kind !== "structured") return refuseWriteBack(back);
+            ownWorkflowKeys = diff;
+          }
+        }
+      }
+    }
+  }
+
+  if (workflow === "build" && CODE_STEPS.has(step)) {
     const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
     const planArg = str(f.plan);
     const planFile =
@@ -1645,13 +1856,32 @@ async function finish(ctx: RunContext): Promise<number> {
   // package.json that was already dirty when the run started stays out of it: a recorded
   // one the run then changed is refused as foreign by the commit itself.
   if (commit === "auto" && !recordedPath(ctx.cwd, fidOfStatusFile(file), "package.json")) {
-    const changed = workflowsChange(ctx.cwd);
-    if (changed.length > 0) {
+    const wfTop = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
+    const wfHead = readWorkflows(wfTop, "head");
+    const wfAfter = readWorkflows(wfTop, "work");
+    const wfBefore = workflowsBefore === undefined ? wfAfter : workflowsBefore;
+    const own = ownWorkflowKeys.length > 0 ? ownWorkflowKeys : changedKeys(wfHead, wfBefore);
+    if (own.length > 0) {
       ctx.log(
-        `the step's commit would change bkit.workflows in package.json (${changed.join(", ")}): restore HEAD's values, then finish again (nothing written)`,
+        `the step's own edit changes bkit.workflows in package.json (${own.join(", ")}): restore HEAD's values, then finish again (nothing written)`,
       );
-      ctx.emit({ pass: false, changed });
+      ctx.emit({ pass: false, changed: own });
       return EXIT_WORKFLOWS_CHANGED;
+    }
+    const generated = changedKeys(wfBefore, wfAfter);
+    if (generated.length > 0) {
+      const allAdded = generated.every((k) => !hasKeyPath(wfBefore, k));
+      if (allAdded && isBkitOwnRepo(wfTop)) {
+        extras.generatedWorkflows = generated;
+        ctx.log(`bkit:generate added bkit.workflows keys to package.json: ${generated.join(", ")}`);
+        addedWorkflowKeys = generated;
+      } else {
+        ctx.log(
+          `bkit:generate changed bkit.workflows in package.json (${generated.join(", ")}): the step's commit may not carry it; fix the script or restore HEAD's values, then finish again (nothing written)`,
+        );
+        ctx.emit({ pass: false, changed: generated });
+        return EXIT_WORKFLOWS_CHANGED;
+      }
     }
   }
 
@@ -1796,6 +2026,8 @@ async function finish(ctx: RunContext): Promise<number> {
     commit: written.commit,
     ...(written.progressLine === undefined ? {} : { progressLine: written.progressLine }),
     pass,
+    generate,
+    ...(addedWorkflowKeys.length > 0 ? { generatedWorkflows: addedWorkflowKeys } : {}),
     checks,
     comment,
     // Written after the step's commit, so the commit never carries it.
@@ -1963,7 +2195,7 @@ export const stepsCommand: CommandSpec = {
     },
     finish: {
       summary:
-        "End a step: read the verdict header(s), derive the attempt, check the gate, write the row, commit, print the tracker comment. Exit 11 on a build tests step that changed an earlier task's recorded test no open task of the group names, and on a code step that changed a planned test; for each BLOCKED test a ticked task owns, a code step first adds a takeover task to the plan and its build-takeover row, and prints them under contradicts.",
+        "End a step: read the verdict header(s), derive the attempt, check the gate, write the row, commit, print the tracker comment; a build code step first runs a declared bkit:generate. Exit 11 on a build tests step that changed an earlier task's recorded test no open task of the group names, and on a code step that changed a planned test; for each BLOCKED test a ticked task owns, a code step first adds a takeover task to the plan and its build-takeover row, and prints them under contradicts.",
       use: "workflow",
       flags: [
         { ...FILE_FLAG, help: "path to status.jsonl (created if absent)" },
@@ -2100,6 +2332,8 @@ export const stepsCommand: CommandSpec = {
         row: "the appended step-done row",
         parentSha: "the row's parentSha: HEAD before the step's commit",
         commit: "the new commit's sha, or null with --commit=none",
+        generate:
+          "a build code step's `bkit:generate`: ran, undeclared, failed (the step still lands; its last 20 lines are logged and a friction row is appended), or null (not a code step, or --commit=none)",
         pass: "every gate check passed",
         progressLine: "the exact chat progress line after a successful numbered completion",
         checks: "[{check, ok, detail}] per gate check",
@@ -2142,7 +2376,7 @@ export const stepsCommand: CommandSpec = {
         [EXIT_LATER_ATTEMPT]:
           "this run saved an artifact of a later attempt (`later`) than the one finished (nothing written)",
         [EXIT_WORKFLOWS_CHANGED]:
-          "the commit would change bkit.workflows in package.json (`changed` names the keys) (nothing written)",
+          "the commit would change bkit.workflows in package.json: the step's own edit, or a change `bkit:generate` made (`changed` names the keys); in bkit's own repository a generated change that only adds keys (a working difference `bkit:generate` reproduces from HEAD's values counts as generated) rides the commit instead and is listed in `generatedWorkflows` (nothing written)",
         [EXIT_SOURCE_TOUCHED]:
           "build plan-tests: the tests step changed a file no TEST FIRST line of the group's open tasks names, or added one a CREATE line of the plan names (`source`) (nothing written)",
       },

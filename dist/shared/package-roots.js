@@ -1,6 +1,7 @@
 // shared/package-roots.ts — resolves the bkit package root and the roots under it
 // (core, shared, templates) from wherever the engine runs.
-// Imports allowed: node:path, node:url, node:fs only.
+// Imports allowed: node:path, node:url, node:fs, node:child_process only.
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,6 +38,43 @@ export function getPkgRoot() {
     return engineDir.endsWith(ENGINE_SUBPATH)
         ? path.resolve(engineDir, "..", "..", "..")
         : path.resolve(engineDir, "..");
+}
+/** The real path of `p`, or null when it does not exist. */
+function realPathOrNull(p) {
+    try {
+        return fs.realpathSync(p);
+    }
+    catch {
+        return null;
+    }
+}
+/**
+ * True when `cwd` is the package root, or is the top level of a checkout whose main checkout
+ * (the parent of the git common dir) is the package root: a linked worktree of bkit's own
+ * repository. A subfolder, a nested repository or a folder in no repository is false. Real paths
+ * on both sides; git runs without inherited GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE and
+ * GIT_COMMON_DIR, so the answer depends on the folder alone. `pkgRoot` defaults to the engine's
+ * own root.
+ */
+export function isBkitOwnRepo(cwd, pkgRoot = getPkgRoot()) {
+    if (path.resolve(cwd) === path.resolve(pkgRoot))
+        return true;
+    const realCwd = realPathOrNull(cwd);
+    const realPkg = realPathOrNull(pkgRoot);
+    if (realCwd === null || realPkg === null)
+        return false;
+    const env = { ...process.env };
+    for (const k of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"])
+        delete env[k];
+    const res = spawnSync("git", ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir"], { cwd: realCwd, encoding: "utf-8", env, stdio: ["ignore", "pipe", "ignore"] });
+    if (res.status !== 0 || typeof res.stdout !== "string")
+        return false;
+    const [top, common] = res.stdout.trim().split("\n");
+    if (top === undefined || common === undefined || top === "" || common === "")
+        return false;
+    if (realPathOrNull(top) !== realCwd)
+        return false;
+    return realPathOrNull(path.dirname(common)) === realPkg;
 }
 // ---------------------------------------------------------------------------
 // The three payload roots. Each folder carries one install behaviour; a file's
